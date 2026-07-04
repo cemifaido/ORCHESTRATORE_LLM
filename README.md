@@ -18,6 +18,12 @@ Il principio è semplice:
 
 ## Avvio rapido
 
+Avviare la dashboard per l'uso quotidiano (non avvia una seconda copia se è già attiva, apre il browser):
+
+```powershell
+.\avvia_dashboard.ps1
+```
+
 Aggiungere un evento:
 
 ```powershell

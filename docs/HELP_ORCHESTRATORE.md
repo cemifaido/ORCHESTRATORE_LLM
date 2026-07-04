@@ -6,11 +6,17 @@ Questa guida spiega come configurare, utilizzare e monitorare l'Orchestratore LL
 
 ## 1. Avvio del Server Web (Dashboard Visiva)
 
-Per avviare la console grafica premium di controllo:
+Per l'uso quotidiano, lo script di avvio controlla se la dashboard è già attiva (non ne avvia una seconda copia) e apre il browser da solo:
 
 ```powershell
 # Eseguire all'interno della cartella _ORCHESTRATORE_LLM
-.venv\Scripts\python.exe .\interfaccia.py
+.\avvia_dashboard.ps1
+```
+
+In alternativa, avvio manuale diretto (utile per vedere i log in console mentre gira):
+
+```powershell
+python .\interfaccia.py
 ```
 
 * Il server si avvierà all'indirizzo: **`http://127.0.0.1:8095`**

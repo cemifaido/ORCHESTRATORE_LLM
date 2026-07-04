@@ -187,6 +187,8 @@ Nei progetti integrati prima di questo cambiamento possono restare copie storich
 
 ## Interfaccia Web (Dashboard)
 
+Avvio quotidiano consigliato: `.\avvia_dashboard.ps1` (non avvia una seconda copia se la dashboard è già attiva sulla porta, poi apre il browser).
+
 Il server `interfaccia.py` (FastAPI/Uvicorn, porta `8095`) offre un'interfaccia di monitoraggio visiva ad alto impatto grafico (dark theme, glassmorphic layout) basata su:
 - **Grafici Chart.js**: Visualizzazione ripartita dei costi stimati ed istogrammi di esecuzioni/rework per ogni lavoratore.
 - **Selettore Progetti**: Form per inserire il percorso assoluto e nome di una nuova cartella per effettuarne l'integrazione ed il monitoraggio automatico.
