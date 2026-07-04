@@ -1,0 +1,138 @@
+from __future__ import annotations
+
+import copy
+import importlib
+from dataclasses import dataclass
+from typing import Any
+
+
+class LiteLLMNonConfigurato(RuntimeError):
+    """LiteLLM non è installato nell'ambiente corrente."""
+
+
+@dataclass(frozen=True)
+class MisurazioneLiteLLM:
+    modello: str
+    provider: str | None
+    costo_usd: float | None
+    token_prompt: int | None
+    token_completion: int | None
+    token_totali: int | None
+    fonte: str = "litellm"
+
+    def come_metadati(self) -> dict[str, Any]:
+        return {
+            "fonte": self.fonte,
+            "modello": self.modello,
+            "provider": self.provider,
+            "costo_usd": self.costo_usd,
+            "token_prompt": self.token_prompt,
+            "token_completion": self.token_completion,
+            "token_totali": self.token_totali,
+        }
+
+
+def _campo(oggetto: Any, nome: str, predefinito: Any = None) -> Any:
+    if isinstance(oggetto, dict):
+        return oggetto.get(nome, predefinito)
+    return getattr(oggetto, nome, predefinito)
+
+
+def _intero_o_nullo(valore: Any) -> int | None:
+    if valore is None:
+        return None
+    try:
+        return int(valore)
+    except (TypeError, ValueError):
+        return None
+
+
+def _float_o_nullo(valore: Any) -> float | None:
+    if valore is None:
+        return None
+    try:
+        return float(valore)
+    except (TypeError, ValueError):
+        return None
+
+
+def _provider_da_modello(modello: str) -> str | None:
+    if "/" not in modello:
+        return None
+    provider, _nome = modello.split("/", 1)
+    return provider or None
+
+
+def costo_risposta(risposta: Any, modello: str) -> float | None:
+    """Legge il costo già calcolato da LiteLLM o lo calcola se la libreria è disponibile."""
+    costo = _float_o_nullo(_campo(risposta, "response_cost"))
+    if costo is not None:
+        return costo
+
+    parametri_nascosti = _campo(risposta, "_hidden_params", {}) or {}
+    costo = _float_o_nullo(_campo(parametri_nascosti, "response_cost"))
+    if costo is not None:
+        return costo
+
+    try:
+        calcolatore = importlib.import_module("litellm.cost_calculator")
+    except ImportError:
+        return None
+
+    completion_cost = getattr(calcolatore, "completion_cost", None)
+    if completion_cost is None:
+        return None
+    try:
+        return _float_o_nullo(completion_cost(completion_response=risposta, model=modello))
+    except Exception:
+        return None
+
+
+def estrai_misurazione(risposta: Any, modello: str, provider: str | None = None) -> MisurazioneLiteLLM:
+    usage = _campo(risposta, "usage", {}) or {}
+    token_prompt = _intero_o_nullo(_campo(usage, "prompt_tokens"))
+    token_completion = _intero_o_nullo(_campo(usage, "completion_tokens"))
+    token_totali = _intero_o_nullo(_campo(usage, "total_tokens"))
+    if token_totali is None and token_prompt is not None and token_completion is not None:
+        token_totali = token_prompt + token_completion
+
+    return MisurazioneLiteLLM(
+        modello=modello,
+        provider=provider or _provider_da_modello(modello),
+        costo_usd=costo_risposta(risposta, modello),
+        token_prompt=token_prompt,
+        token_completion=token_completion,
+        token_totali=token_totali,
+    )
+
+
+def arricchisci_evento(evento: dict[str, Any], misurazione: MisurazioneLiteLLM) -> dict[str, Any]:
+    """Restituisce una copia dell'evento con costo misurato e metadati LiteLLM."""
+    arricchito = copy.deepcopy(evento)
+    metadati = arricchito.setdefault("metadati", {})
+    metadati["litellm"] = misurazione.come_metadati()
+    if misurazione.costo_usd is not None:
+        arricchito["costo_stimato_usd"] = misurazione.costo_usd
+        arricchito["origine_costo"] = "misurato"
+    return arricchito
+
+
+def completamento(
+    *,
+    modello: str,
+    messaggi: list[dict[str, str]],
+    provider: str | None = None,
+    **parametri: Any,
+) -> tuple[Any, MisurazioneLiteLLM]:
+    """Esegue una chat completion LiteLLM e restituisce risposta + misurazione.
+
+    La dipendenza è importata solo qui: il resto del framework resta avviabile senza
+    `pip install litellm`.
+    """
+    try:
+        litellm = importlib.import_module("litellm")
+    except ImportError as errore:
+        raise LiteLLMNonConfigurato("Installa LiteLLM solo nei progetti che usano questo adapter.") from errore
+
+    risposta = litellm.completion(model=modello, messages=messaggi, **parametri)
+    return risposta, estrai_misurazione(risposta, modello=modello, provider=provider)

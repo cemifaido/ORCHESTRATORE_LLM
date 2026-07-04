@@ -1,0 +1,3 @@
+# Dipendenze opzionali del framework.
+# Installare solo nei progetti che usano l'integrazione corrispondente.
+litellm

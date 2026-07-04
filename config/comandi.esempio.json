@@ -1,0 +1,68 @@
+{
+  "versione_schema": 1,
+  "comandi": {
+    "stato_git": {
+      "cartella": ".",
+      "argomenti": [
+        "git",
+        "status",
+        "--short"
+      ],
+      "timeout_secondi": 30,
+      "limite_output_caratteri": 20000
+    },
+    "controllo_diff": {
+      "cartella": ".",
+      "argomenti": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "timeout_secondi": 30,
+      "limite_output_caratteri": 20000
+    },
+    "build_interfaccia": {
+      "cartella": "interfaccia",
+      "argomenti": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "timeout_secondi": 180,
+      "limite_output_caratteri": 60000
+    },
+    "test_servizi": {
+      "cartella": ".",
+      "argomenti": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "tests",
+        "-q"
+      ],
+      "timeout_secondi": 300,
+      "limite_output_caratteri": 60000
+    },
+    "test_interfaccia": {
+      "cartella": "interfaccia",
+      "argomenti": [
+        "npm",
+        "run",
+        "test"
+      ],
+      "timeout_secondi": 300,
+      "limite_output_caratteri": 60000
+    },
+    "controllo_salute": {
+      "cartella": ".",
+      "argomenti": [
+        "git",
+        "status",
+        "--branch",
+        "--short"
+      ],
+      "timeout_secondi": 30,
+      "limite_output_caratteri": 20000
+    }
+  }
+}

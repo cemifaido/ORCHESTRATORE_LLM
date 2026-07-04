@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Orchestratore LLM — Cruscotto di Controllo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg-color: #0b0f19;
+      --card-bg: rgba(17, 24, 39, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --accent-blue: #3b82f6;
+      --accent-purple: #8b5cf6;
+      --accent-emerald: #10b981;
+      --accent-rose: #f43f5e;
+      --font-display: 'Outfit', sans-serif;
+      --font-body: 'Inter', sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      font-family: var(--font-body);
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      background-image: radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 40%),
+                        radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.08) 0%, transparent 40%);
+      background-attachment: fixed;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 1.5rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-logo {
+      font-size: 2.2rem;
+    }
+
+    h1 {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.8rem;
+      margin: 0;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-subtitle {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 0.2rem;
+    }
+
+    .btn-refresh {
+      background: rgba(59, 130, 246, 0.15);
+      color: #93c5fd;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+    }
+
+    .btn-refresh:hover {
+      background: rgba(59, 130, 246, 0.25);
+      border-color: #60a5fa;
+      transform: translateY(-1px);
+    }
+
+    /* Summary Cards */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .summary-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .summary-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .summary-val {
+      font-family: var(--font-display);
+      font-size: 2rem;
+      font-weight: 600;
+      color: var(--text-main);
+      margin: 0;
+    }
+
+    .summary-val.blue { color: #60a5fa; }
+    .summary-val.purple { color: #c084fc; }
+    .summary-val.emerald { color: #34d399; }
+    .summary-val.rose { color: #f87171; }
+
+    /* Layout Columns */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    @media (max-width: 1024px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Widgets */
+    .widget {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+      margin-bottom: 2rem;
+    }
+
+    .widget h2 {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-top: 0;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 0.75rem;
+    }
+
+    /* Form Fields */
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+    }
+
+    .form-group input, .form-group select {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 0.6rem 0.8rem;
+      border-radius: 6px;
+      box-sizing: border-box;
+      font-family: inherit;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+
+    .form-group input:focus, .form-group select:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+
+    .btn-action {
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      color: white;
+      border: none;
+      padding: 0.65rem 1.2rem;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+    }
+
+    .btn-action:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+
+    /* Lists and Cards */
+    .project-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      transition: all 0.2s;
+    }
+
+    .project-card:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(59, 130, 246, 0.3);
+    }
+
+    .project-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .project-name {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 1.05rem;
+      color: #60a5fa;
+    }
+
+    .project-path {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      word-break: break-all;
+    }
+
+    .project-meta-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      margin-top: 0.5rem;
+      color: var(--text-muted);
+    }
+
+    .badge {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .badge.rework {
+      background: rgba(244, 63, 94, 0.15);
+      color: #f87171;
+    }
+
+    /* Charts Container */
+    .chart-container {
+      position: relative;
+      height: 220px;
+      width: 100%;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Terminal Console */
+    .console-out {
+      background: #040711;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: #38bdf8;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      margin-top: 1rem;
+      display: none;
+    }
+
+    /* Timeline Table */
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    th {
+      text-align: left;
+      padding: 0.75rem;
+      border-bottom: 2px solid var(--card-border);
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    td {
+      padding: 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+      max-width: 250px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.01);
+    }
+
+    .tag-project {
+      background: rgba(59, 130, 246, 0.15);
+      color: #93c5fd;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 500;
+    }
+
+    .tag-agent {
+      font-weight: 600;
+      color: #c084fc;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 0.15rem 0.45rem;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .status-badge.superato, .status-badge.passato, .status-badge.approvato {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+    }
+
+    .status-badge.fallito, .status-badge.respinto {
+      background: rgba(244, 63, 94, 0.15);
+      color: #f87171;
+    }
+
+    .status-badge.timeout {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+    }
+
+    .status-badge.in_corso, .status-badge.gate_in_corso {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+    }
+
+    /* Feedback Banner */
+    .banner {
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+      display: none;
+    }
+
+    .banner.error {
+      background: rgba(244, 63, 94, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(244, 63, 94, 0.3);
+      display: block;
+    }
+
+    .banner.success {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <span class="brand-logo">🛡️</span>
+        <div>
+          <h1>Orchestratore LLM</h1>
+          <div class="brand-subtitle">Framework di lavoro multi-agente & watchdog</div>
+        </div>
+      </div>
+      <button class="btn-refresh" id="refreshBtn">🔄 Aggiorna Dati</button>
+    </header>
+
+    <div class="banner" id="feedbackBanner"></div>
+
+    <!-- Summary Statistics -->
+    <div class="summary-grid">
+      <div class="summary-card">
+        <span class="summary-title">Progetti Monitorati</span>
+        <span class="summary-val blue" id="valProjects">0</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-title">Eventi Registrati</span>
+        <span class="summary-val purple" id="valEvents">0</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-title">Costo Stimato</span>
+        <span class="summary-val emerald" id="valCost">$0.0000</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-title">Latenza Cumulata</span>
+        <span class="summary-val rose" id="valLatency">0 ms</span>
+      </div>
+    </div>
+
+    <!-- Layout Grid -->
+    <div class="main-grid">
+      <!-- Left Column -->
+      <div class="col-left">
+        <!-- Monitored Projects -->
+        <div class="widget">
+          <h2>📁 Progetti in Monitoraggio</h2>
+          <div id="projectsList">Caricamento progetti...</div>
+        </div>
+
+        <!-- Add Project Folder -->
+        <div class="widget">
+          <h2>➕ Integra e Monitora Nuovo Progetto</h2>
+          <form id="addProjectForm">
+            <div class="form-group">
+              <label for="projNome">Nome Progetto</label>
+              <input type="text" id="projNome" required placeholder="es. Progetto Esempio">
+            </div>
+            <div class="form-group">
+              <label for="projPercorso">Percorso Cartella (Assoluto)</label>
+              <input type="text" id="projPercorso" required placeholder="es. D:/Share/py/mio_progetto">
+            </div>
+            <button type="submit" class="btn-action">Esegui Integrazione & Monitoraggio</button>
+          </form>
+        </div>
+
+        <!-- Trigger Sentinel Command -->
+        <div class="widget">
+          <h2>⚡ Trigger Guardiano (Sentinella)</h2>
+          <form id="sentinelForm">
+            <div class="form-group">
+              <label for="sentinelProj">Seleziona Progetto</label>
+              <select id="sentinelProj" required></select>
+            </div>
+            <div class="form-group">
+              <label for="sentinelCmd">Comando Whitelistato</label>
+              <select id="sentinelCmd" required>
+                <option value="stato_git">Stato Git (git status --short)</option>
+                <option value="controllo_diff">Controllo Diff (git diff --check)</option>
+                <option value="controllo_salute">Salute Branch (git status --branch)</option>
+                <option value="test_servizi">Pytest Backend (pytest tests)</option>
+                <option value="test_interfaccia">Vitest Frontend (vitest run)</option>
+                <option value="build_interfaccia">Build Frontend (npm run build)</option>
+              </select>
+            </div>
+            <button type="submit" class="btn-action">Lancia Gate Esecuzione</button>
+          </form>
+          <div class="console-out" id="consoleOutput"></div>
+        </div>
+      </div>
+
+      <!-- Right Column -->
+      <div class="col-right">
+        <!-- Agent Costs Chart -->
+        <div class="widget">
+          <h2>📊 Quota Costi per Agente (USD)</h2>
+          <div class="chart-container">
+            <canvas id="costChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Agent Runs and Rework Chart -->
+        <div class="widget">
+          <h2>📊 Esecuzioni e Rework per Agente</h2>
+          <div class="chart-container">
+            <canvas id="runsChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Combined Event Timeline -->
+    <div class="widget">
+      <h2>⏳ Timeline degli Eventi Aggregati</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Progetto</th>
+              <th>Compito</th>
+              <th>Agente</th>
+              <th>Tipo</th>
+              <th>Stato</th>
+              <th>Gate</th>
+              <th>Umano</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody id="timelineBody">
+            <tr>
+              <td colspan="9" style="text-align: center; color: var(--text-muted);">Caricamento eventi...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let costChartInstance = null;
+    let runsChartInstance = null;
+
+    document.addEventListener("DOMContentLoaded", () => {
+      aggiornaDati();
+
+      // Aggiornamento automatico ogni 5 secondi (reattività stile Vue)
+      setInterval(aggiornaDati, 5000);
+
+      document.getElementById("refreshBtn").addEventListener("click", aggiornaDati);
+      document.getElementById("addProjectForm").addEventListener("submit", aggiungiProgetto);
+      document.getElementById("sentinelForm").addEventListener("submit", eseguiSentinella);
+    });
+
+    function showFeedback(text, type = "success") {
+      const banner = document.getElementById("feedbackBanner");
+      banner.textContent = text;
+      banner.className = "banner " + type;
+      setTimeout(() => {
+        banner.style.display = "none";
+      }, 5000);
+    }
+
+    async function aggiornaDati() {
+      try {
+        const res = await fetch("/api/stato");
+        if (!res.ok) throw new Error("Risposta del server non valida");
+        const data = await res.json();
+
+        // 1. Stats globali
+        document.getElementById("valProjects").textContent = data.globali.progetti_totali;
+        document.getElementById("valEvents").textContent = data.globali.eventi_totali;
+        document.getElementById("valCost").textContent = `$${data.globali.costo_totale.toFixed(4)}`;
+        document.getElementById("valLatency").textContent = `${data.globali.latenza_totale.toLocaleString()} ms`;
+
+        // 2. Select Sentinella
+        const sentinelSelect = document.getElementById("sentinelProj");
+        sentinelSelect.innerHTML = "";
+        data.progetti.forEach(p => {
+          const opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.nome;
+          sentinelSelect.appendChild(opt);
+        });
+
+        // 3. Progetti list
+        const pList = document.getElementById("projectsList");
+        pList.innerHTML = "";
+        if (data.progetti.length === 0) {
+          pList.innerHTML = `<div style="text-align: center; color: var(--text-muted);">Nessun progetto registrato.</div>`;
+        } else {
+          data.progetti.forEach(p => {
+            const pStat = data.progetto_stats[p.id] || { esecuzioni: 0, costo: 0, latenza: 0, rework: 0 };
+            const card = document.createElement("div");
+            card.className = "project-card";
+            card.innerHTML = `
+              <div class="project-head">
+                <span class="project-name">${p.nome}</span>
+                <span class="badge">id: ${p.id}</span>
+              </div>
+              <div class="project-path">${p.percorso}</div>
+              <div class="project-meta-row">
+                <span>Moduli attivi: <b>${pStat.esecuzioni}</b></span>
+                <span>Costo: <b>$${pStat.costo.toFixed(4)}</b></span>
+                <span>Rework: <b class="badge rework">${pStat.rework}</b></span>
+              </div>
+            `;
+            pList.appendChild(card);
+          });
+        }
+
+        // 4. Timeline
+        const tBody = document.getElementById("timelineBody");
+        tBody.innerHTML = "";
+        if (data.eventi.length === 0) {
+          tBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">Nessun evento in timeline.</td></tr>`;
+        } else {
+          data.eventi.forEach(ev => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${ev.timestamp || '—'}</td>
+              <td><span class="tag-project">${ev._progetto_nome || '—'}</span></td>
+              <td>${ev.id_compito || '—'}</td>
+              <td><span class="tag-agent">${ev.agent || '—'}</span></td>
+              <td>${ev.tipo_compito || '—'}</td>
+              <td><span class="status-badge ${ev.stato || ''}">${ev.stato || '—'}</span></td>
+              <td><span class="status-badge ${ev.esito_gate || ''}">${ev.esito_gate || '—'}</span></td>
+              <td><span class="status-badge ${ev.verdetto_umano || ''}">${ev.verdetto_umano || '—'}</span></td>
+              <td title="${ev.note || ''}">${ev.note || '—'}</td>
+            `;
+            tBody.appendChild(tr);
+          });
+        }
+
+        // 5. Grafici
+        renderizzaGrafici(data.agente_stats);
+
+      } catch (err) {
+        showFeedback(`Errore nel caricamento dei dati: ${err.message}`, "error");
+      }
+    }
+
+    function renderizzaGrafici(agenteStats) {
+      const agenti = Object.keys(agenteStats).sort();
+      const costi = agenti.map(a => agenteStats[a].costo);
+      const esecuzioni = agenti.map(a => agenteStats[a].esecuzioni);
+      const rework = agenti.map(a => agenteStats[a].rework);
+
+      const colorPalette = ['#3b82f6', '#8b5cf6', '#10b981', '#f43f5e', '#f59e0b', '#6b7280'];
+
+      // Chart 1: Costi per agente
+      if (costChartInstance) costChartInstance.destroy();
+      const ctxCost = document.getElementById("costChart").getContext("2d");
+      costChartInstance = new Chart(ctxCost, {
+        type: 'doughnut',
+        data: {
+          labels: agenti,
+          datasets: [{
+            data: costi,
+            backgroundColor: colorPalette.slice(0, agenti.length),
+            borderColor: 'rgba(11, 15, 25, 0.8)',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { color: '#f3f4f6', font: { family: 'Inter' } }
+            }
+          }
+        }
+      });
+
+      // Chart 2: Esecuzioni e Rework per agente
+      if (runsChartInstance) runsChartInstance.destroy();
+      const ctxRuns = document.getElementById("runsChart").getContext("2d");
+      runsChartInstance = new Chart(ctxRuns, {
+        type: 'bar',
+        data: {
+          labels: agenti,
+          datasets: [
+            {
+              label: 'Esecuzioni',
+              data: esecuzioni,
+              backgroundColor: 'rgba(59, 130, 246, 0.75)',
+              borderColor: '#3b82f6',
+              borderWidth: 1
+            },
+            {
+              label: 'Rework',
+              data: rework,
+              backgroundColor: 'rgba(244, 63, 94, 0.75)',
+              borderColor: '#f43f5e',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } },
+            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', stepSize: 1 } }
+          },
+          plugins: {
+            legend: {
+              labels: { color: '#f3f4f6', font: { family: 'Inter' } }
+            }
+          }
+        }
+      });
+    }
+
+    async function aggiungiProgetto(e) {
+      e.preventDefault();
+      const nome = document.getElementById("projNome").value;
+      const percorso = document.getElementById("projPercorso").value;
+
+      try {
+        const res = await fetch("/api/progetti", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nome, percorso })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || "Errore sconosciuto dell'integrazione");
+        }
+        showFeedback(`Progetto "${nome}" integrato e monitorato con successo!`, "success");
+        document.getElementById("addProjectForm").reset();
+        aggiornaDati();
+      } catch (err) {
+        showFeedback(err.message, "error");
+      }
+    }
+
+    async function eseguiSentinella(e) {
+      e.preventDefault();
+      const progetto_id = document.getElementById("sentinelProj").value;
+      const comando = document.getElementById("sentinelCmd").value;
+      const consoleBox = document.getElementById("consoleOutput");
+
+      consoleBox.style.display = "block";
+      consoleBox.textContent = `Avvio sentinella per comando "${comando}" su progetto "${progetto_id}"...\n`;
+
+      try {
+        const res = await fetch("/api/sentinella", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ progetto_id, comando })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || "Esecuzione fallita");
+        }
+
+        const esito = data.status;
+        const gateInfo = data.dati.esito_gate || "non_eseguito";
+        const returncode = data.returncode;
+        const output = data.dati.output || "";
+
+        consoleBox.textContent += `\n>> Esito sentinella: ${esito.toUpperCase()} (codice ritornato: ${returncode})\n\nOutput:\n${output}`;
+        
+        showFeedback(`Comando "${comando}" terminato con esito: ${gateInfo.toUpperCase()}`, esito === "success" ? "success" : "error");
+        aggiornaDati();
+      } catch (err) {
+        consoleBox.textContent += `\nErrore esecuzione: ${err.message}`;
+        showFeedback(err.message, "error");
+      }
+    }
+  </script>
+</body>
+</html>

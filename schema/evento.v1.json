@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orchestratore.locale/schema/evento.v1.json",
+  "title": "Evento del registro orchestratore v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "versione_schema",
+    "id_evento",
+    "timestamp",
+    "id_compito",
+    "agente",
+    "tipo_compito",
+    "stato",
+    "esito_gate",
+    "verdetto_umano",
+    "costo_stimato_usd",
+    "origine_costo",
+    "latenza_ms",
+    "regole_incluse",
+    "note"
+  ],
+  "properties": {
+    "versione_schema": {
+      "const": 1
+    },
+    "id_evento": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "id_compito": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agente": {
+      "type": "string",
+      "enum": [
+        "gemini",
+        "claude",
+        "codex",
+        "locale",
+        "umano",
+        "sistema"
+      ]
+    },
+    "tipo_compito": {
+      "type": "string",
+      "enum": [
+        "interfaccia",
+        "servizi",
+        "database",
+        "documentazione",
+        "errore_test",
+        "revisione",
+        "sicurezza",
+        "monitoraggio",
+        "orchestrazione",
+        "sconosciuto"
+      ]
+    },
+    "stato": {
+      "type": "string",
+      "enum": [
+        "nuovo",
+        "pianificato",
+        "approvato",
+        "in_corso",
+        "da_rivedere",
+        "gate_in_corso",
+        "passato",
+        "fallito",
+        "accettato",
+        "respinto"
+      ]
+    },
+    "esito_gate": {
+      "type": "string",
+      "enum": [
+        "non_eseguito",
+        "superato",
+        "fallito",
+        "errore_ambiente",
+        "timeout",
+        "sconosciuto"
+      ]
+    },
+    "verdetto_umano": {
+      "type": "string",
+      "enum": [
+        "non_revisionato",
+        "approvato",
+        "respinto",
+        "modifiche_richieste"
+      ]
+    },
+    "costo_stimato_usd": {
+      "type": "number",
+      "minimum": 0
+    },
+    "origine_costo": {
+      "type": "string",
+      "enum": [
+        "misurato",
+        "stimato"
+      ]
+    },
+    "latenza_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "regole_incluse": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "file_modificati": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "voto_qualita": {
+      "type": ["integer", "null"],
+      "enum": [1, 2, 3, 4, 5, null],
+      "default": null,
+      "description": "Voto 1-5 sulla qualità del lavoro. Un giorno confluirà in un punteggio con costo/token."
+    },
+    "voto_velocita": {
+      "type": ["integer", "null"],
+      "enum": [1, 2, 3, 4, 5, null],
+      "default": null,
+      "description": "Voto 1-5 sulla velocità/reattività."
+    },
+    "note": {
+      "type": "string"
+    },
+    "metadati": {
+      "type": "object",
+      "additionalProperties": true,
+      "default": {}
+    }
+  }
+}

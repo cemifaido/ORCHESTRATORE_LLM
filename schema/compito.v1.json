@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orchestratore.dati_locali/schema/compito.v1.json",
+  "title": "Compito orchestratore v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "versione_schema",
+    "id_compito",
+    "creato_il",
+    "aggiornato_il",
+    "stato",
+    "tipo_compito",
+    "titolo",
+    "proprietario",
+    "lease_fino",
+    "commit_base",
+    "file_modificati"
+  ],
+  "properties": {
+    "versione_schema": {
+      "const": 1
+    },
+    "id_compito": {
+      "type": "string",
+      "minLength": 1
+    },
+    "creato_il": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "aggiornato_il": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stato": {
+      "type": "string",
+      "enum": [
+        "nuovo",
+        "pianificato",
+        "approvato",
+        "in_corso",
+        "da_rivedere",
+        "gate_in_corso",
+        "passato",
+        "fallito",
+        "accettato",
+        "respinto"
+      ]
+    },
+    "tipo_compito": {
+      "type": "string",
+      "enum": [
+        "interfaccia",
+        "servizi",
+        "database",
+        "documentazione",
+        "errore_test",
+        "revisione",
+        "sicurezza",
+        "monitoraggio",
+        "orchestrazione",
+        "sconosciuto"
+      ]
+    },
+    "titolo": {
+      "type": "string",
+      "minLength": 1
+    },
+    "proprietario": {
+      "type": "string",
+      "enum": [
+        "gemini",
+        "claude",
+        "codex",
+        "locale",
+        "umano",
+        "sistema",
+        "nessuno"
+      ]
+    },
+    "lease_fino": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "commit_base": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "file_modificati": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "descrizione": {
+      "type": "string",
+      "default": ""
+    },
+    "rischio": {
+      "type": "string",
+      "enum": [
+        "basso",
+        "medio",
+        "alto",
+        "critico"
+      ],
+      "default": "medio"
+    },
+    "metadati": {
+      "type": "object",
+      "additionalProperties": true,
+      "default": {}
+    }
+  }
+}

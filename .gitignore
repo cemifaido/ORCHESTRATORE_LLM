@@ -1,0 +1,25 @@
+# Dati runtime dell'orchestrazione: mai in Git.
+dati_locali/
+local/
+**/eventi.jsonl
+**/events.jsonl
+**/compiti/*.json
+**/tasks/*.json
+*.registro.md
+*.ledger.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Sistema/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
