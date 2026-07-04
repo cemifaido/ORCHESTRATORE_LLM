@@ -96,6 +96,32 @@
       transform: translateY(-1px);
     }
 
+    .btn-riavvia {
+      background: rgba(244, 63, 94, 0.12);
+      color: #fda4af;
+      border: 1px solid rgba(244, 63, 94, 0.3);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+    }
+
+    .btn-riavvia:hover {
+      background: rgba(244, 63, 94, 0.22);
+      border-color: #f87171;
+      transform: translateY(-1px);
+    }
+
+    .btn-riavvia:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
     /* Summary Cards */
     .summary-grid {
       display: grid;
@@ -424,7 +450,10 @@
           <div class="brand-subtitle">Framework di lavoro multi-agente & watchdog</div>
         </div>
       </div>
-      <button class="btn-refresh" id="refreshBtn">🔄 Aggiorna Dati</button>
+      <div style="display:flex; gap:0.6rem;">
+        <button class="btn-refresh" id="refreshBtn">🔄 Aggiorna Dati</button>
+        <button class="btn-riavvia" id="riavviaBtn" title="Riavvia il processo del server per applicare modifiche al codice">⟲ Riavvia Sistema</button>
+      </div>
     </header>
 
     <div class="banner" id="feedbackBanner"></div>
@@ -557,10 +586,48 @@
       document.getElementById("refreshBtn").addEventListener("click", aggiornaDati);
       document.getElementById("addProjectForm").addEventListener("submit", aggiungiProgetto);
       document.getElementById("sentinelForm").addEventListener("submit", eseguiSentinella);
-      
+      document.getElementById("riavviaBtn").addEventListener("click", riavviaSistema);
+
       // Listener per aggiornare la lista dei comandi quando cambia il progetto
       document.getElementById("sentinelProj").addEventListener("change", aggiornaComandiSelect);
     });
+
+    async function riavviaSistema() {
+      if (!confirm("Riavviare il processo del server? La dashboard sarà irraggiungibile per qualche secondo.")) {
+        return;
+      }
+      const btn = document.getElementById("riavviaBtn");
+      btn.disabled = true;
+      btn.textContent = "⟲ Riavvio in corso...";
+      showFeedback("Riavvio richiesto: attendo che il nuovo processo sia pronto...", "success");
+
+      try {
+        await fetch("/api/sistema/riavvia", { method: "POST" });
+      } catch (err) {
+        // Atteso: il processo termina subito dopo aver risposto, la fetch può fallire.
+      }
+
+      // Il vecchio processo muore e un nuovo processo si avvia al suo posto sulla
+      // stessa porta: eseguo polling finché non risponde di nuovo, poi ricarico.
+      const attendiRiavvio = async () => {
+        for (let tentativo = 0; tentativo < 30; tentativo++) {
+          await new Promise(r => setTimeout(r, 1000));
+          try {
+            const res = await fetch("/api/stato", { cache: "no-store" });
+            if (res.ok) {
+              window.location.reload();
+              return;
+            }
+          } catch (err) {
+            // server ancora giù: continua a tentare
+          }
+        }
+        btn.disabled = false;
+        btn.textContent = "⟲ Riavvia Sistema";
+        showFeedback("Il server non ha risposto entro 30s dopo il riavvio: controllalo manualmente.", "error");
+      };
+      attendiRiavvio();
+    }
 
     function escapeHtml(testo) {
       const div = document.createElement("div");

@@ -16,6 +16,8 @@ Per avviare la console grafica premium di controllo:
 * Il server si avvierà all'indirizzo: **`http://127.0.0.1:8095`**
 * Offre la visualizzazione dei grafici Chart.js dei costi e del tasso di rework per agente, la timeline aggregata e il terminale per lanciare la sentinella.
 
+**Bottone "⟲ Riavvia Sistema"**: uvicorn non ricarica mai il codice modificato su disco (nessun `--reload`), quindi dopo aver aggiornato `interfaccia.py`/`registro.py`/`sentinella.py` la dashboard resterebbe silenziosamente disallineata dal codice finché il processo non viene riavviato a mano. Questo bottone chiede conferma, avvia un nuovo processo (che ricarica tutto da disco) e termina quello vecchio non appena il nuovo ha preso la porta; la pagina si ricarica da sola quando il nuovo processo risponde. Da usare dopo ogni modifica al codice dell'orchestratore, invece di cercare e uccidere il processo manualmente.
+
 ---
 
 ## 2. Monitorare e Integrare un Progetto

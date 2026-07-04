@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
+import os
 import sys
 import json
 import shutil
 import subprocess
+import threading
+import time
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
@@ -19,6 +22,9 @@ RADICE = Path(__file__).resolve().parent
 PERCORSO_PROGETTI = RADICE / "dati_locali" / "progetti.json"
 PERCORSO_HTML = RADICE / "interfaccia.html"
 SCRIPT_SENTINELLA_CENTRALE = RADICE / "sentinella.py"
+SCRIPT_INTERFACCIA = RADICE / "interfaccia.py"
+HOST_DASHBOARD = os.environ.get("ORCHESTRATORE_HOST", "127.0.0.1")
+PORTA_DASHBOARD = int(os.environ.get("ORCHESTRATORE_PORTA", "8095"))
 
 # Assicura caricamento moduli locali del framework
 sys.path.append(str(RADICE))
@@ -261,5 +267,42 @@ def esegui_sentinella(input_data: SentinellaInput):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore durante l'esecuzione del comando: {e}")
 
+
+def _avvia_processo_sostituto() -> None:
+    kwargs: dict = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    subprocess.Popen([sys.executable, str(SCRIPT_INTERFACCIA)], cwd=str(RADICE), env=os.environ.copy(), **kwargs)
+
+
+def _riavvia_dopo_risposta() -> None:
+    # Aspetta che la risposta HTTP sia partita prima di terminare questo processo:
+    # uvicorn non ricarica mai il codice modificato, quindi l'unico modo per applicare
+    # le modifiche fatte su disco e' rimpiazzare il processo con uno nuovo.
+    time.sleep(0.5)
+    _avvia_processo_sostituto()
+    os._exit(0)
+
+
+@app.post("/api/sistema/riavvia")
+def riavvia_sistema():
+    """Avvia un nuovo processo (che ricarica il codice corrente da disco) e pianifica
+    la terminazione di questo. Il nuovo processo attende la porta libera all'avvio
+    (vedi __main__), quindi non serve sincronizzare a mano lo spegnimento del vecchio."""
+    threading.Thread(target=_riavvia_dopo_risposta, daemon=True).start()
+    return {"status": "riavvio_in_corso"}
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8095)
+    tentativi_rimasti = 20
+    while True:
+        try:
+            uvicorn.run(app, host=HOST_DASHBOARD, port=PORTA_DASHBOARD)
+            break
+        except SystemExit:
+            tentativi_rimasti -= 1
+            if tentativi_rimasti <= 0:
+                raise
+            time.sleep(0.5)
