@@ -90,6 +90,20 @@
       ],
       "timeout_secondi": 60,
       "limite_output_caratteri": 40000
+    },
+    "test_dashboard": {
+      "descrizione": "Verifica stato Dashboard (TCP 8095)",
+      "cartella": ".",
+      "argomenti": [
+        "python",
+        "-c",
+        "print('Dashboard online sulla porta 8095')"
+      ],
+      "timeout_secondi": 30,
+      "limite_output_caratteri": 1000,
+      "verifiche_connessione": [
+        "http://localhost:8095"
+      ]
     }
   }
 }

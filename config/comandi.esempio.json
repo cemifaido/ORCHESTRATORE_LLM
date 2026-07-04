@@ -56,7 +56,10 @@
         "test"
       ],
       "timeout_secondi": 300,
-      "limite_output_caratteri": 60000
+      "limite_output_caratteri": 60000,
+      "verifiche_connessione": [
+        "http://localhost:5173"
+      ]
     },
     "controllo_salute": {
       "descrizione": "Salute Branch (git status --branch)",

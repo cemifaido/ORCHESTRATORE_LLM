@@ -103,6 +103,15 @@ Non esiste esecuzione shell arbitraria.
 
 Il quality gate minimo (lint, type check, complessità) è dichiarato come comandi whitelistati come gli altri: `controllo_lint` (ruff), `controllo_tipi` (mypy), `controllo_complessita` (xenon, soglie `--max-absolute C --max-modules B --max-average B`). Le dipendenze sono in `requirements-dev.txt`, separate da quelle di runtime.
 
+### Hook Git Pre-commit
+È possibile automatizzare l'esecuzione locale di Ruff, Mypy e Xenon prima di consentire un commit Git. Lo script di installazione si trova in [utility/installa_hook.py](file:///D:/Share/py/_ORCHESTRATORE_LLM/utility/installa_hook.py).
+
+Per installarlo, esegui:
+```powershell
+python utility/installa_hook.py
+```
+Questo scriverà un file `.git/hooks/pre-commit` che bloccherà il commit se uno dei controlli fallisce, stampando i dettagli del fallimento in console.
+
 ## Routing
 
 All'inizio il routing resta tabellare:
@@ -133,6 +142,8 @@ Il rework non è dichiarato dall'agente. Si deduce da gate falliti, respingiment
 
 LiteLLM può essere usato come gateway per chiamate LLM e misurazione costo/token.
 Resta un adapter: non sostituisce registro, gate, sentinella o verdetto umano.
+
+Per un esempio pratico e funzionante di chiamata ed arricchimento dell'evento del registro con i costi reali misurati in USD, vedi lo script di esempio [esempi/chiamata_agente_litellm.py](file:///D:/Share/py/_ORCHESTRATORE_LLM/esempi/chiamata_agente_litellm.py).
 
 Regola pratica:
 

@@ -75,6 +75,8 @@ Funzioni principali:
 - `estrai_misurazione(...)`: legge costo e token da una risposta LiteLLM;
 - `arricchisci_evento(...)`: copia un evento e aggiunge costo/metadati LiteLLM.
 
+Per un esempio completo, documentato ed eseguibile che gestisce anche il fallback mock per lo sviluppo locale, fai riferimento a [esempi/chiamata_agente_litellm.py](file:///D:/Share/py/_ORCHESTRATORE_LLM/esempi/chiamata_agente_litellm.py).
+
 Esempio:
 
 ```python

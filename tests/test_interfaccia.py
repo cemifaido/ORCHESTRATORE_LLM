@@ -129,5 +129,24 @@ class EseguiSentinellaTest(unittest.TestCase):
             self.assertTrue(eventi_path.exists())
 
 
+class StatoApiTest(unittest.TestCase):
+    def test_get_stato_riporta_errore_se_registro_e_corrotto(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            # Scrive un file di log corrotto (non JSON)
+            registro_dir = p_path / "dati_locali" / "orchestrazione"
+            registro_dir.mkdir(parents=True, exist_ok=True)
+            (registro_dir / "eventi.jsonl").write_text("corrupted line {bad json}", encoding="utf-8")
+
+            progetti = [{"id": "corrupted_proj", "nome": "Corrotto", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                stato = interfaccia.get_stato()
+
+            self.assertIn("corrupted_proj", stato["progetto_stats"])
+            stat_proj = stato["progetto_stats"]["corrupted_proj"]
+            self.assertIn("errore", stat_proj)
+            self.assertIn("registro corrotto", stat_proj["errore"])
+
+
 if __name__ == "__main__":
     unittest.main()
