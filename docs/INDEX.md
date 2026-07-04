@@ -27,7 +27,11 @@ Questo indice è il punto di ingresso per copiare o collegare la documentazione 
 - [registro.py](../registro.py) — append e validazione eventi.
 - [sentinella.py](../sentinella.py) — esecuzione whitelistata dei gate.
 - [genera_cruscotto.py](../genera_cruscotto.py) — riepilogo Markdown.
+- [capoturno.py](../capoturno.py) — motore di orchestrazione reale (routing, agente, gate, rework).
+- [instrada.py](../instrada.py) — suggerisce l'agente per un tipo di compito.
 - [adattatori/litellm.py](../adattatori/litellm.py) — adapter opzionale LiteLLM.
+- [utility/installa_hook.py](../utility/installa_hook.py) — installa l'hook Git pre-commit del quality gate.
+- [esempi/chiamata_agente_litellm.py](../esempi/chiamata_agente_litellm.py) — esempio eseguibile di chiamata LiteLLM con fallback mock.
 
 ## Note vault
 

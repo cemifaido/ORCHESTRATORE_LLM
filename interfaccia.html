@@ -438,6 +438,213 @@
       border: 1px solid rgba(16, 185, 129, 0.3);
       display: block;
     }
+
+    /* Visual Handoff & Cooperazione styles */
+    .handoff-container {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    
+    @media (max-width: 900px) {
+      .handoff-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .handoff-controls {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 0.8rem;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 0.8rem 1.2rem;
+      border-radius: 8px;
+    }
+
+    .handoff-controls label {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .handoff-controls select {
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 0.85rem;
+    }
+
+    /* SVG Handoff Graph */
+    .handoff-visual {
+      background: #040711;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 1rem;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #handoffSvg {
+      width: 100%;
+      height: auto;
+      max-height: 320px;
+    }
+
+    /* Linee di handoff (archi) */
+    .handoff-line {
+      stroke: rgba(255, 255, 255, 0.08);
+      stroke-width: 3;
+      stroke-linecap: round;
+      transition: stroke 0.4s ease;
+    }
+
+    /* Effetto impulso laser */
+    .handoff-line.active {
+      stroke: #38bdf8;
+      stroke-width: 4;
+      stroke-dasharray: 8 8;
+      animation: laserFlow 1.2s infinite linear;
+      filter: drop-shadow(0 0 3px #0284c7);
+    }
+
+    .handoff-line.active-success {
+      stroke: #34d399;
+      stroke-width: 4;
+      stroke-dasharray: 8 8;
+      animation: laserFlow 1.2s infinite linear;
+      filter: drop-shadow(0 0 3px #059669);
+    }
+
+    .handoff-line.active-fail {
+      stroke: #f87171;
+      stroke-width: 4;
+      stroke-dasharray: 8 8;
+      animation: laserFlow 1.2s infinite linear;
+      filter: drop-shadow(0 0 3px #dc2626);
+    }
+
+    @keyframes laserFlow {
+      to {
+        stroke-dashoffset: -32;
+      }
+    }
+
+    /* Nodi degli Agenti */
+    .agent-node circle {
+      fill: #1e293b;
+      stroke: rgba(255, 255, 255, 0.15);
+      stroke-width: 3;
+      transition: fill 0.3s, stroke 0.3s, r 0.3s;
+    }
+
+    .agent-node text {
+      fill: #9ca3af;
+      font-size: 11px;
+      font-weight: 600;
+      text-anchor: middle;
+      font-family: 'Inter', sans-serif;
+      pointer-events: none;
+      transition: fill 0.3s;
+    }
+
+    /* Agente attivo (Pulse Glow) */
+    .agent-node.active circle {
+      fill: rgba(56, 189, 248, 0.15);
+      stroke: #38bdf8;
+      stroke-width: 4;
+      filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.6));
+      animation: nodePulse 2s infinite ease-in-out;
+    }
+
+    .agent-node.active text {
+      fill: #f3f4f6;
+    }
+
+    /* Stile specifico per agente attivo basato su esito */
+    .agent-node.active-success circle {
+      fill: rgba(52, 211, 153, 0.15);
+      stroke: #34d399;
+      filter: drop-shadow(0 0 8px rgba(52, 211, 153, 0.6));
+    }
+
+    .agent-node.active-fail circle {
+      fill: rgba(248, 113, 113, 0.15);
+      stroke: #f87171;
+      filter: drop-shadow(0 0 8px rgba(248, 113, 113, 0.6));
+    }
+
+    @keyframes nodePulse {
+      0%, 100% { transform: scale(1); transform-origin: center; }
+      50% { transform: scale(1.05); transform-origin: center; }
+    }
+
+    /* Console di Cooperazione */
+    .handoff-console {
+      background: #040711;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      height: 320px;
+      overflow: hidden;
+    }
+
+    .handoff-console .console-title {
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid var(--card-border);
+      padding: 0.6rem 1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .handoff-console .console-body {
+      padding: 0.8rem;
+      font-family: monospace;
+      font-size: 0.8rem;
+      overflow-y: auto;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .handoff-msg {
+      background: rgba(255, 255, 255, 0.02);
+      border-left: 3px solid #3b82f6;
+      padding: 0.4rem 0.6rem;
+      border-radius: 4px;
+      animation: fadeIn 0.4s ease-out;
+    }
+
+    .handoff-msg.system {
+      border-left-color: #6b7280;
+      background: rgba(255, 255, 255, 0.01);
+    }
+
+    .handoff-msg.success {
+      border-left-color: #10b981;
+      background: rgba(16, 185, 129, 0.05);
+    }
+
+    .handoff-msg.fail {
+      border-left-color: #ef4444;
+      background: rgba(239, 68, 68, 0.05);
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 </head>
 <body>
@@ -528,7 +735,7 @@
       <div class="col-right">
         <!-- Agent Costs Chart -->
         <div class="widget">
-          <h2>📊 Quota Costi per Agente (USD)</h2>
+          <h2>📊 Quota Costi per Agente (EUR)</h2>
           <div class="chart-container">
             <canvas id="costChart"></canvas>
           </div>
@@ -539,6 +746,104 @@
           <h2>📊 Esecuzioni e Rework per Agente</h2>
           <div class="chart-container">
             <canvas id="runsChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Agent Handoff: esecuzione reale del capoturno su un progetto target -->
+    <div class="widget">
+      <h2>🤝 Live Agent Handoff & Cooperazione</h2>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1.5rem;">
+        Compila i campi e clicca "Avvia" per lanciare un compito reale sul progetto scelto: il capoturno delega il lavoro agli agenti, applica le modifiche sul filesystem e valida con la sentinella.
+      </p>
+
+      <div class="handoff-container">
+        <!-- Pannello Controlli -->
+        <div class="handoff-controls" style="flex-wrap: wrap;">
+          <div style="display: flex; gap: 0.8rem; align-items: center; width: 100%; margin-bottom: 0.5rem;">
+            <button id="startSimBtn" class="btn btn-primary">▶ Lancia Compito Reale</button>
+            <button id="stopSimBtn" class="btn" style="background: rgba(255,255,255,0.08); display: none;">Stop</button>
+          </div>
+
+          <!-- Form Compito Reale -->
+          <div id="realFormContainer" style="width: 100%; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem; margin-top: 0.5rem;">
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1rem;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="realProjSelect">Progetto Target</label>
+                <select id="realProjSelect" style="width:100%;"></select>
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="realTaskType">Tipo Compito</label>
+                <select id="realTaskType" style="width:100%;">
+                  <option value="servizi">Backend/Servizi (Claude)</option>
+                  <option value="interfaccia">Frontend/UI (Gemini)</option>
+                  <option value="documentazione">Documentazione (Claude)</option>
+                  <option value="database">Database (Claude)</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="realFileTarget">File Target (Percorso relativo)</label>
+                <input type="text" id="realFileTarget" placeholder="es. esempi/test_codice.py" style="background:#0f172a; border:1px solid var(--card-border); color:var(--text-main); padding:0.4rem 0.8rem; border-radius:6px; font-size:0.85rem; width:100%;">
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="realTaskRischio">Livello Rischio</label>
+                <select id="realTaskRischio" style="width:100%;">
+                  <option value="basso">Basso (Esecuzione Diretta)</option>
+                  <option value="medio">Medio</option>
+                  <option value="alto">Alto (Richiede Veto Umano)</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="realPrompt">Descrizione Compito / Modifica Richiesta</label>
+              <textarea id="realPrompt" placeholder="es. Aggiungi una funzione moltiplica(a, b) con commenti tipizzati" style="background:#0f172a; border:1px solid var(--card-border); color:var(--text-main); padding:0.4rem 0.8rem; border-radius:6px; font-size:0.85rem; width:100%; height:60px; resize:vertical; font-family:inherit;"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Area Diagramma Visuale (SVG) -->
+        <div class="handoff-visual">
+          <svg id="handoffSvg" viewBox="0 0 800 300">
+            <!-- Linee di collegamento animate -->
+            <path id="path_umano_gemini" d="M 120 135 Q 200 70 250 70" fill="none" class="handoff-line" />
+            <path id="path_gemini_claude" d="M 310 70 L 450 70" fill="none" class="handoff-line" />
+            <path id="path_claude_locale" d="M 450 85 L 310 215" fill="none" class="handoff-line" />
+            <path id="path_locale_umano" d="M 250 230 Q 150 220 120 165" fill="none" class="handoff-line" />
+            
+            <path id="path_locale_codex" d="M 310 230 L 450 230" fill="none" class="handoff-line" />
+            <path id="path_codex_claude" d="M 480 200 L 480 100" fill="none" class="handoff-line" />
+            <path id="path_claude_locale_diretto" d="M 450 85 L 310 215" fill="none" class="handoff-line" />
+
+            <!-- Nodi degli Agenti -->
+            <g id="node_umano" class="agent-node">
+              <circle cx="100" cy="150" r="32" />
+              <text x="100" y="155" class="agent-text">Umano</text>
+            </g>
+            <g id="node_gemini" class="agent-node">
+              <circle cx="280" cy="70" r="32" />
+              <text x="280" y="75" class="agent-text">Gemini</text>
+            </g>
+            <g id="node_claude" class="agent-node">
+              <circle cx="480" cy="70" r="32" />
+              <text x="480" y="75" class="agent-text">Claude</text>
+            </g>
+            <g id="node_codex" class="agent-node">
+              <circle cx="480" cy="230" r="32" />
+              <text x="480" y="235" class="agent-text">Codex</text>
+            </g>
+            <g id="node_locale" class="agent-node">
+              <circle cx="280" cy="230" r="32" />
+              <text x="280" y="235" class="agent-text">Locale</text>
+            </g>
+          </svg>
+        </div>
+
+        <!-- Box Console Handoff -->
+        <div class="handoff-console">
+          <div class="console-title">💬 Registro di Cooperazione & Messaggi</div>
+          <div id="handoffLogs" class="console-body">
+            <div style="color: var(--text-muted);">In attesa. Compila il form e clicca "Avvia" per lanciare un compito reale...</div>
           </div>
         </div>
       </div>
@@ -576,6 +881,7 @@
     let costChartInstance = null;
     let runsChartInstance = null;
     let progettiCorrenti = [];
+    let usdToEurRate = 0.92; // Fallback di base se offline
 
     function escapeHtml(str) {
       if (str == null) return '';
@@ -587,7 +893,45 @@
         .replace(/'/g, "&#039;");
     }
 
-    document.addEventListener("DOMContentLoaded", () => {
+    const CHIAVE_TASSO_CAMBIO = "orchestratore_tasso_usd_eur";
+
+    async function aggiornaTassoCambio() {
+      const oggi = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+      // Riusa il tasso di oggi se già salvato: sopravvive sia al reload della
+      // pagina sia al riavvio del server (localStorage è lato browser).
+      try {
+        const salvato = JSON.parse(localStorage.getItem(CHIAVE_TASSO_CAMBIO) || "null");
+        if (salvato && salvato.data === oggi && typeof salvato.tasso === "number") {
+          usdToEurRate = salvato.tasso;
+          console.log("Tasso di cambio USD -> EUR da cache di oggi:", usdToEurRate);
+          return;
+        }
+      } catch (err) {
+        // localStorage non disponibile o corrotto: si procede con la fetch
+      }
+
+      try {
+        const res = await fetch("https://open.er-api.com/v6/latest/USD");
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.rates && data.rates.EUR) {
+            usdToEurRate = data.rates.EUR;
+            console.log("Tasso di cambio USD -> EUR aggiornato: 1 USD =", usdToEurRate, "EUR");
+            try {
+              localStorage.setItem(CHIAVE_TASSO_CAMBIO, JSON.stringify({ data: oggi, tasso: usdToEurRate }));
+            } catch (err) {
+              // storage pieno o non disponibile: si rifarà la fetch al prossimo caricamento
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Impossibile caricare il listino live USD/EUR, uso fallback:", usdToEurRate, err);
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      await aggiornaTassoCambio();
       aggiornaDati();
 
       // Aggiornamento automatico ogni 5 secondi (reattività stile Vue)
@@ -600,6 +944,10 @@
 
       // Listener per aggiornare la lista dei comandi quando cambia il progetto
       document.getElementById("sentinelProj").addEventListener("change", aggiornaComandiSelect);
+
+      // Listener per l'handoff dell'esecuzione reale
+      document.getElementById("startSimBtn").addEventListener("click", avviaCompitoReale);
+      document.getElementById("stopSimBtn").addEventListener("click", fermaSimulazione);
     });
 
     async function riavviaSistema() {
@@ -639,12 +987,6 @@
       attendiRiavvio();
     }
 
-    function escapeHtml(testo) {
-      const div = document.createElement("div");
-      div.textContent = testo ?? "";
-      return div.innerHTML;
-    }
-
     function showFeedback(text, type = "success") {
       const banner = document.getElementById("feedbackBanner");
       banner.textContent = text;
@@ -664,7 +1006,7 @@
         // 1. Stats globali
         document.getElementById("valProjects").textContent = data.globali.progetti_totali;
         document.getElementById("valEvents").textContent = data.globali.eventi_totali;
-        document.getElementById("valCost").textContent = `$${data.globali.costo_totale.toFixed(4)}`;
+        document.getElementById("valCost").textContent = `€${(data.globali.costo_totale * usdToEurRate).toFixed(4)}`;
         document.getElementById("valLatency").textContent = `${data.globali.latenza_totale.toLocaleString()} ms`;
 
         // Salva progetti correnti globalmente
@@ -684,6 +1026,22 @@
 
         if (prevSelectedProj && data.progetti.some(p => p.id === prevSelectedProj)) {
           sentinelSelect.value = prevSelectedProj;
+        }
+
+        // Popola anche realProjSelect del simulatore reale
+        const realProjSelect = document.getElementById("realProjSelect");
+        if (realProjSelect) {
+          const prevRealProj = realProjSelect.value;
+          realProjSelect.innerHTML = "";
+          data.progetti.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = p.nome;
+            realProjSelect.appendChild(opt);
+          });
+          if (prevRealProj && data.progetti.some(p => p.id === prevRealProj)) {
+            realProjSelect.value = prevRealProj;
+          }
         }
 
         // Popola/filtra la lista dei comandi
@@ -710,7 +1068,7 @@
               <div class="project-path">${p.percorso}</div>
               <div class="project-meta-row">
                 <span>Moduli attivi: <b>${pStat.esecuzioni}</b></span>
-                <span>Costo: <b>$${pStat.costo.toFixed(4)}</b></span>
+                <span>Costo: <b>€${(pStat.costo * usdToEurRate).toFixed(4)}</b></span>
                 <span>Rework: <b class="badge rework">${pStat.rework}</b></span>
               </div>
               ${avviso}
@@ -781,7 +1139,7 @@
 
     function renderizzaGrafici(agenteStats) {
       const agenti = Object.keys(agenteStats).sort();
-      const costi = agenti.map(a => agenteStats[a].costo);
+      const costi = agenti.map(a => agenti.includes(a) ? agenteStats[a].costo * usdToEurRate : 0);
       const esecuzioni = agenti.map(a => agenteStats[a].esecuzioni);
       const rework = agenti.map(a => agenteStats[a].rework);
 
@@ -808,6 +1166,18 @@
             legend: {
               position: 'right',
               labels: { color: '#f3f4f6', font: { family: 'Inter' } }
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  let label = context.label || '';
+                  if (label) label += ': ';
+                  if (context.parsed !== undefined) {
+                    label += '€' + context.parsed.toFixed(4);
+                  }
+                  return label;
+                }
+              }
             }
           }
         }
@@ -909,6 +1279,151 @@
         consoleBox.textContent += `\nErrore esecuzione: ${err.message}`;
         showFeedback(err.message, "error");
       }
+    }
+
+    let simTimer = null;
+
+    async function avviaCompitoReale() {
+      const logBox = document.getElementById("handoffLogs");
+      const progetto_id = document.getElementById("realProjSelect").value;
+      const tipo_compito = document.getElementById("realTaskType").value;
+      const file_target = document.getElementById("realFileTarget").value.trim();
+      const rischio = document.getElementById("realTaskRischio").value;
+      const compito_prompt = document.getElementById("realPrompt").value.trim();
+      const id_compito = "reale-" + Math.random().toString(36).substring(2, 7);
+
+      if (!progetto_id || !file_target || !compito_prompt) {
+        showFeedback("Tutti i campi (Progetto, File Target e Prompt) sono richiesti per l'esecuzione reale.", "error");
+        return;
+      }
+
+      fermaSimulazione();
+
+      document.getElementById("startSimBtn").style.display = "none";
+      document.getElementById("stopSimBtn").style.display = "inline-block";
+
+      logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Avvio compito reale '${id_compito}'...</div>`;
+      logBox.scrollTop = logBox.scrollHeight;
+
+      try {
+        const startRes = await fetch("/api/compiti/avvia", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ progetto_id, id_compito, tipo_compito, compito_prompt, file_target, rischio })
+        });
+        if (!startRes.ok) {
+          const errData = await startRes.json();
+          throw new Error(errData.detail || "Errore durante l'avvio del compito");
+        }
+      } catch (err) {
+        logBox.innerHTML += `<div class="handoff-msg fail"><b>[Sistema] Errore:</b> ${escapeHtml(err.message)}</div>`;
+        fermaSimulazione();
+        return;
+      }
+
+      let passiMostrati = 0;
+
+      async function pollingStato() {
+        try {
+          const statusRes = await fetch("/api/compiti/stato");
+          if (!statusRes.ok) return;
+          const data = await statusRes.json();
+
+          if (data.passi && data.passi.length > passiMostrati) {
+            for (let i = passiMostrati; i < data.passi.length; i++) {
+              const passo = data.passi[i];
+
+              // Resetta le linee e i nodi attivi
+              document.querySelectorAll(".agent-node").forEach(node => {
+                node.classList.remove("active", "active-success", "active-fail");
+              });
+              document.querySelectorAll(".handoff-line").forEach(line => {
+                line.classList.remove("active", "active-success", "active-fail");
+              });
+
+              // Illumina l'agente attivo
+              const activeNode = document.getElementById(`node_${passo.agente_attivo}`);
+              if (activeNode) {
+                activeNode.classList.add("active");
+                if (passo.esito === "fallito" || passo.esito === "ambiente_errore") {
+                  activeNode.classList.add("active-fail");
+                } else if (passo.esito === "successo") {
+                  activeNode.classList.add("active-success");
+                }
+              }
+
+              // Illumina la linea (passaggio palla)
+              if (passo.da && passo.a) {
+                let line = document.getElementById(`path_${passo.da}_${passo.a}`);
+                if (!line) line = document.getElementById(`path_${passo.a}_${passo.da}`);
+                if (line) {
+                  line.classList.add("active");
+                  if (passo.esito === "fallito" || passo.esito === "ambiente_errore") {
+                    line.classList.add("active-fail");
+                  } else if (passo.esito === "successo") {
+                    line.classList.add("active-success");
+                  }
+                }
+              }
+
+              // Scrive il messaggio in console
+              const badgeAgente = `<span class="tag-agent">${escapeHtml(passo.agente_attivo.toUpperCase())}</span>`;
+              let msgClass = "handoff-msg";
+              if (passo.esito === "fallito" || passo.esito === "ambiente_errore") msgClass += " fail";
+              else if (passo.esito === "successo") msgClass += " success";
+
+              logBox.innerHTML += `<div class="${msgClass}"><b>${badgeAgente}</b>: ${escapeHtml(passo.messaggio)}</div>`;
+              logBox.scrollTop = logBox.scrollHeight;
+            }
+            passiMostrati = data.passi.length;
+          }
+
+          if (data.finito) {
+            clearInterval(simTimer);
+            simTimer = null;
+
+            if (data.successo) {
+              logBox.innerHTML += `
+<div class="handoff-msg success" style="font-family: monospace; white-space: pre-wrap; line-height: 1.4; margin-top: 0.8rem;">
+<b>📊 RILASCIO REALE COMPLETATO CON SUCCESSO!</b>
+--------------------------------------------
+🛡️ I quality gate sono stati superati e le modifiche sono state scritte in <b>${escapeHtml(file_target)}</b>.
+⏳ Esecuzione registrata in eventi.jsonl.
+--------------------------------------------
+</div>`;
+            } else {
+              logBox.innerHTML += `<div class="handoff-msg fail"><b>[Sistema]</b> Esecuzione reale del compito terminata con FALLIMENTO o bloccata per errore ambientale. Controlla i log o riprova.</div>`;
+            }
+            logBox.scrollTop = logBox.scrollHeight;
+
+            // Invia reset
+            fetch("/api/compiti/reset", { method: "POST" });
+
+            fermaSimulazione();
+            aggiornaDati();
+          }
+        } catch (err) {
+          console.error("Errore durante il polling dello stato del compito", err);
+        }
+      }
+
+      simTimer = setInterval(pollingStato, 1000);
+    }
+
+    function fermaSimulazione() {
+      if (simTimer) {
+        clearInterval(simTimer);
+        simTimer = null;
+      }
+      document.getElementById("startSimBtn").style.display = "inline-block";
+      document.getElementById("stopSimBtn").style.display = "none";
+
+      document.querySelectorAll(".agent-node").forEach(node => {
+        node.classList.remove("active", "active-success", "active-fail");
+      });
+      document.querySelectorAll(".handoff-line").forEach(line => {
+        line.classList.remove("active", "active-success", "active-fail");
+      });
     }
   </script>
 </body>

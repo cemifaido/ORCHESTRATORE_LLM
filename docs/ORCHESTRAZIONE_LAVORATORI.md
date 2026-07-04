@@ -124,6 +124,29 @@ All'inizio il routing resta tabellare:
 
 Lo scoring automatico si aggiunge solo dopo aver raccolto dati veri.
 
+## Capoturno
+
+`capoturno.py` è il motore che esegue davvero il ciclo "Watch-and-Solve": riceve un compito, lo fa lavorare a un agente reale tramite LiteLLM, applica la patch sul progetto target, la valida con la sentinella e ripete in caso di errore. Non è un nuovo lavoratore: automatizza meccanicamente il ruolo di capoturno (instradamento, delega, validazione, rework) che la tabella dei [Lavoratori](#lavoratori) assegna al LLM locale — chi scrive codice resta sempre Gemini/Claude/Codex, mai il locale.
+
+Ciclo eseguito da `Capoturno.esegui_compito(...)`:
+
+1. **Routing**: `instrada.instrada(tipo_compito, rischio, registro)` suggerisce l'agente (stessa tabella di [Routing](#routing)). Se il rischio è alto o l'agente suggerito è `umano`, viene notificato "serve umano prima" — nella v1 il motore procede comunque (non c'è ancora un blocco sincrono in attesa di approvazione, vedi Limiti noti).
+2. **Chiamata all'agente**: prompt minimale (codice attuale del file, compito, errore dell'ultimo tentativo se è un rework) inviato via `adattatori/litellm.py`. Il modello risponde con un blocco di codice Python racchiuso in ` ```python `.
+3. **Scrittura patch**: il codice estratto viene scritto su `file_target` dentro il progetto reale (`progetto_percorso`), non nell'orchestratore.
+4. **Validazione (gate)**: viene lanciata la sentinella **centrale** (mai una copia), comando `controllo_lint`, con `cwd` sul progetto target e `--config` puntato al `config/comandi.json` centrale — così `ruff check .` valida davvero il file appena scritto nel progetto giusto, non il codice dell'orchestratore.
+5. **Rework**: se il gate fallisce, l'errore viene incluso nel prompt del tentativo successivo (fino a 3 rework). Se il gate passa, l'evento viene registrato `stato=passato`/`esito_gate=superato` nel registro **del progetto target**.
+6. **Failover infrastrutturale**: se la chiamata all'agente fallisce per errore di rete/quota/credenziali (non per codice scritto male), il motore ritenta automaticamente con l'agente di riserva (`claude` ↔ `gemini`). Se anche il fallback fallisce, l'evento viene registrato `stato=errore_ambiente`/`esito_gate=non_eseguito` (non `fallito`): non inquina il conteggio rework, e segnala che serve intervento umano (crediti, chiave API, rete), non una correzione di codice.
+
+### Avvio dalla dashboard
+
+Pannello **"🤝 Live Agent Handoff & Cooperazione"**: seleziona progetto target, tipo compito, file target, rischio e descrivi il compito, poi "▶ Lancia Compito Reale". Il form chiama `POST /api/compiti/avvia` (esecuzione in background), la dashboard fa polling su `GET /api/compiti/stato` e anima il diagramma SVG passo per passo; a fine corsa chiama `POST /api/compiti/reset`.
+
+### Limiti noti (v1)
+
+- Un solo compito reale alla volta: lo stato (`STATO_COMPITO_CORRENTE`) è globale in memoria nel processo `interfaccia.py`, non per-progetto. Un secondo tentativo di avvio viene rifiutato finché il primo non è `finito`.
+- "Serve umano prima" (rischio alto) è solo notificato nella timeline, non blocca ancora l'esecuzione: da implementare come sospensione reale quando servirà davvero in produzione.
+- Il modello viene scelto solo in base a `gemini` vs "tutto il resto → claude": se il routing suggerisce `locale` o `codex` (tipi come `monitoraggio`/`revisione`), il motore chiamerebbe comunque un LLM reale con modello Claude invece di restare deterministico — situazione non ancora incontrata nell'uso reale, da chiudere se emerge.
+
 ## Metriche
 
 Il cruscotto misura:
@@ -204,5 +227,7 @@ Il server `interfaccia.py` (FastAPI/Uvicorn, porta `8095`) offre un'interfaccia 
 - **Grafici Chart.js**: Visualizzazione ripartita dei costi stimati ed istogrammi di esecuzioni/rework per ogni lavoratore.
 - **Selettore Progetti**: Form per inserire il percorso assoluto e nome di una nuova cartella per effettuarne l'integrazione ed il monitoraggio automatico.
 - **Pannello Sentinella**: Console web interattiva per lanciare comandi deterministici whitelistati (es. pytest, git status) su un determinato progetto in un subprocesso isolato, visualizzandone il log di ritorno.
+- **Live Agent Handoff & Cooperazione**: pannello per lanciare un compito reale tramite `capoturno.py` (vedi [Capoturno](#capoturno)), con diagramma SVG animato e console che mostrano in tempo reale quale agente sta lavorando e con quale esito.
 - **Riavvio Sistema**: `POST /api/sistema/riavvia` avvia un nuovo processo `interfaccia.py` (che ricarica il codice corrente da disco) e termina quello in esecuzione non appena il nuovo ha preso la porta (`__main__` ritenta il bind per ~10s in caso di sovrapposizione). Necessario perché uvicorn non ricarica mai i moduli modificati: senza riavvio, la dashboard resta silenziosamente disallineata dal codice sorgente.
+- **Costi in EUR**: i costi (`costo_stimato_usd`) sono mostrati in dashboard convertiti in euro. Il tasso di cambio viene scaricato da un servizio esterno (`open.er-api.com`) al massimo una volta al giorno e tenuto in `localStorage` del browser: un riavvio del server o un semplice reload della pagina nello stesso giorno riusano il tasso già scaricato invece di rifare la chiamata.
 

@@ -1,6 +1,6 @@
 # Integrazione opzionale LiteLLM
 
-**Stato**: proposta implementabile, adapter base presente. LiteLLM non è una dipendenza core.
+**Stato**: adapter in uso reale. `capoturno.py` lo usa per ogni chiamata agente durante l'esecuzione di un compito. LiteLLM resta comunque una dipendenza opzionale, non core.
 
 Vedi anche: [Indice](INDEX.md) · [Orchestrazione dei lavoratori](ORCHESTRAZIONE_LAVORATORI.md).
 
@@ -75,7 +75,7 @@ Funzioni principali:
 - `estrai_misurazione(...)`: legge costo e token da una risposta LiteLLM;
 - `arricchisci_evento(...)`: copia un evento e aggiunge costo/metadati LiteLLM.
 
-Per un esempio completo, documentato ed eseguibile che gestisce anche il fallback mock per lo sviluppo locale, fai riferimento a [esempi/chiamata_agente_litellm.py](file:///D:/Share/py/_ORCHESTRATORE_LLM/esempi/chiamata_agente_litellm.py).
+Per un esempio completo, documentato ed eseguibile che gestisce anche il fallback mock per lo sviluppo locale, fai riferimento a [esempi/chiamata_agente_litellm.py](file:///D:/Share/py/_ORCHESTRATORE_LLM/esempi/chiamata_agente_litellm.py). Per l'uso reale in produzione (non un esempio), vedi `capoturno.py`, che chiama `completamento(...)` per ogni tentativo di un compito e gestisce anche il failover fra agenti in caso di errore infrastrutturale (crediti, quota, chiave non valida) — vedi [Capoturno](ORCHESTRAZIONE_LAVORATORI.md#capoturno).
 
 Esempio:
 

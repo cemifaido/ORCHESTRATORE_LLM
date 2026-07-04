@@ -25,8 +25,13 @@ import registro
 from adattatori import litellm
 
 
-def main() -> int:
-    percorso_registro = RADICE / "dati_locali" / "orchestrazione" / "eventi.jsonl"
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    parser = argparse.ArgumentParser(description="Esempio chiamata LiteLLM")
+    parser.add_argument("--registro", default=str(RADICE / "dati_locali" / "orchestrazione" / "eventi.jsonl"))
+    args = parser.parse_args(argv)
+
+    percorso_registro = Path(args.registro)
 
     # 1. Definiamo i dettagli del compito e i messaggi dell'agente
     id_compito = "refactoring-esempio"

@@ -11,9 +11,13 @@ Il principio è semplice:
 - `registro.py` — appende e valida (con `jsonschema`) eventi nel registro JSONL.
 - `genera_cruscotto.py` — genera un cruscotto Markdown dal registro.
 - `sentinella.py` — esegue solo comandi dichiarati in whitelist e registra l'esito.
+- `capoturno.py` — motore di orchestrazione reale: instrada, chiama l'agente via LiteLLM, scrive la patch, valida con la sentinella e fa rework/failover automatico (vedi `docs/ORCHESTRAZIONE_LAVORATORI.md#capoturno`).
+- `instrada.py` — suggerisce l'agente più adatto per un tipo di compito.
 - `schema/` — schemi versionati per eventi e compiti.
 - `config/` — esempi di configurazione per agenti e comandi ammessi.
 - `adattatori/` — integrazioni opzionali, importate solo quando servono.
+- `utility/installa_hook.py` — installa un hook Git pre-commit che lancia il quality gate.
+- `esempi/` — script eseguibili di riferimento (es. chiamata LiteLLM con fallback mock).
 - `dati_locali/` — dati runtime ignorati da Git.
 
 ## Avvio rapido

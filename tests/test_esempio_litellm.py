@@ -22,7 +22,7 @@ class EsempioLiteLLMTest(unittest.TestCase):
             # Mockiamo RADICE nello script di esempio affinché scriva nel nostro tmp
             with patch("esempi.chiamata_agente_litellm.RADICE", tmp_path):
                 # Eseguiamo il main dell'esempio
-                codice_uscita = esempi.chiamata_agente_litellm.main()
+                codice_uscita = esempi.chiamata_agente_litellm.main([])
 
             self.assertEqual(codice_uscita, 0)
             self.assertTrue(registro_file.exists())

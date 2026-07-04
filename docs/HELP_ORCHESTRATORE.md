@@ -110,3 +110,23 @@ Il tasso di rework di un agente **non è mai auto-dichiarato** per evitare valut
    - `verdetto_umano` = `"respinto"` (segnalato dall'operatore `umano`), OPPURE
    - `stato` = `"fallito"` o `"respinto"`.
 3. Allora quell'agente (in questo caso `gemini`) subisce un incremento di **+1 Rework Totale**.
+
+---
+
+## 6. Lanciare un Compito Reale (Capoturno)
+
+Il pannello **"🤝 Live Agent Handoff & Cooperazione"** della dashboard lancia `capoturno.py`: un motore che fa scrivere del codice reale a un agente (Gemini/Claude via LiteLLM), lo applica sul progetto target e lo valida con la sentinella, ripetendo in automatico se il gate fallisce.
+
+Passi:
+1. **Progetto Target**: scegli tra i progetti già integrati (sezione 2).
+2. **Tipo Compito**: determina l'agente suggerito dal routing (es. `servizi` → Claude, `interfaccia` → Gemini).
+3. **File Target**: percorso relativo al progetto dove scrivere il codice (es. `esempi/test_codice.py`). Se non esiste viene creato.
+4. **Livello Rischio**: `alto` segnala che servirebbe l'approvazione umana prima di procedere (nella versione attuale è solo una nota in console, non blocca ancora l'esecuzione).
+5. **Descrizione Compito**: prompt in linguaggio naturale di cosa deve fare l'agente.
+6. Clic su **"▶ Lancia Compito Reale"**: il diagramma SVG si anima seguendo i passaggi reali (chi sta lavorando, se sta fallendo un gate, se c'è stato un failover), e la console mostra i messaggi passo-passo.
+
+A fine esecuzione, l'evento (`passato`, `fallito` o `errore_ambiente`) viene scritto nel registro **del progetto target**, mai in quello dell'orchestratore.
+
+**Requisito**: serve `pip install litellm` e una chiave API valida per il provider usato (variabile d'ambiente, mai nel codice). Senza LiteLLM installato o senza crediti/chiave validi, il compito termina con `stato=errore_ambiente` — è il comportamento atteso, non un errore del framework: significa "manca l'infrastruttura per procedere", non "l'agente ha scritto codice sbagliato".
+
+Specifica completa: `docs/ORCHESTRAZIONE_LAVORATORI.md` (sezione Capoturno).
