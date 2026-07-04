@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -12,9 +13,11 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import registro
+import triage_locale
 
 
 _PERCORSO_REAL = Path("config") / "comandi.json"
@@ -141,12 +144,124 @@ def determina_stato(esito: str) -> str:
     return "fallito"
 
 
+def classifica_deterministica(esito: str, codice: int, output: str) -> dict[str, Any] | None:
+    """Classifica output ripetitivi con regole deterministicamente verificabili.
+
+    Ritorna None quando l'output e' ambiguo: in quel caso, se richiesto, si passa al
+    modello locale. La sentinella non usa mai questa funzione per "spiegare" un bug:
+    decide solo se il risultato e' routine o se va scalato.
+    """
+    testo = output.strip()
+    testo_minuscolo = testo.lower()
+    segnali_sospetti = (
+        "traceback",
+        "assertionerror",
+        "exception",
+        "failed",
+        "failure",
+        "error",
+        "warning",
+        "deprecated",
+        "errore",
+        "fallito",
+    )
+
+    if esito == "superato" and codice == 0:
+        if not testo:
+            return {
+                "esito": "routine",
+                "motivo": "codice 0 e output vuoto: esito ripetitivo deterministico",
+                "token_totali": None,
+            }
+        if not any(segnale in testo_minuscolo for segnale in segnali_sospetti):
+            return {
+                "esito": "routine",
+                "motivo": "codice 0 senza segnali di errore o warning",
+                "token_totali": None,
+            }
+        return None
+
+    if esito in {"fallito", "timeout", "errore_ambiente"}:
+        if esito == "timeout":
+            return {"esito": "escalation", "motivo": "timeout del comando", "token_totali": None}
+        if esito == "errore_ambiente":
+            return {"esito": "escalation", "motivo": "errore ambiente pre-gate", "token_totali": None}
+        if not testo:
+            return {
+                "esito": "escalation",
+                "motivo": f"codice {codice} senza output diagnostico",
+                "token_totali": None,
+            }
+        if re.search(r"\b(FAILED|ERROR|Traceback|AssertionError)\b", testo):
+            return {
+                "esito": "escalation",
+                "motivo": "fallimento riconosciuto da marker standard nei test",
+                "token_totali": None,
+            }
+    return None
+
+
+def registra_triage(
+    *,
+    risultato: dict[str, Any],
+    metodo: str,
+    percorso_registro: Path,
+    id_compito: str,
+    comando: str,
+    esito_gate: str,
+    codice: int,
+    latenza_ms: int,
+) -> dict[str, Any]:
+    id_evento = str(uuid.uuid4())
+    evento = {
+        "versione_schema": 1,
+        "id_evento": id_evento,
+        "timestamp": adesso_utc(),
+        "id_compito": id_compito,
+        "agente": "locale",
+        "tipo_compito": "monitoraggio",
+        "stato": "passato" if risultato["esito"] == "routine" else "da_rivedere",
+        "esito_gate": "non_eseguito",
+        "verdetto_umano": "non_revisionato",
+        "costo_stimato_usd": 0.0,
+        "origine_costo": "misurato",
+        "latenza_ms": latenza_ms,
+        "regole_incluse": [metodo],
+        "file_modificati": [],
+        "note": f"[{risultato['esito']}] {risultato['motivo']}",
+        "metadati": {
+            "metodo": metodo,
+            "comando": comando,
+            "codice": codice,
+            "esito_gate_collegato": esito_gate,
+            "token_totali": risultato.get("token_totali"),
+        },
+    }
+    registro.aggiungi_evento(percorso_registro, evento)
+    return evento
+
+
+def classifica_con_guardia_locale(esito: str, codice: int, output: str, contesto: str) -> tuple[dict[str, Any], str, int]:
+    inizio = time.perf_counter()
+    risultato = classifica_deterministica(esito, codice, output)
+    if risultato is not None:
+        return risultato, "triage_deterministico", int((time.perf_counter() - inizio) * 1000)
+
+    risultato = triage_locale.classifica(output, contesto=contesto)
+    return risultato, "triage_locale", int((time.perf_counter() - inizio) * 1000)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Sentinella deterministica: esegue solo comandi whitelistati")
     parser.add_argument("comando")
     parser.add_argument("--config", default=str(PERCORSO_COMANDI_PREDEFINITO))
     parser.add_argument("--registro", default=str(PERCORSO_REGISTRO_PREDEFINITO))
     parser.add_argument("--id-compito", default="gate")
+    parser.add_argument(
+        "--triage-locale",
+        action="store_true",
+        help="registra una classificazione routine/escalation: pattern deterministici prima, LLM locale solo se ambiguo",
+    )
     args = parser.parse_args()
 
     try:
@@ -177,7 +292,30 @@ def main() -> int:
         "metadati": metadati_output,
     }
     registro.aggiungi_evento(Path(args.registro), evento)
-    print(json.dumps({"esito": esito, "codice": codice, "latenza_ms": latenza_ms, "output": output, "evento": evento}, ensure_ascii=False, indent=2))
+
+    evento_triage = None
+    if args.triage_locale:
+        risultato_triage, metodo_triage, latenza_triage_ms = classifica_con_guardia_locale(
+            esito,
+            codice,
+            output,
+            contesto=f"sentinella comando={args.comando}; esito_gate={esito}; codice={codice}",
+        )
+        evento_triage = registra_triage(
+            risultato=risultato_triage,
+            metodo=metodo_triage,
+            percorso_registro=Path(args.registro),
+            id_compito=args.id_compito,
+            comando=args.comando,
+            esito_gate=esito,
+            codice=codice,
+            latenza_ms=latenza_triage_ms,
+        )
+
+    risposta = {"esito": esito, "codice": codice, "latenza_ms": latenza_ms, "output": output, "evento": evento}
+    if evento_triage is not None:
+        risposta["triage"] = evento_triage
+    print(json.dumps(risposta, ensure_ascii=False, indent=2))
     return 0 if esito == "superato" else 1
 
 

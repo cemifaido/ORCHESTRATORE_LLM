@@ -197,6 +197,16 @@ il modello locale:
 python -m unittest discover -s tests | python "{RADICE}\\triage_locale.py"
 ```
 
+Quando il controllo passa dalla sentinella centrale, preferisci il flag integrato:
+
+```powershell
+python "{RADICE}\\sentinella.py" test_servizi --triage-locale
+```
+
+La sentinella registra sempre l'evento del gate; con `--triage-locale` registra anche
+un secondo evento `agente=locale` sullo stesso `id_compito`. Per output ovvi usa pattern
+deterministici, per output ambigui chiama il modello locale.
+
 Ritorna JSON `{{"esito": "routine"|"escalation", "motivo": "..."}}` ed esce con codice
 0 (routine) o 1 (escalation). Se `routine`, fidati e prosegui senza rileggere tutto
 l'output a mano. Se `escalation` (o se il modello locale non è raggiungibile — in tal
@@ -407,6 +417,7 @@ def esegui_sentinella(input_data: SentinellaInput):
                 input_data.comando,
                 "--config", str(percorso_comandi),
                 "--registro", str(percorso_registro),
+                "--triage-locale",
             ],
             cwd=p_path,
             text=True,

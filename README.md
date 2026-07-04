@@ -52,6 +52,16 @@ Eseguire un comando whitelistato:
 python .\sentinella.py stato_git
 ```
 
+Eseguire un gate con guardia locale:
+
+```powershell
+python .\sentinella.py test_servizi --id-compito "<id-compito>" --triage-locale
+```
+
+La sentinella registra sempre l'evento del gate. Con `--triage-locale` aggiunge un
+secondo evento `agente=locale` sullo stesso `id_compito`: per output ovvi usa pattern
+deterministici, per output ambigui chiama il modello locale.
+
 ## Test
 
 I test usano solo `unittest` della libreria standard:
@@ -82,5 +92,6 @@ Sono richiamabili anche come comandi whitelistati dalla sentinella: `controllo_l
 3. Il registro reale resta in `dati_locali/` e non si committa.
 4. La sentinella esegue solo comandi dichiarati in `config/comandi.esempio.json`.
 5. Il rework non è auto-dichiarato dall'agente: deriva da gate deterministici e verdetto umano.
+6. Il capofila operativo resta l'umano: il modello locale fa solo guardia su output ripetitivi.
 
 La mappa documentale è in `docs/INDEX.md`; la specifica operativa completa è in `docs/ORCHESTRAZIONE_LAVORATORI.md`.

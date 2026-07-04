@@ -37,7 +37,8 @@ Nessun lavoratore modifica il dominio di un altro senza motivo esplicito.
 
 ## LLM locale
 
-Il LLM locale è capoturno, non programmatore.
+Il capofila operativo resta l'umano. Il LLM locale è una guardia di triage e
+monitoraggio, non programmatore e non decisore finale.
 
 Può:
 
@@ -102,6 +103,24 @@ Ogni comando ha:
 Non esiste esecuzione shell arbitraria.
 
 Il quality gate minimo (lint, type check, complessità) è dichiarato come comandi whitelistati come gli altri: `controllo_lint` (ruff), `controllo_tipi` (mypy), `controllo_complessita` (xenon, soglie `--max-absolute C --max-modules B --max-average B`). Le dipendenze sono in `requirements-dev.txt`, separate da quelle di runtime.
+
+La sentinella può anche registrare la classificazione dell'output ripetitivo:
+
+```powershell
+python .\sentinella.py test_servizi --id-compito "<id-compito>" --triage-locale
+```
+
+Con `--triage-locale` vengono scritti due eventi con lo stesso `id_compito`:
+
+- evento gate: comando eseguito, codice, log salvato e hash dell'output;
+- evento triage: `routine` o `escalation`, con `regole_incluse` pari a
+  `triage_deterministico` se bastano pattern noti, oppure `triage_locale` se serve il
+  modello locale.
+
+Il pattern deterministico ha priorità su tutto per output noti (`OK`, codice 0 senza
+segnali sospetti, `FAILED`/`ERROR` standard, timeout, errore ambiente). Il modello
+locale viene chiamato solo per output ambigui o non strutturati. Se il modello locale
+non è raggiungibile, il triage deve degradare a `escalation`, mai a falso successo.
 
 ### Hook Git Pre-commit
 È possibile automatizzare l'esecuzione locale di Ruff, Mypy e Xenon prima di consentire un commit Git. Lo script di installazione si trova in [utility/installa_hook.py](file:///D:/Share/py/_ORCHESTRATORE_LLM/utility/installa_hook.py).
@@ -284,4 +303,3 @@ Il server `interfaccia.py` (FastAPI/Uvicorn, porta `8095`) offre un'interfaccia 
 - **Live Agent Handoff & Cooperazione**: pannello per lanciare un compito reale tramite `capoturno.py` (vedi [Capoturno](#capoturno)), con diagramma SVG animato e console che mostrano in tempo reale quale agente sta lavorando e con quale esito.
 - **Riavvio Sistema**: `POST /api/sistema/riavvia` avvia un nuovo processo `interfaccia.py` (che ricarica il codice corrente da disco) e termina quello in esecuzione non appena il nuovo ha preso la porta (`__main__` ritenta il bind per ~10s in caso di sovrapposizione). Necessario perché uvicorn non ricarica mai i moduli modificati: senza riavvio, la dashboard resta silenziosamente disallineata dal codice sorgente.
 - **Costi in EUR**: i costi (`costo_stimato_usd`) sono mostrati in dashboard convertiti in euro. Il tasso di cambio viene scaricato da un servizio esterno (`open.er-api.com`) al massimo una volta al giorno e tenuto in `localStorage` del browser: un riavvio del server o un semplice reload della pagina nello stesso giorno riusano il tasso già scaricato invece di rifare la chiamata.
-

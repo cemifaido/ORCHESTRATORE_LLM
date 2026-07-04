@@ -59,6 +59,7 @@ class IntegraProgettoTest(unittest.TestCase):
                 self.assertTrue(percorso.exists(), f"{nome_file} non scritto")
                 contenuto = percorso.read_text(encoding="utf-8")
                 self.assertIn(f"--agente {agente}", contenuto)
+                self.assertIn("--triage-locale", contenuto)
                 self.assertIn(str(interfaccia.RADICE), contenuto)
 
     def test_integra_progetto_non_sovrascrive_istruzioni_personalizzate(self) -> None:
@@ -150,6 +151,7 @@ class EseguiSentinellaTest(unittest.TestCase):
 
             self.assertEqual(risultato["status"], "success")
             self.assertEqual(risultato["dati"]["esito"], "superato")
+            self.assertIn("triage", risultato["dati"])
             self.assertIn("ok-target", risultato["dati"]["output"])
 
             self.assertFalse((p_path / "sentinella.py").exists())

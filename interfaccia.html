@@ -1546,8 +1546,12 @@
         const gateInfo = data.dati.esito || data.dati.evento?.esito_gate || "non_eseguito";
         const returncode = data.returncode;
         const output = data.dati.output || "";
+        const triage = data.dati.triage;
+        const triageInfo = triage
+          ? `\n>> Triage locale: ${triage.stato || "n/d"} — ${triage.note || ""} (${triage.metadati?.metodo || "n/d"})\n`
+          : "";
 
-        consoleBox.textContent += `\n>> Esito sentinella: ${esito.toUpperCase()} (codice ritornato: ${returncode})\n\nOutput:\n${output}`;
+        consoleBox.textContent += `\n>> Esito sentinella: ${esito.toUpperCase()} (codice ritornato: ${returncode})${triageInfo}\nOutput:\n${output}`;
         
         showFeedback(`Comando "${comando}" terminato con esito: ${gateInfo.toUpperCase()}`, esito === "success" ? "success" : "error");
         aggiornaDati();

@@ -5,7 +5,9 @@ import socket
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+import registro
 import sentinella
 
 
@@ -78,6 +80,69 @@ class SentinellaTest(unittest.TestCase):
         self.assertEqual(sentinella.determina_stato("errore_ambiente"), "errore_ambiente")
         self.assertEqual(sentinella.determina_stato("fallito"), "fallito")
         self.assertEqual(sentinella.determina_stato("timeout"), "fallito")
+
+    @patch("sentinella.triage_locale.classifica")
+    def test_triage_successo_ripetitivo_non_chiama_modello_locale(self, mock_classifica: MagicMock) -> None:
+        output = "Ran 68 tests in 12.991s\n\nOK\n"
+        risultato, metodo, _latenza = sentinella.classifica_con_guardia_locale(
+            "superato", 0, output, contesto="test unittest"
+        )
+        self.assertEqual(risultato["esito"], "routine")
+        self.assertEqual(metodo, "triage_deterministico")
+        mock_classifica.assert_not_called()
+
+    @patch("sentinella.triage_locale.classifica")
+    def test_triage_output_ambiguo_chiama_modello_locale(self, mock_classifica: MagicMock) -> None:
+        mock_classifica.return_value = {"esito": "routine", "motivo": "warning noto", "token_totali": 55}
+        risultato, metodo, _latenza = sentinella.classifica_con_guardia_locale(
+            "superato", 0, "WARNING: provider remoto non raggiungibile, fallback mock", contesto="test"
+        )
+        self.assertEqual(risultato["esito"], "routine")
+        self.assertEqual(risultato["token_totali"], 55)
+        self.assertEqual(metodo, "triage_locale")
+        mock_classifica.assert_called_once()
+
+    @patch("sentinella.triage_locale.classifica")
+    def test_triage_fallimento_standard_non_chiama_modello_locale(self, mock_classifica: MagicMock) -> None:
+        risultato, metodo, _latenza = sentinella.classifica_con_guardia_locale(
+            "fallito", 1, "FAILED test_modulo.py::test_caso", contesto="test fallito"
+        )
+        self.assertEqual(risultato["esito"], "escalation")
+        self.assertEqual(metodo, "triage_deterministico")
+        mock_classifica.assert_not_called()
+
+    @patch("sentinella.triage_locale.classifica")
+    def test_triage_modello_locale_non_raggiungibile_diventa_escalation(self, mock_classifica: MagicMock) -> None:
+        mock_classifica.return_value = {
+            "esito": "escalation",
+            "motivo": "modello locale non raggiungibile",
+            "token_totali": None,
+        }
+        risultato, metodo, _latenza = sentinella.classifica_con_guardia_locale(
+            "fallito", 2, "process exited with status 2", contesto="errore non strutturato"
+        )
+        self.assertEqual(risultato["esito"], "escalation")
+        self.assertEqual(metodo, "triage_locale")
+
+    def test_registra_triage_usa_stesso_id_compito_del_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "eventi.jsonl"
+            evento = sentinella.registra_triage(
+                risultato={"esito": "routine", "motivo": "ok deterministico", "token_totali": None},
+                metodo="triage_deterministico",
+                percorso_registro=percorso,
+                id_compito="task-test",
+                comando="test_servizi",
+                esito_gate="superato",
+                codice=0,
+                latenza_ms=1,
+            )
+            eventi = registro.leggi_eventi(percorso)
+            self.assertEqual(evento["id_compito"], "task-test")
+            self.assertEqual(eventi[0]["id_compito"], "task-test")
+            self.assertEqual(eventi[0]["regole_incluse"], ["triage_deterministico"])
+            self.assertEqual(eventi[0]["metadati"]["comando"], "test_servizi")
+            self.assertEqual(eventi[0]["metadati"]["esito_gate_collegato"], "superato")
 
 
 if __name__ == "__main__":

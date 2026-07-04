@@ -86,17 +86,29 @@ Per lanciare la sentinella via CLI **sull'orchestratore stesso** (dalla cartella
 python .\sentinella.py test_servizi --id-compito "task-102"
 ```
 
+Per far classificare anche l'output ripetitivo senza leggerlo a mano:
+```powershell
+python .\sentinella.py test_servizi --id-compito "task-102" --triage-locale
+```
+
+Con `--triage-locale` la sentinella registra due eventi sullo stesso `id_compito`:
+il gate (`esito_gate=superato|fallito|timeout|errore_ambiente`) e il triage locale
+(`routine|escalation`). Per output ovvi usa pattern deterministici; chiama il modello
+locale solo per output non strutturati, warning ambigui o errori non riconoscibili.
+
 Per lanciare un comando su un **altro progetto integrato**, la sentinella non è più presente nella sua cartella: si usa il Pannello Sentinella della dashboard (sezione 1), che internamente invoca sempre lo script centrale con `--config`/`--registro` puntati al progetto scelto. In alternativa, dalla cartella `_ORCHESTRATORE_LLM`:
 ```powershell
 python .\sentinella.py test_servizi `
   --config "D:\percorso\mio_progetto\config\comandi.json" `
-  --registro "D:\percorso\mio_progetto\dati_locali\orchestrazione\eventi.jsonl"
+  --registro "D:\percorso\mio_progetto\dati_locali\orchestrazione\eventi.jsonl" `
+  --triage-locale
 ```
 (i comandi con `"cartella": "."` nel file `comandi.json` risolvono rispetto alla cwd del processo, non al percorso del progetto: lanciando così da `_ORCHESTRATORE_LLM` serve impostare `cd` sul progetto target prima, cosa che la dashboard fa già in automatico.)
 
 * La sentinella lancia il comando in modo isolato (`shell=False`, directory confinata, timeout rigido).
 * Tronca l'output se supera il limite caratteri per non intasare i log.
 * Registra l'esito (`esito_gate`: `"superato"` o `"fallito"`) nel registro degli eventi.
+* Il pannello Sentinella della dashboard usa automaticamente `--triage-locale`.
 
 ---
 
