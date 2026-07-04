@@ -31,6 +31,7 @@ PORTA_DASHBOARD = int(os.environ.get("ORCHESTRATORE_PORTA", "8095"))
 sys.path.append(str(RADICE))
 import registro  # noqa: E402
 import capoturno  # noqa: E402
+import commit_replay  # noqa: E402
 
 class ProgettoInput(BaseModel):
     nome: str
@@ -63,6 +64,123 @@ def salva_progetti(progetti: list[dict]):
     PERCORSO_PROGETTI.parent.mkdir(parents=True, exist_ok=True)
     PERCORSO_PROGETTI.write_text(json.dumps({"progetti": progetti}, indent=2, ensure_ascii=False), encoding="utf-8")
 
+
+# Sincronizzazione multi-agente (vedi docs/REGOLE_GENERALI_PROGRAMMAZIONE_...MD,
+# sezione "Sincronizzazione multi-agente (tassativo)"): ogni progetto integrato riceve
+# le istruzioni per Claude Code, Gemini e Codex, cosi' anche loro leggono/registrano
+# sul registro condiviso del progetto invece di lavorare alla cieca.
+ISTRUZIONI_AGENTI = [
+    ("CLAUDE.md", "Claude Code", "claude"),
+    ("GEMINI.md", "Gemini (antigravity-ide)", "gemini"),
+    ("AGENTS.md", "Codex", "codex"),
+]
+
+_LETTURA_EVENTI_RECENTI = """python -c @'
+import json
+with open("dati_locali/orchestrazione/eventi.jsonl", encoding="utf-8") as f:
+    for r in f.readlines()[-10:]:
+        e = json.loads(r)
+        print(e["timestamp"], "[" + e["agente"] + "]", e.get("note","")[:200])
+'@"""
+
+
+def _contenuto_istruzioni_agente(nome_file: str, nome_strumento: str, agente: str) -> str:
+    altri_file = ", ".join(f"`{nf}`" for nf, _, _ in ISTRUZIONI_AGENTI if nf != nome_file)
+    return f"""# Istruzioni per {nome_strumento} in questo repository
+
+**Ultimo aggiornamento di questo file**: mai (aggiornalo a fine compito, vedi sotto)
+
+Questo progetto è monitorato dall'Orchestratore LLM (`{RADICE}`). Se altri assistenti
+AI (Claude Code, Gemini/antigravity-ide, Codex) lavorano su questo stesso progetto in
+sessioni separate, sincronizzatevi in modo asincrono tramite il registro condiviso di
+**questo** progetto (`dati_locali/orchestrazione/eventi.jsonl`) — come un team che si
+aggiorna tramite changelog condiviso invece che a voce. File equivalenti per gli altri
+strumenti: `CLAUDE.md`, `GEMINI.md`, `AGENTS.md` (locali, non committati in questo
+repository).
+
+**Pre-check economico, prima di leggere il registro**: confronta la riga "Ultimo
+aggiornamento" in cima a questo file con quella in cima a {altri_file}. Se una delle
+altre due è più recente della tua, un'altra sessione ha lavorato dopo di te — vai a
+leggere il registro (sotto) per sapere cosa. Se la tua è già la più recente, puoi
+saltare la lettura del registro: nessuno ha lavorato da allora. Il timestamp da solo
+dice *che* qualcosa è successo, non *cosa*: per il contenuto serve sempre il registro.
+
+## All'inizio di un compito: leggi cosa è già successo
+
+Se il pre-check sopra dice che serve:
+
+```powershell
+{_LETTURA_EVENTI_RECENTI}
+```
+
+Se il file non esiste ancora, non è stato registrato nulla: procedi normalmente. Se un
+evento recente descrive una decisione o un bug corretto rilevante per il tuo compito,
+non ripartire da zero: costruisci sopra quello.
+
+## Dopo un compito reale: registralo
+
+```powershell
+python "{RADICE}\\registro.py" aggiungi `
+  --id-compito "<slug-breve-del-compito>" `
+  --agente {agente} `
+  --tipo-compito "<servizi|interfaccia|documentazione|revisione|sicurezza|monitoraggio|errore_test|orchestrazione>" `
+  --stato "<passato|fallito>" `
+  --esito-gate "<superato|fallito|non_eseguito>" `
+  --costo-stimato-usd 0.0 `
+  --latenza-ms 0 `
+  --regole-incluse "sessione_interattiva" `
+  --note "<riassunto breve di cosa è stato fatto e verificato>"
+```
+
+Si usa lo script centrale dell'orchestratore (mai una copia locale), così resta sempre
+aggiornato; il registro di *questo* progetto viene comunque usato di default perché il
+percorso è relativo alla cartella da cui lanci il comando (dove ti trovi tu), non a
+dove si trova lo script.
+
+Regole pratiche:
+- `esito_gate=superato` solo se hai davvero rieseguito test/lint/quality gate e sono
+  passati — non dichiararlo senza averlo verificato.
+- Non registrare eventi per semplici domande/spiegazioni senza modifiche di codice.
+
+**Subito dopo aver registrato l'evento**, aggiorna la riga "Ultimo aggiornamento di
+questo file" in cima a **questo** file (mai gli altri, quelli li aggiornano loro) con
+il timestamp corrente:
+
+```powershell
+python -c "import registro; print(registro.adesso_utc())"
+```
+
+## Delegare la guardia (non la risposta) al modello locale
+
+Principio: "a te delego la risposta, non la guardia". Non leggere personalmente ogni
+riga di un output ripetitivo se puoi evitarlo — ma il modo più economico non è sempre
+il modello locale:
+
+- **Output con formato fisso e noto** (es. il riepilogo di `unittest`: "OK" oppure
+  "FAILED"/"ERROR"): un pattern-match diretto è deterministico, istantaneo, a costo
+  zero — anche più economico di una chiamata al modello locale, che comunque richiede
+  latenza per generare una risposta. Usalo direttamente, non serve altro.
+- **Output non strutturato o imprevedibile** (un errore di lint mai visto, uno stack
+  trace da interpretare, warning ambigui) dove un pattern fisso non basta a fidarsi:
+  gira l'output a `triage_locale.py` (nella cartella dell'orchestratore), che usa il
+  modello locale (llama-server, gratis, sempre acceso) per classificarlo.
+
+```powershell
+python -m unittest discover -s tests | python "{RADICE}\\triage_locale.py"
+```
+
+Ritorna JSON `{{"esito": "routine"|"escalation", "motivo": "..."}}` ed esce con codice
+0 (routine) o 1 (escalation). Se `routine`, fidati e prosegui senza rileggere tutto
+l'output a mano. Se `escalation` (o se il modello locale non è raggiungibile — in tal
+caso ritorna comunque `escalation` per sicurezza), leggi l'output per davvero e
+ragiona tu: il triage locale classifica, non risolve.
+
+Non usarlo per decisioni architetturali o revisioni di codice: solo per il primo
+filtro su output ripetitivi (test, lint, build) dove "ha funzionato sì/no" è la
+domanda, non "perché"/"come".
+"""
+
+
 def integra_progetto(dest_path: Path):
     """Prepara un progetto target: solo dati/config locali, nessun codice orchestratore.
     registro.py/sentinella.py restano un'unica copia centrale (questa cartella); la
@@ -88,7 +206,14 @@ def integra_progetto(dest_path: Path):
         if src_cfg.exists() and not dest_cfg.exists():
             shutil.copy(src_cfg, dest_cfg)
 
-    # 4. Aggiorna il file .gitignore del progetto target
+    # 4. Scrive le istruzioni di sincronizzazione multi-agente se non esistono già
+    #    (non sovrascrive personalizzazioni fatte a mano nel progetto target).
+    for nome_file, nome_strumento, agente in ISTRUZIONI_AGENTI:
+        dest_file = dest_path / nome_file
+        if not dest_file.exists():
+            dest_file.write_text(_contenuto_istruzioni_agente(nome_file, nome_strumento, agente), encoding="utf-8")
+
+    # 5. Aggiorna il file .gitignore del progetto target
     gitignore_path = dest_path / ".gitignore"
     regole_orchestratore = [
         "\n# File dell'Orchestratore LLM (dati/config locali, il codice resta centrale)",
@@ -98,7 +223,12 @@ def integra_progetto(dest_path: Path):
         "config/comandi.json",
         "config/comandi.esempio.json",
         "config/agenti.json",
-        "config/agenti.esempio.json"
+        "config/agenti.esempio.json",
+        "\n# Istruzioni per assistenti AI (sincronizzazione multi-agente via registro):",
+        "# locali per operatore/macchina, non condivise nel repository.",
+        "CLAUDE.md",
+        "GEMINI.md",
+        "AGENTS.md"
     ]
 
     contenuto_attuale = ""
@@ -375,6 +505,50 @@ def reset_stato_compito():
         "id_compito": ""
     }
     return {"status": "reset"}
+
+
+def _progetto_o_404(progetto_id: str) -> dict:
+    progetti = leggi_progetti()
+    progetto = next((p for p in progetti if p["id"] == progetto_id), None)
+    if not progetto:
+        raise HTTPException(status_code=404, detail="Progetto non trovato")
+    return progetto
+
+
+@app.get("/api/commit/lista")
+def lista_commit_progetto(progetto_id: str = "orchestratore", limite: int = 20):
+    """Ultimi commit del progetto, per popolare il selettore di replay nel pannello
+    Live Agent Handoff. Dati reali (git log), non una lista finta."""
+    progetto = _progetto_o_404(progetto_id)
+    try:
+        commit = commit_replay.lista_commit(Path(progetto["percorso"]), limite=limite)
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"progetto_id": progetto_id, "commit": commit}
+
+
+@app.get("/api/commit/eventi")
+def eventi_commit_progetto(progetto_id: str, hash: str):
+    """Eventi del registro nella finestra temporale di un commit reale, con una stima
+    di risparmio calcolata dai token realmente misurati nei controlli fatti dal
+    modello locale — non uno scenario finto, replay di cosa e' successo davvero."""
+    progetto = _progetto_o_404(progetto_id)
+    p_path = Path(progetto["percorso"])
+    try:
+        inizio, fine = commit_replay.finestra_temporale_commit(p_path, hash)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    percorso_registro = p_path / "dati_locali" / "orchestrazione" / "eventi.jsonl"
+    eventi = commit_replay.eventi_nella_finestra(percorso_registro, inizio, fine)
+    stima = commit_replay.stima_risparmio(eventi)
+
+    return {
+        "progetto_id": progetto_id,
+        "hash": hash,
+        "eventi": eventi,
+        "stima_risparmio": stima,
+    }
 
 
 def _avvia_processo_sostituto() -> None:

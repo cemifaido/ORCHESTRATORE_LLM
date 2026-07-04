@@ -49,6 +49,36 @@ class IntegraProgettoTest(unittest.TestCase):
             for regola_rimossa in ["registro.py", "sentinella.py", "genera_cruscotto.py"]:
                 self.assertNotIn(regola_rimossa, contenuto)
 
+    def test_integra_progetto_scrive_istruzioni_sincronizzazione_multi_agente(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest_path = Path(tmp)
+            interfaccia.integra_progetto(dest_path)
+
+            for nome_file, agente in [("CLAUDE.md", "claude"), ("GEMINI.md", "gemini"), ("AGENTS.md", "codex")]:
+                percorso = dest_path / nome_file
+                self.assertTrue(percorso.exists(), f"{nome_file} non scritto")
+                contenuto = percorso.read_text(encoding="utf-8")
+                self.assertIn(f"--agente {agente}", contenuto)
+                self.assertIn(str(interfaccia.RADICE), contenuto)
+
+    def test_integra_progetto_non_sovrascrive_istruzioni_personalizzate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest_path = Path(tmp)
+            (dest_path / "CLAUDE.md").write_text("personalizzato dall'utente", encoding="utf-8")
+
+            interfaccia.integra_progetto(dest_path)
+
+            self.assertEqual((dest_path / "CLAUDE.md").read_text(encoding="utf-8"), "personalizzato dall'utente")
+
+    def test_integra_progetto_aggiunge_istruzioni_agenti_al_gitignore(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest_path = Path(tmp)
+            interfaccia.integra_progetto(dest_path)
+
+            contenuto = (dest_path / ".gitignore").read_text(encoding="utf-8")
+            for regola in ["CLAUDE.md", "GEMINI.md", "AGENTS.md"]:
+                self.assertIn(regola, contenuto)
+
     def test_integra_progetto_non_duplica_regole_gitignore_se_rieseguito(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             dest_path = Path(tmp)

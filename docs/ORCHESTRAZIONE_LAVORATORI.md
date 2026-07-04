@@ -124,9 +124,43 @@ All'inizio il routing resta tabellare:
 
 Lo scoring automatico si aggiunge solo dopo aver raccolto dati veri.
 
+## Sincronizzazione fra sessioni interattive (Claude/Gemini/Codex)
+
+Claude Code, Gemini (antigravity-ide) e Codex lavorano su questo stesso progetto in
+sessioni separate, senza conversazione condivisa in tempo reale. Sincronizzano in modo
+asincrono attraverso il registro: ognuno legge le note degli eventi recenti all'inizio
+di un compito e registra un evento (`--agente claude|gemini|codex`) alla fine. Istruzioni
+dettagliate in `CLAUDE.md`, `GEMINI.md`, `AGENTS.md` (letti automaticamente dai
+rispettivi strumenti, **non ancora verificato** che antigravity-ide/Codex CLI li carichino
+davvero da soli come fa Claude Code con `CLAUDE.md` — la prima volta che apri una
+sessione con uno dei due, verifica esplicitamente che li abbia letti). Non è
+sincronizzazione in tempo reale — è un changelog condiviso, lo stesso che vede
+l'operatore umano nella dashboard.
+
+Anche il modello locale (`triage_locale.py`) ora registra un evento (`--agente locale`,
+`tipo_compito=monitoraggio`) per ogni classificazione: prima il suo lavoro spariva in
+stdout, ora ha la stessa visibilità degli altri tre nella dashboard/registro.
+
+**Limite noto**: il modello locale (llama-server, quantizzazione Q3_K_M) a volte genera
+un carattere accentato come sequenza UTF-8 malformata (es. "è" → `�`), probabilmente per
+un token spezzato male in fase di generazione. Non altera mai l'esito
+`routine`/`escalation`, solo occasionalmente il testo libero del campo `motivo`. Non
+ancora investigato a fondo: non è un bug nel codice dell'orchestratore.
+
 ## Capoturno
 
-`capoturno.py` è il motore che esegue davvero il ciclo "Watch-and-Solve": riceve un compito, lo fa lavorare a un agente reale tramite LiteLLM, applica la patch sul progetto target, la valida con la sentinella e ripete in caso di errore. Non è un nuovo lavoratore: automatizza meccanicamente il ruolo di capoturno (instradamento, delega, validazione, rework) che la tabella dei [Lavoratori](#lavoratori) assegna al LLM locale — chi scrive codice resta sempre Gemini/Claude/Codex, mai il locale.
+**Come si ottiene davvero del codice scritto, oggi (2026-07-04)** — quattro vie possibili, non alternative fra loro ma con un default esplicito:
+
+| Modalità | Chi scrive davvero il codice | Quando si attiva | Note |
+|---|---|---|---|
+| **Sessione interattiva (default)** | L'assistente Claude Code, direttamente in conversazione, con accesso reale a file/terminale | Quando il compito viene chiesto direttamente in chat | Nessuna chiamata API esterna da capoturno, nessun rischio di crediti/chiave esauriti |
+| Gemini (via LiteLLM) | Modello chiamato da `capoturno.py` | Solo se si lancia dal pannello dashboard "Live Agent Handoff" con Tipo Compito → interfaccia | Richiede `OPENAI_API_KEY`: l'etichetta è "gemini" ma il modello reale chiamato è `openai/gpt-4o-mini`, non un vero modello Google (limite noto, da correggere) |
+| Claude (via LiteLLM) | Modello Claude chiamato da `capoturno.py` | Idem, Tipo Compito → servizi/database/documentazione | Richiede chiave Anthropic, soggetto a crediti/quota come qualunque chiamata API |
+| Codex | — | Suggerito dal routing per revisione/sicurezza | **Non cablato in `capoturno.py`**: se scelto, il motore chiamerebbe comunque il modello Claude ma registrerebbe l'evento come `agente=codex` — bug noto, non usare questo instradamento finché non è corretto |
+
+Finché la delega via LiteLLM resta legata a crediti/chiavi che possono mancare o esaurirsi, la sessione interattiva resta la via primaria per il lavoro reale; il pannello "Live Agent Handoff" resta disponibile per quando si vuole tornare alla delega automatica via API.
+
+`capoturno.py` è il motore che esegue davvero il ciclo "Watch-and-Solve" per le tre vie via LiteLLM: riceve un compito, lo fa lavorare a un agente reale, applica la patch sul progetto target, la valida con la sentinella e ripete in caso di errore. Non è un nuovo lavoratore: automatizza meccanicamente il ruolo di capoturno (instradamento, delega, validazione, rework) che la tabella dei [Lavoratori](#lavoratori) assegna al LLM locale — chi scrive codice resta sempre Gemini/Claude/Codex, mai il locale.
 
 Ciclo eseguito da `Capoturno.esegui_compito(...)`:
 
@@ -141,11 +175,22 @@ Ciclo eseguito da `Capoturno.esegui_compito(...)`:
 
 Pannello **"🤝 Live Agent Handoff & Cooperazione"**: seleziona progetto target, tipo compito, file target, rischio e descrivi il compito, poi "▶ Lancia Compito Reale". Il form chiama `POST /api/compiti/avvia` (esecuzione in background), la dashboard fa polling su `GET /api/compiti/stato` e anima il diagramma SVG passo per passo; a fine corsa chiama `POST /api/compiti/reset`.
 
+### Replay di un commit reale (demo)
+
+Nello stesso pannello, "Rivivi un commit reale" mostra un selettore di commit (`GET /api/commit/lista`, da `git log`) e un pulsante "🎬 Riproduci". Alla scelta, `GET /api/commit/eventi?progetto_id=...&hash=...` (modulo `commit_replay.py`) calcola la finestra temporale del commit (tra il suo timestamp e quello del commit precedente, confrontati come date timezone-aware in UTC — non come stringhe, perché git usa il fuso locale e il registro usa sempre `Z`) e ritorna gli eventi del registro caduti in quella finestra. La dashboard li anima in sequenza sullo stesso diagramma SVG, poi mostra una statistica reale, non uno scenario finto:
+
+- **percentuale di controlli di verifica gestiti gratis dal modello locale** sul totale (locale + eventuali revisioni/sicurezza fatte da un agente a pagamento nella stessa finestra) — varia per commit, non è mai fissa al 100%;
+- **stima in $ del risparmio**, calcolata solo sui `token_totali` realmente misurati (metadati degli eventi `agente=locale`) moltiplicati per il prezzo pubblico di un modello di riferimento dichiarato (GPT-4o-mini, tariffa input, scelta conservativa) — mai un numero inventato.
+
+Un commit senza eventi di verifica (es. solo lavoro conversazionale, costo sempre stimato/0) mostra correttamente "nessun controllo da cui stimare un risparmio": non si forza una percentuale quando non c'è nulla di comparabile.
+
 ### Limiti noti (v1)
 
 - Un solo compito reale alla volta: lo stato (`STATO_COMPITO_CORRENTE`) è globale in memoria nel processo `interfaccia.py`, non per-progetto. Un secondo tentativo di avvio viene rifiutato finché il primo non è `finito`.
-- "Serve umano prima" (rischio alto) è solo notificato nella timeline, non blocca ancora l'esecuzione: da implementare come sospensione reale quando servirà davvero in produzione.
+- "Serve umano prima" (rischio alto): l'umano che lancia il compito dalla dashboard è già il gate umano (ha compilato il form e cliccato "Lancia"), quindi il backend non blocca nulla — ma se `rischio=alto` il frontend chiede una conferma esplicita in più (`confirm()` col riepilogo del compito) prima di inviare la richiesta. Non è ancora una sospensione lato server: un secondo canale (es. API diretta) potrebbe bypassarla.
 - Il modello viene scelto solo in base a `gemini` vs "tutto il resto → claude": se il routing suggerisce `locale` o `codex` (tipi come `monitoraggio`/`revisione`), il motore chiamerebbe comunque un LLM reale con modello Claude invece di restare deterministico — situazione non ancora incontrata nell'uso reale, da chiudere se emerge.
+- Quando l'agente scelto è `gemini`, il modello effettivamente chiamato via LiteLLM è `openai/gpt-4o-mini`, non un vero modello Google Gemini: l'etichetta "gemini" nel routing non corrisponde al provider reale usato. Per questo compito serve una chiave `OPENAI_API_KEY`, non una chiave Google — da correggere se si vuole davvero chiamare Gemini.
+- Il file da modificare va scelto a mano nel form: il motore non esplora il progetto né decide da solo dove scrivere, gestisce un solo file per compito. Un'evoluzione naturale (proposta e non ancora implementata) è una chiamata preliminare "di scoping" allo stesso agente suggerito dal routing, per fargli individuare il file più pertinente prima di scrivere la patch — lasciando comunque il campo compilabile a mano come opzione/override.
 
 ## Metriche
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import unittest
+from unittest.mock import patch
 
 from adattatori import litellm
 
@@ -76,6 +77,23 @@ class LiteLLMAdapterTest(unittest.TestCase):
         arricchito = litellm.arricchisci_evento(evento, misurazione)
         self.assertEqual(arricchito["origine_costo"], "stimato")
         self.assertIsNone(arricchito["metadati"]["litellm"]["costo_usd"])
+
+    def test_completamento_locale_forza_costo_zero_misurato_e_provider_locale(self) -> None:
+        """L'inferenza locale non ha un costo API da stimare: e' un fatto noto (zero),
+        non un'ipotesi. Verifica anche che punti di default all'endpoint llama-server
+        locale senza dover ripetere api_base/api_key ad ogni chiamata."""
+        with patch("litellm.completion", return_value=RispostaFinta()) as mock_completion:
+            _risposta, misurazione = litellm.completamento_locale(
+                messaggi=[{"role": "user", "content": "ciao"}],
+            )
+
+        self.assertEqual(misurazione.costo_usd, 0.0)
+        self.assertEqual(misurazione.provider, "locale")
+
+        _, kwargs = mock_completion.call_args
+        self.assertEqual(kwargs["api_base"], litellm.API_BASE_LOCALE_PREDEFINITO)
+        self.assertEqual(kwargs["api_key"], "non-serve")
+        self.assertEqual(kwargs["model"], litellm.MODELLO_LOCALE_PREDEFINITO)
 
 
 if __name__ == "__main__":

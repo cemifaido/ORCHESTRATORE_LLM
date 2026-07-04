@@ -413,6 +413,31 @@ Regole:
   senza estensione; se la nota non esiste ancora, il link va bene lo stesso e segnala una nota da
   scrivere.
 
+## Sincronizzazione multi-agente (tassativo)
+
+Se più assistenti AI interattivi (Claude Code, Gemini/antigravity-ide, Codex, o altri)
+possono lavorare sullo stesso progetto in sessioni separate — anche solo potenzialmente,
+anche se oggi ne usi uno solo — il progetto deve avere:
+
+1. Un file di istruzioni per ciascuno strumento, con lo stesso contenuto operativo, nel
+   formato che ciascuno legge in automatico: `CLAUDE.md` (Claude Code), `GEMINI.md`
+   (Gemini/antigravity-ide), `AGENTS.md` (Codex).
+2. Un registro condiviso, append-only, dove ogni sessione:
+   - legge le note degli eventi recenti prima di iniziare un compito reale (non
+     ripartire da zero se un'altra sessione ha già deciso o corretto qualcosa di
+     rilevante);
+   - registra un evento a fine compito reale (non per semplici domande/spiegazioni),
+     con l'agente correttamente identificato (`claude`/`gemini`/`codex`/`locale`).
+3. Alla prima sessione con un nuovo strumento su un progetto, l'operatore umano deve
+   verificare esplicitamente che lo strumento abbia letto il proprio file di istruzioni:
+   non è garantito che ogni tool carichi da solo le istruzioni di progetto. Non darlo
+   per scontato senza controllare almeno una volta.
+
+Non è sincronizzazione in tempo reale: è un changelog condiviso, come un team che si
+aggiorna tramite ticket/registro invece che a voce. Costa pochissimo predisporlo fin
+dall'inizio di un progetto, molto ricostruirlo quando serve davvero e non c'è.
+Riferimento operativo completo: `docs/ORCHESTRAZIONE_LAVORATORI.md`.
+
 ## Git e gestione delle modifiche
 
 - Un commit deve raccontare una modifica coerente.

@@ -800,6 +800,13 @@
               <textarea id="realPrompt" placeholder="es. Aggiungi una funzione moltiplica(a, b) con commenti tipizzati" style="background:#0f172a; border:1px solid var(--card-border); color:var(--text-main); padding:0.4rem 0.8rem; border-radius:6px; font-size:0.85rem; width:100%; height:60px; resize:vertical; font-family:inherit;"></textarea>
             </div>
           </div>
+
+          <!-- Replay di un commit reale (dati storici, nessuna chiamata dal vivo) -->
+          <div style="width: 100%; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem; margin-top: 1rem; display:flex; gap:0.8rem; align-items:center; flex-wrap:wrap;">
+            <label for="commitSelect" style="white-space:nowrap;">Rivivi un commit reale:</label>
+            <select id="commitSelect" style="min-width:280px; flex:1;"></select>
+            <button id="replayCommitBtn" class="btn" style="background: rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.4); color:#c4b5fd;">🎬 Riproduci</button>
+          </div>
         </div>
 
         <!-- Area Diagramma Visuale (SVG) -->
@@ -948,6 +955,11 @@
       // Listener per l'handoff dell'esecuzione reale
       document.getElementById("startSimBtn").addEventListener("click", avviaCompitoReale);
       document.getElementById("stopSimBtn").addEventListener("click", fermaSimulazione);
+
+      // Replay di un commit reale
+      caricaCommit();
+      document.getElementById("realProjSelect").addEventListener("change", caricaCommit);
+      document.getElementById("replayCommitBtn").addEventListener("click", avviaReplayCommit);
     });
 
     async function riavviaSistema() {
@@ -1297,6 +1309,17 @@
         return;
       }
 
+      if (rischio === "alto") {
+        const confermato = confirm(
+          `Rischio ALTO dichiarato per questo compito su "${file_target}".\n\n` +
+          `${compito_prompt}\n\nConfermi di voler procedere comunque?`
+        );
+        if (!confermato) {
+          showFeedback("Esecuzione annullata (rischio alto non confermato).", "error");
+          return;
+        }
+      }
+
       fermaSimulazione();
 
       document.getElementById("startSimBtn").style.display = "none";
@@ -1424,6 +1447,114 @@
       document.querySelectorAll(".handoff-line").forEach(line => {
         line.classList.remove("active", "active-success", "active-fail");
       });
+    }
+
+    async function caricaCommit() {
+      const progetto_id = document.getElementById("realProjSelect").value || "orchestratore";
+      const commitSelect = document.getElementById("commitSelect");
+      try {
+        const res = await fetch(`/api/commit/lista?progetto_id=${encodeURIComponent(progetto_id)}&limite=20`);
+        if (!res.ok) throw new Error("risposta non valida");
+        const data = await res.json();
+        commitSelect.innerHTML = "";
+        if (!data.commit || data.commit.length === 0) {
+          commitSelect.innerHTML = '<option value="">Nessun commit disponibile</option>';
+          return;
+        }
+        data.commit.forEach(c => {
+          const opt = document.createElement("option");
+          opt.value = c.hash;
+          opt.textContent = `${c.data.slice(0, 16)} — ${c.messaggio.slice(0, 60)}`;
+          commitSelect.appendChild(opt);
+        });
+      } catch (err) {
+        commitSelect.innerHTML = '<option value="">Impossibile caricare i commit</option>';
+      }
+    }
+
+    async function avviaReplayCommit() {
+      const progetto_id = document.getElementById("realProjSelect").value || "orchestratore";
+      const hash = document.getElementById("commitSelect").value;
+      const logBox = document.getElementById("handoffLogs");
+
+      if (!hash) {
+        showFeedback("Seleziona un commit da riprodurre.", "error");
+        return;
+      }
+
+      fermaSimulazione();
+      document.getElementById("startSimBtn").style.display = "none";
+      document.getElementById("stopSimBtn").style.display = "inline-block";
+      logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Recupero gli eventi reali del commit selezionato...</div>`;
+
+      let dati;
+      try {
+        const res = await fetch(`/api/commit/eventi?progetto_id=${encodeURIComponent(progetto_id)}&hash=${encodeURIComponent(hash)}`);
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.detail || "Errore nel recupero degli eventi del commit");
+        }
+        dati = await res.json();
+      } catch (err) {
+        logBox.innerHTML += `<div class="handoff-msg fail"><b>[Sistema] Errore:</b> ${escapeHtml(err.message)}</div>`;
+        fermaSimulazione();
+        return;
+      }
+
+      const eventi = dati.eventi || [];
+      if (eventi.length === 0) {
+        logBox.innerHTML = `<div class="handoff-msg system">Nessun evento registrato nella finestra di questo commit.</div>`;
+        fermaSimulazione();
+        return;
+      }
+
+      logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Replay di ${eventi.length} eventi reali di questo commit...</div>`;
+
+      let indice = 0;
+      function passoSuccessivo() {
+        if (indice >= eventi.length) {
+          const s = dati.stima_risparmio;
+          let riepilogo;
+          if (s.percentuale_gratis !== null) {
+            riepilogo = `
+<div class="handoff-msg success" style="font-family: monospace; white-space: pre-wrap; line-height: 1.4; margin-top: 0.8rem;">
+<b>📊 REPLAY COMPLETATO — DATI REALI DI QUESTO COMMIT</b>
+--------------------------------------------
+🛡️ <b>${s.percentuale_gratis}%</b> dei controlli di verifica gestiti GRATIS dal modello locale
+   (${s.controlli_locale} gratis / ${s.controlli_a_pagamento} a pagamento)
+💰 Stima risparmio: ~$${s.risparmio_stimato_usd.toFixed(5)} (rif. ${escapeHtml(s.modello_riferimento)})
+--------------------------------------------
+</div>`;
+          } else {
+            riepilogo = `<div class="handoff-msg system">Nessun controllo di verifica in questo commit da cui stimare un risparmio.</div>`;
+          }
+          logBox.innerHTML += riepilogo;
+          logBox.scrollTop = logBox.scrollHeight;
+          fermaSimulazione();
+          return;
+        }
+
+        const ev = eventi[indice];
+        document.querySelectorAll(".agent-node").forEach(node => node.classList.remove("active", "active-success", "active-fail"));
+        document.querySelectorAll(".handoff-line").forEach(line => line.classList.remove("active", "active-success", "active-fail"));
+
+        const fallito = ev.esito_gate === "fallito" || ["fallito", "errore_ambiente", "da_rivedere", "respinto"].includes(ev.stato);
+        const nodo = document.getElementById(`node_${ev.agente}`);
+        if (nodo) {
+          nodo.classList.add("active");
+          nodo.classList.add(fallito ? "active-fail" : "active-success");
+        }
+
+        const badge = `<span class="tag-agent">${escapeHtml((ev.agente || "?").toUpperCase())}</span>`;
+        const msgClass = "handoff-msg" + (fallito ? " fail" : " success");
+        logBox.innerHTML += `<div class="${msgClass}"><b>${badge}</b> [${escapeHtml(ev.timestamp)}]: ${escapeHtml(ev.note || "")}</div>`;
+        logBox.scrollTop = logBox.scrollHeight;
+
+        indice++;
+      }
+
+      passoSuccessivo();
+      simTimer = setInterval(passoSuccessivo, 1800);
     }
   </script>
 </body>

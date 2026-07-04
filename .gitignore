@@ -8,6 +8,12 @@ local/
 *.registro.md
 *.ledger.md
 
+# Istruzioni per assistenti AI (sincronizzazione multi-agente via registro):
+# locali per operatore/macchina, non condivise nel repository.
+CLAUDE.md
+GEMINI.md
+AGENTS.md
+
 # Python
 __pycache__/
 *.py[cod]

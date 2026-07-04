@@ -136,3 +136,38 @@ def completamento(
 
     risposta = litellm.completion(model=modello, messages=messaggi, **parametri)
     return risposta, estrai_misurazione(risposta, modello=modello, provider=provider)
+
+
+# Modello locale (llama-server/llama.cpp, endpoint compatibile OpenAI): nessuna chiave
+# reale, nessun costo. Usato per triage/monitoraggio a costo zero prima di scalare a un
+# agente a pagamento (vedi docs/ORCHESTRAZIONE_LAVORATORI.md, sezione Capoturno).
+MODELLO_LOCALE_PREDEFINITO = "openai/qwen2.5-7b-instruct-q3_k_m.gguf"
+API_BASE_LOCALE_PREDEFINITO = "http://127.0.0.1:8090/v1"
+
+
+def completamento_locale(
+    messaggi: list[dict[str, str]],
+    modello: str = MODELLO_LOCALE_PREDEFINITO,
+    api_base: str = API_BASE_LOCALE_PREDEFINITO,
+    **parametri: Any,
+) -> tuple[Any, MisurazioneLiteLLM]:
+    """Chiama il modello locale (llama-server) con lo stesso adapter usato per i
+    provider a pagamento. Il costo e' sempre 0.0 misurato (non stimato): l'inferenza
+    locale non ha un costo API reale da stimare, e' un fatto noto, non un'ipotesi."""
+    parametri.setdefault("api_key", "non-serve")
+    risposta, misurazione = completamento(
+        modello=modello,
+        messaggi=messaggi,
+        provider="locale",
+        api_base=api_base,
+        **parametri,
+    )
+    misurazione = MisurazioneLiteLLM(
+        modello=misurazione.modello,
+        provider=misurazione.provider,
+        costo_usd=0.0,
+        token_prompt=misurazione.token_prompt,
+        token_completion=misurazione.token_completion,
+        token_totali=misurazione.token_totali,
+    )
+    return risposta, misurazione
