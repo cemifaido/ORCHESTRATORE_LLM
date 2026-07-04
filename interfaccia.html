@@ -1510,9 +1510,35 @@
 
       logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Replay di ${eventi.length} eventi reali di questo commit...</div>`;
 
+      // Il registro non ha un campo "da/a": si inferisce la direzione dalla sequenza
+      // cronologica (evento N -> evento N+1 = passaggio di mano da chi ha fatto N a
+      // chi ha fatto N+1). Si assume che il primo passo parta sempre dall'umano (chi
+      // ha commissionato il compito). Se non esiste un collegamento SVG per quella
+      // coppia specifica di agenti, si evidenzia comunque il nodo, semplicemente
+      // senza disegnare una linea inventata.
+      let agentePrecedente = "umano";
       let indice = 0;
+
+      function evidenziaLinea(da, a, fallito) {
+        if (da === a) return;
+        const linea = document.getElementById(`path_${da}_${a}`) || document.getElementById(`path_${a}_${da}`);
+        if (linea) {
+          linea.classList.add("active");
+          linea.classList.add(fallito ? "active-fail" : "active-success");
+        }
+      }
+
       function passoSuccessivo() {
         if (indice >= eventi.length) {
+          // Chiusura del cerchio: il risultato torna all'umano per la revisione finale.
+          document.querySelectorAll(".agent-node").forEach(node => node.classList.remove("active", "active-success", "active-fail"));
+          document.querySelectorAll(".handoff-line").forEach(line => line.classList.remove("active", "active-success", "active-fail"));
+          evidenziaLinea(agentePrecedente, "umano", false);
+          const nodoUmano = document.getElementById("node_umano");
+          if (nodoUmano) {
+            nodoUmano.classList.add("active", "active-success");
+          }
+
           const s = dati.stima_risparmio;
           let riepilogo;
           if (s.percentuale_gratis !== null) {
@@ -1539,11 +1565,14 @@
         document.querySelectorAll(".handoff-line").forEach(line => line.classList.remove("active", "active-success", "active-fail"));
 
         const fallito = ev.esito_gate === "fallito" || ["fallito", "errore_ambiente", "da_rivedere", "respinto"].includes(ev.stato);
+
+        evidenziaLinea(agentePrecedente, ev.agente, fallito);
         const nodo = document.getElementById(`node_${ev.agente}`);
         if (nodo) {
           nodo.classList.add("active");
           nodo.classList.add(fallito ? "active-fail" : "active-success");
         }
+        agentePrecedente = ev.agente;
 
         const badge = `<span class="tag-agent">${escapeHtml((ev.agente || "?").toUpperCase())}</span>`;
         const msgClass = "handoff-msg" + (fallito ? " fail" : " success");

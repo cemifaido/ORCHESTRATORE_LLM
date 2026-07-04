@@ -129,7 +129,7 @@ python "{RADICE}\\registro.py" aggiungi `
   --costo-stimato-usd 0.0 `
   --latenza-ms 0 `
   --regole-incluse "sessione_interattiva" `
-  --note "<riassunto breve di cosa è stato fatto e verificato>"
+  --note "Richiesta: <cosa ha chiesto l'utente, in breve> | Fatto: <cosa hai fatto e verificato>"
 ```
 
 Si usa lo script centrale dell'orchestratore (mai una copia locale), così resta sempre
@@ -140,7 +140,35 @@ dove si trova lo script.
 Regole pratiche:
 - `esito_gate=superato` solo se hai davvero rieseguito test/lint/quality gate e sono
   passati — non dichiararlo senza averlo verificato.
+- `note` deve avere **sia** la richiesta originale **sia** l'esito: un registro che
+  mostra solo "cosa ha fatto l'agente" senza "cosa è stato chiesto" perde metà della
+  storia.
 - Non registrare eventi per semplici domande/spiegazioni senza modifiche di codice.
+
+## Registrare anche l'approvazione finale dell'umano
+
+Il registro non deve raccontare solo "cosa ha fatto l'agente": anche il via libera
+dell'umano è un fatto operativo, e lo schema ha già un campo apposta (`verdetto_umano`)
+che altrimenti resta sempre `non_revisionato` per sempre. **Quando l'utente dà
+un'approvazione esplicita e finale** (tipicamente prima di un `git commit`, ma vale per
+qualunque decisione irreversibile), registra un evento separato:
+
+```powershell
+python "{RADICE}\\registro.py" aggiungi `
+  --id-compito "<stesso-id-compito-o-riferimento-al-lavoro-approvato>" `
+  --agente umano `
+  --tipo-compito "orchestrazione" `
+  --stato "accettato" `
+  --esito-gate "non_eseguito" `
+  --verdetto-umano "approvato" `
+  --costo-stimato-usd 0.0 `
+  --latenza-ms 0 `
+  --note "<cosa ha approvato l'utente, es. 'approvato il commit <hash-breve>'>"
+```
+
+Non farlo per ogni singolo messaggio (sarebbe rumore) — solo per un'approvazione
+esplicita e concreta a un'azione con effetto reale (commit, push, cancellazione,
+decisione architetturale importante).
 
 **Subito dopo aver registrato l'evento**, aggiorna la riga "Ultimo aggiornamento di
 questo file" in cima a **questo** file (mai gli altri, quelli li aggiornano loro) con
