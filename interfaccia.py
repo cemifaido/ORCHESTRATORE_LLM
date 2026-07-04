@@ -352,7 +352,6 @@ def get_stato(pagina: int = 1, per_pagina: int = 50):
         "globali": {
             "progetti_totali": len(progetti),
             "eventi_totali": len(tutti_eventi),
-            "costo_totale": sum(float(ev.get("costo_stimato_usd") or 0.0) for ev in tutti_eventi),
             "latenza_totale": sum(int(ev.get("latenza_ms") or 0) for ev in tutti_eventi)
         },
         "progetto_stats": progetto_stats,

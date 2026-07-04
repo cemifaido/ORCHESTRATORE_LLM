@@ -876,11 +876,7 @@
         <span class="summary-val purple" id="valEvents">0</span>
       </div>
       <div class="summary-card">
-        <span class="summary-title">Costo Stimato</span>
-        <span class="summary-val emerald" id="valCost">$0.0000</span>
-      </div>
-      <div class="summary-card">
-        <span class="summary-title">Latenza Cumulata</span>
+        <span class="summary-title">Tempo Elaborazione LLM Cumulato</span>
         <span class="summary-val rose" id="valLatency">0 ms</span>
       </div>
     </div>
@@ -933,11 +929,22 @@
 
       <!-- Right Column -->
       <div class="col-right">
-        <!-- Agent Costs Chart -->
+        <!-- LLM Processing Time per Agent -->
         <div class="widget">
-          <h2>📊 Quota Costi per Agente (EUR)</h2>
-          <div class="chart-container">
-            <canvas id="costChart"></canvas>
+          <h2>⏱️ Tempo Elaborazione LLM Cumulato per Agente</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Agente</th>
+                  <th>Tempo cumulato</th>
+                  <th>Interazioni</th>
+                </tr>
+              </thead>
+              <tbody id="latenzaPerAgenteBody">
+                <tr><td colspan="3" style="text-align: center; color: var(--text-muted);">Caricamento...</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -1134,13 +1141,11 @@
   </div>
 
   <script>
-    let costChartInstance = null;
     let runsChartInstance = null;
     let livelloChartInstance = null;
     let progettiCorrenti = [];
     let commitCorrenti = [];
     let paginaTimelineCorrente = 1;
-    let usdToEurRate = 0.92; // Fallback di base se offline
 
     function escapeHtml(str) {
       if (str == null) return '';
@@ -1150,43 +1155,6 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
-    }
-
-    const CHIAVE_TASSO_CAMBIO = "orchestratore_tasso_usd_eur";
-
-    async function aggiornaTassoCambio() {
-      const oggi = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-
-      // Riusa il tasso di oggi se già salvato: sopravvive sia al reload della
-      // pagina sia al riavvio del server (localStorage è lato browser).
-      try {
-        const salvato = JSON.parse(localStorage.getItem(CHIAVE_TASSO_CAMBIO) || "null");
-        if (salvato && salvato.data === oggi && typeof salvato.tasso === "number") {
-          usdToEurRate = salvato.tasso;
-          console.log("Tasso di cambio USD -> EUR da cache di oggi:", usdToEurRate);
-          return;
-        }
-      } catch (err) {
-        // localStorage non disponibile o corrotto: si procede con la fetch
-      }
-
-      try {
-        const res = await fetch("https://open.er-api.com/v6/latest/USD");
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.rates && data.rates.EUR) {
-            usdToEurRate = data.rates.EUR;
-            console.log("Tasso di cambio USD -> EUR aggiornato: 1 USD =", usdToEurRate, "EUR");
-            try {
-              localStorage.setItem(CHIAVE_TASSO_CAMBIO, JSON.stringify({ data: oggi, tasso: usdToEurRate }));
-            } catch (err) {
-              // storage pieno o non disponibile: si rifarà la fetch al prossimo caricamento
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("Impossibile caricare il listino live USD/EUR, uso fallback:", usdToEurRate, err);
-      }
     }
 
     function initMatrixRain() {
@@ -1233,7 +1201,6 @@
     }
 
     document.addEventListener("DOMContentLoaded", async () => {
-      await aggiornaTassoCambio();
       initMatrixRain();
       aggiornaDati();
 
@@ -1326,7 +1293,6 @@
         // 1. Stats globali
         document.getElementById("valProjects").textContent = data.globali.progetti_totali;
         document.getElementById("valEvents").textContent = data.globali.eventi_totali;
-        document.getElementById("valCost").textContent = `€${(data.globali.costo_totale * usdToEurRate).toFixed(4)}`;
         document.getElementById("valLatency").textContent = `${data.globali.latenza_totale.toLocaleString()} ms`;
 
         // Salva progetti correnti globalmente
@@ -1374,7 +1340,7 @@
           pList.innerHTML = `<div style="text-align: center; color: var(--text-muted);">Nessun progetto registrato.</div>`;
         } else {
           data.progetti.forEach(p => {
-            const pStat = data.progetto_stats[p.id] || { esecuzioni: 0, costo: 0, latenza: 0, rework: 0 };
+            const pStat = data.progetto_stats[p.id] || { esecuzioni: 0, latenza: 0, rework: 0 };
             const card = document.createElement("div");
             card.className = "project-card";
             const avviso = pStat.errore
@@ -1388,7 +1354,7 @@
               <div class="project-path">${p.percorso}</div>
               <div class="project-meta-row">
                 <span>Moduli attivi: <b>${pStat.esecuzioni}</b></span>
-                <span>Costo: <b>€${(pStat.costo * usdToEurRate).toFixed(4)}</b></span>
+                <span>Tempo LLM: <b>${(pStat.latenza || 0).toLocaleString()} ms</b></span>
                 <span>Rework: <b class="badge rework">${pStat.rework}</b></span>
               </div>
               ${avviso}
@@ -1465,51 +1431,33 @@
       }
     }
 
-    function renderizzaGrafici(agenteStats, livelloStats) {
+    function renderizzaTempoLLMPerAgente(agenteStats) {
+      const tbody = document.getElementById("latenzaPerAgenteBody");
+      if (!tbody) return;
       const agenti = Object.keys(agenteStats).sort();
-      const costi = agenti.map(a => agenti.includes(a) ? agenteStats[a].costo * usdToEurRate : 0);
+      if (agenti.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted);">Nessun dato disponibile.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = "";
+      agenti.forEach(agente => {
+        const stat = agenteStats[agente];
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><span class="tag-agent ${escapeHtml(agente)}">${escapeHtml(agente.toUpperCase())}</span></td>
+          <td>${(stat.latenza || 0).toLocaleString()} ms</td>
+          <td>${stat.esecuzioni}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderizzaGrafici(agenteStats, livelloStats) {
+      renderizzaTempoLLMPerAgente(agenteStats);
+
+      const agenti = Object.keys(agenteStats).sort();
       const esecuzioni = agenti.map(a => agenteStats[a].esecuzioni);
       const rework = agenti.map(a => agenteStats[a].rework);
-
-      const colorPalette = ['#3b82f6', '#8b5cf6', '#10b981', '#f43f5e', '#f59e0b', '#6b7280'];
-
-      // Chart 1: Costi per agente
-      if (costChartInstance) costChartInstance.destroy();
-      const ctxCost = document.getElementById("costChart").getContext("2d");
-      costChartInstance = new Chart(ctxCost, {
-        type: 'doughnut',
-        data: {
-          labels: agenti,
-          datasets: [{
-            data: costi,
-            backgroundColor: colorPalette.slice(0, agenti.length),
-            borderColor: 'rgba(11, 15, 25, 0.8)',
-            borderWidth: 2
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              position: 'right',
-              labels: { color: '#f3f4f6', font: { family: 'Inter' } }
-            },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  let label = context.label || '';
-                  if (label) label += ': ';
-                  if (context.parsed !== undefined) {
-                    label += '€' + context.parsed.toFixed(4);
-                  }
-                  return label;
-                }
-              }
-            }
-          }
-        }
-      });
 
       // Chart 2: Esecuzioni e Rework per agente
       if (runsChartInstance) runsChartInstance.destroy();
