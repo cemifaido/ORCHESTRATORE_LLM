@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,6 +11,22 @@ import interfaccia
 
 
 class IntegraProgettoTest(unittest.TestCase):
+    def test_integra_progetto_funziona_indipendentemente_dalla_cwd(self) -> None:
+        """integra_progetto deve leggere schema/config dell'orchestratore dalla propria
+        posizione reale (RADICE), non dalla cartella da cui e' stato lanciato il processo:
+        altrimenti, lanciato con una cwd diversa, fallisce silenziosamente (skip copia)."""
+        cwd_originale = os.getcwd()
+        with tempfile.TemporaryDirectory() as cwd_estranea, tempfile.TemporaryDirectory() as tmp:
+            dest_path = Path(tmp)
+            os.chdir(cwd_estranea)
+            try:
+                interfaccia.integra_progetto(dest_path)
+            finally:
+                os.chdir(cwd_originale)
+
+            self.assertTrue((dest_path / "schema" / "evento.v1.json").exists())
+            self.assertTrue((dest_path / "config" / "comandi.esempio.json").exists())
+
     def test_integra_progetto_non_copia_piu_script_orchestratore(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             dest_path = Path(tmp)

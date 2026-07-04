@@ -11,12 +11,17 @@ import uvicorn
 
 app = FastAPI(title="Orchestratore LLM — Dashboard")
 
-PERCORSO_PROGETTI = Path("dati_locali") / "progetti.json"
-PERCORSO_HTML = Path("interfaccia.html")
-SCRIPT_SENTINELLA_CENTRALE = Path(__file__).resolve().parent / "sentinella.py"
+# Tutti i percorsi dell'orchestratore sono relativi a questo file, non alla cwd del
+# processo: interfaccia.py deve funzionare anche se lanciato da una cwd diversa
+# (es. un servizio, un task scheduler, un IDE con working directory non impostata).
+RADICE = Path(__file__).resolve().parent
+
+PERCORSO_PROGETTI = RADICE / "dati_locali" / "progetti.json"
+PERCORSO_HTML = RADICE / "interfaccia.html"
+SCRIPT_SENTINELLA_CENTRALE = RADICE / "sentinella.py"
 
 # Assicura caricamento moduli locali del framework
-sys.path.append(str(Path(".").resolve()))
+sys.path.append(str(RADICE))
 import registro  # noqa: E402
 
 class ProgettoInput(BaseModel):
@@ -35,7 +40,7 @@ def leggi_progetti() -> list[dict]:
                 {
                     "id": "orchestratore",
                     "nome": "Orchestratore Centrale",
-                    "percorso": str(Path(".").resolve())
+                    "percorso": str(RADICE)
                 }
             ]
         }
@@ -64,13 +69,13 @@ def integra_progetto(dest_path: Path):
     # 2. Copia gli schemi come riferimento locale (documentazione): la validazione vera
     #    avviene sempre nell'orchestratore centrale con il proprio schema.
     for schema_file in ["evento.v1.json", "compito.v1.json"]:
-        src_schema = Path("schema") / schema_file
+        src_schema = RADICE / "schema" / schema_file
         if src_schema.exists():
             shutil.copy(src_schema, dest_path / "schema" / schema_file)
 
     # 3. Copia configurazioni di esempio se non esistono già
     for cfg in ["comandi.esempio.json", "agenti.esempio.json"]:
-        src_cfg = Path("config") / cfg
+        src_cfg = RADICE / "config" / cfg
         dest_cfg = dest_path / "config" / cfg
         if src_cfg.exists() and not dest_cfg.exists():
             shutil.copy(src_cfg, dest_cfg)

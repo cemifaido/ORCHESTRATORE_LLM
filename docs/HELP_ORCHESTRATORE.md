@@ -29,9 +29,11 @@ Per iniziare a gestire un nuovo progetto (es. `mio_progetto`):
 
 Il sistema eseguirà in automatico le seguenti operazioni nella cartella di destinazione:
 - Creazione di `dati_locali/orchestrazione/`
-- Copia del validatore eventi `schema/event.v1.json`
+- Copia degli schemi `schema/evento.v1.json` e `schema/compito.v1.json` come riferimento locale (solo documentazione: la validazione vera avviene sempre nell'orchestratore centrale)
 - Copia delle configurazioni template `config/comandi.esempio.json` e `config/agenti.esempio.json`
-- Copia locale dei file esecutivi (`registro.py`, `sentinella.py`, `genera_cruscotto.py`)
+- Aggiornamento del `.gitignore` del progetto target per escludere questi file dati/config gestiti dall'orchestratore
+
+**Nota importante**: i progetti target contengono solo dati e configurazione, mai il codice dell'orchestratore. `registro.py` e `sentinella.py` **non vengono più copiati** nel progetto: restano un'unica installazione centrale in questa cartella, e la dashboard li invoca sempre da qui (passando `--config`/`--registro` del progetto target e impostando la cartella di lavoro su di esso). Un aggiornamento dell'orchestratore vale quindi subito per tutti i progetti integrati, senza bisogno di ri-registrarli.
 
 ---
 
@@ -44,7 +46,7 @@ python .\registro.py aggiungi `
   --id-compito "task-102" `
   --agente "claude" `
   --tipo-compito "database" `
-  --stato "needs_review" `
+  --stato "da_rivedere" `
   --costo-stimato-usd 0.0150 `
   --latenza-ms 4500 `
   --regole-incluse "sicurezza,transazioni" `
@@ -71,10 +73,18 @@ Esempio di comando whitelistato:
 }
 ```
 
-Per lanciare la sentinella via CLI dal progetto:
+Per lanciare la sentinella via CLI **sull'orchestratore stesso** (dalla cartella `_ORCHESTRATORE_LLM`):
 ```powershell
 python .\sentinella.py test_servizi --id-compito "task-102"
 ```
+
+Per lanciare un comando su un **altro progetto integrato**, la sentinella non è più presente nella sua cartella: si usa il Pannello Sentinella della dashboard (sezione 1), che internamente invoca sempre lo script centrale con `--config`/`--registro` puntati al progetto scelto. In alternativa, dalla cartella `_ORCHESTRATORE_LLM`:
+```powershell
+python .\sentinella.py test_servizi `
+  --config "D:\percorso\mio_progetto\config\comandi.json" `
+  --registro "D:\percorso\mio_progetto\dati_locali\orchestrazione\eventi.jsonl"
+```
+(i comandi con `"cartella": "."` nel file `comandi.json` risolvono rispetto alla cwd del processo, non al percorso del progetto: lanciando così da `_ORCHESTRATORE_LLM` serve impostare `cd` sul progetto target prima, cosa che la dashboard fa già in automatico.)
 
 * La sentinella lancia il comando in modo isolato (`shell=False`, directory confinata, timeout rigido).
 * Tronca l'output se supera il limite caratteri per non intasare i log.
@@ -86,7 +96,7 @@ python .\sentinella.py test_servizi --id-compito "task-102"
 
 Il tasso di rework di un agente **non è mai auto-dichiarato** per evitare valutazioni viziate. Viene dedotto deterministicamente dagli eventi successivi dello stesso `id_compito` tramite una macchina a stati:
 
-1. Un agente (es. `gemini`) cambia lo stato del compito a `"needs_review"` o `"gate_running"`.
+1. Un agente (es. `gemini`) cambia lo stato del compito a `"da_rivedere"` o `"gate_in_corso"`.
 2. Se l'evento successivo di quel compito ha:
    - `esito_gate` = `"fallito"` (segnalato da `sentinella.py` / agente `locale`), OPPURE
    - `verdetto_umano` = `"respinto"` (segnalato dall'operatore `umano`), OPPURE
