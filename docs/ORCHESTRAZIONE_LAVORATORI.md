@@ -175,15 +175,15 @@ Ogni progetto mantiene il proprio file `eventi.jsonl` isolato in `dati_locali/or
 
 ## Integrazione Automatica
 
-Il framework si autoinstalla all'interno del progetto di destinazione quando questo viene registrato tramite l'interfaccia. L'integrazione esegue:
-1. Creazione delle cartelle di runtime `dati_locali/orchestrazione/` nel percorso di destinazione.
-2. Copia degli schemi di validazione degli eventi `schema/evento.v1.json` e `schema/compito.v1.json`.
-3. Copia dei file di configurazione di esempio `config/comandi.esempio.json` e `config/agenti.esempio.json` se non già presenti.
-4. Installazione locale dei tre script del framework (`registro.py`, `sentinella.py`, `genera_cruscotto.py`) in modo che il progetto possa eseguire la sentinella o registrare eventi in locale in modo indipendente.
-5. Scrittura di `requirements-orchestratore.txt` nel progetto target con le dipendenze runtime richieste dagli script copiati (`jsonschema`, `rfc3339-validator`), da installare separatamente nell'ambiente del progetto.
-6. Aggiornamento automatico del file `.gitignore` del progetto target per escludere tutti i file copiati/gestiti dall'orchestratore, prevenendo commit indesiderati nei repository dei singoli progetti.
+**I progetti target contengono solo dati e configurazione, mai codice dell'orchestratore.** `registro.py` e `sentinella.py` restano un'unica copia centrale in questa cartella; la dashboard li invoca sempre da qui, passando `--config`/`--registro` del progetto target e impostando `cwd` sul progetto target (cosi' `"cartella": "."` nei comandi risolve nel posto giusto). Un aggiornamento dell'orchestratore vale quindi per tutti i progetti integrati, senza dover ri-registrare nulla e senza il rischio di copie disallineate.
 
-**Limite noto**: gli script copiati sono uno snapshot al momento dell'integrazione. Se l'orchestratore evolve (nuove funzioni in `registro.py`, nuove dipendenze), i progetti già integrati restano con le copie vecchie finché non si ri-registra il progetto. Non c'è ancora un meccanismo di versione/aggiornamento automatico — da valutare se il drift diventa un problema pratico.
+Quando un progetto viene registrato tramite l'interfaccia, l'integrazione esegue:
+1. Creazione delle cartelle di runtime `dati_locali/orchestrazione/` nel percorso di destinazione.
+2. Copia degli schemi `schema/evento.v1.json` e `schema/compito.v1.json` come riferimento locale (documentazione): la validazione vera avviene sempre nell'orchestratore centrale con il proprio schema, non con questa copia.
+3. Copia dei file di configurazione di esempio `config/comandi.esempio.json` e `config/agenti.esempio.json` se non già presenti.
+4. Aggiornamento automatico del file `.gitignore` del progetto target per escludere i file dati/config gestiti dall'orchestratore, prevenendo commit indesiderati nei repository dei singoli progetti.
+
+Nei progetti integrati prima di questo cambiamento possono restare copie storiche di `registro.py`/`sentinella.py`/`genera_cruscotto.py`/`requirements-orchestratore.txt`: non vengono più usate dalla dashboard (che chiama sempre lo script centrale) e possono essere cancellate manualmente quando comodo, non serve un'azione immediata.
 
 ## Interfaccia Web (Dashboard)
 

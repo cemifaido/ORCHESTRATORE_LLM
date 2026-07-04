@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import interfaccia
 
 
 class IntegraProgettoTest(unittest.TestCase):
+    def test_integra_progetto_non_copia_piu_script_orchestratore(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest_path = Path(tmp)
+            interfaccia.integra_progetto(dest_path)
+
+            for script in ["registro.py", "sentinella.py", "genera_cruscotto.py"]:
+                self.assertFalse((dest_path / script).exists())
+            self.assertFalse((dest_path / "requirements-orchestratore.txt").exists())
+
     def test_integra_progetto_aggiorna_gitignore_del_target(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             dest_path = Path(tmp)
@@ -16,19 +27,10 @@ class IntegraProgettoTest(unittest.TestCase):
             gitignore_path = dest_path / ".gitignore"
             self.assertTrue(gitignore_path.exists())
             contenuto = gitignore_path.read_text(encoding="utf-8")
-            for regola in ["registro.py", "sentinella.py", "genera_cruscotto.py", "config/comandi.json",
-                           "requirements-orchestratore.txt"]:
+            for regola in ["dati_locali/orchestrazione/", "config/comandi.json", "schema/evento.v1.json"]:
                 self.assertIn(regola, contenuto)
-
-    def test_integra_progetto_scrive_manifest_dipendenze_runtime(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            dest_path = Path(tmp)
-            interfaccia.integra_progetto(dest_path)
-
-            manifest = dest_path / "requirements-orchestratore.txt"
-            self.assertTrue(manifest.exists())
-            contenuto = manifest.read_text(encoding="utf-8")
-            self.assertIn("jsonschema", contenuto)
+            for regola_rimossa in ["registro.py", "sentinella.py", "genera_cruscotto.py"]:
+                self.assertNotIn(regola_rimossa, contenuto)
 
     def test_integra_progetto_non_duplica_regole_gitignore_se_rieseguito(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -37,7 +39,7 @@ class IntegraProgettoTest(unittest.TestCase):
             interfaccia.integra_progetto(dest_path)
 
             contenuto = (dest_path / ".gitignore").read_text(encoding="utf-8")
-            self.assertEqual(contenuto.count("registro.py"), 1)
+            self.assertEqual(contenuto.count("config/comandi.json"), 1)
 
     def test_integra_progetto_preserva_regole_gitignore_preesistenti(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -48,7 +50,7 @@ class IntegraProgettoTest(unittest.TestCase):
 
             contenuto = (dest_path / ".gitignore").read_text(encoding="utf-8")
             self.assertIn("node_modules/", contenuto)
-            self.assertIn("registro.py", contenuto)
+            self.assertIn("config/comandi.json", contenuto)
 
 
 class InterpretaOutputSentinellaTest(unittest.TestCase):
@@ -70,6 +72,44 @@ class InterpretaOutputSentinellaTest(unittest.TestCase):
         dati = interfaccia.interpreta_output_sentinella("traceback boom", "errore reale")
         self.assertEqual(dati["output"], "traceback boom")
         self.assertEqual(dati["stderr"], "errore reale")
+
+
+class EseguiSentinellaTest(unittest.TestCase):
+    def test_esegue_comando_nel_progetto_target_senza_copie_di_script(self) -> None:
+        """Il progetto target ha solo config/comandi.json, nessuna copia di sentinella.py
+        o registro.py: la dashboard deve comunque riuscire a lanciare il comando usando
+        lo script centrale, con cwd e --registro puntati al progetto target."""
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            comandi_path = p_path / "config" / "comandi.json"
+            comandi_path.parent.mkdir(parents=True, exist_ok=True)
+            comandi_path.write_text(json.dumps({
+                "versione_schema": 1,
+                "comandi": {
+                    "prova": {
+                        "cartella": ".",
+                        "argomenti": ["python", "-c", "print('ok-target')"],
+                        "timeout_secondi": 10,
+                        "limite_output_caratteri": 1000,
+                    }
+                }
+            }), encoding="utf-8")
+
+            progetti = [{"id": "target", "nome": "Target", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                risultato = interfaccia.esegui_sentinella(
+                    interfaccia.SentinellaInput(progetto_id="target", comando="prova")
+                )
+
+            self.assertEqual(risultato["status"], "success")
+            self.assertEqual(risultato["dati"]["esito"], "superato")
+            self.assertIn("ok-target", risultato["dati"]["output"])
+
+            self.assertFalse((p_path / "sentinella.py").exists())
+            self.assertFalse((p_path / "registro.py").exists())
+
+            eventi_path = p_path / "dati_locali" / "orchestrazione" / "eventi.jsonl"
+            self.assertTrue(eventi_path.exists())
 
 
 if __name__ == "__main__":

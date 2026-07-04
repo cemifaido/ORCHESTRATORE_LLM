@@ -13,6 +13,7 @@ app = FastAPI(title="Orchestratore LLM — Dashboard")
 
 PERCORSO_PROGETTI = Path("dati_locali") / "progetti.json"
 PERCORSO_HTML = Path("interfaccia.html")
+SCRIPT_SENTINELLA_CENTRALE = Path(__file__).resolve().parent / "sentinella.py"
 
 # Assicura caricamento moduli locali del framework
 sys.path.append(str(Path(".").resolve()))
@@ -50,12 +51,18 @@ def salva_progetti(progetti: list[dict]):
     PERCORSO_PROGETTI.write_text(json.dumps({"progetti": progetti}, indent=2, ensure_ascii=False), encoding="utf-8")
 
 def integra_progetto(dest_path: Path):
-    # 1. Crea directory locali per il registro e configurazioni
+    """Prepara un progetto target: solo dati/config locali, nessun codice orchestratore.
+    registro.py/sentinella.py restano un'unica copia centrale (questa cartella); la
+    dashboard li invoca sempre da qui con --config/--registro e cwd sul progetto target,
+    cosi' un aggiornamento dell'orchestratore vale per tutti i progetti senza dover
+    re-integrare nulla. Vedi docs/ORCHESTRAZIONE_LAVORATORI.md."""
+    # 1. Crea directory locali per dati runtime e configurazioni
     (dest_path / "dati_locali" / "orchestrazione").mkdir(parents=True, exist_ok=True)
     (dest_path / "schema").mkdir(parents=True, exist_ok=True)
     (dest_path / "config").mkdir(parents=True, exist_ok=True)
 
-    # 2. Copia gli schemi se esistono
+    # 2. Copia gli schemi come riferimento locale (documentazione): la validazione vera
+    #    avviene sempre nell'orchestratore centrale con il proprio schema.
     for schema_file in ["evento.v1.json", "compito.v1.json"]:
         src_schema = Path("schema") / schema_file
         if src_schema.exists():
@@ -68,27 +75,10 @@ def integra_progetto(dest_path: Path):
         if src_cfg.exists() and not dest_cfg.exists():
             shutil.copy(src_cfg, dest_cfg)
 
-    # 4. Copia i tre script centrali per esecuzione locale
-    for script in ["registro.py", "sentinella.py", "genera_cruscotto.py"]:
-        src_script = Path(script)
-        dest_script = dest_path / script
-        if src_script.exists():
-            shutil.copy(src_script, dest_script)
-
-    # 5. Scrive il manifest delle dipendenze runtime richieste dagli script copiati
-    #    (registro.py usa jsonschema per la validazione reale dello schema evento).
-    requirements_path = dest_path / "requirements-orchestratore.txt"
-    if not requirements_path.exists():
-        requirements_path.write_text("jsonschema\nrfc3339-validator\n", encoding="utf-8")
-
-    # 6. Aggiorna il file .gitignore del progetto target
+    # 4. Aggiorna il file .gitignore del progetto target
     gitignore_path = dest_path / ".gitignore"
     regole_orchestratore = [
-        "\n# File dell'Orchestratore LLM",
-        "registro.py",
-        "sentinella.py",
-        "genera_cruscotto.py",
-        "requirements-orchestratore.txt",
+        "\n# File dell'Orchestratore LLM (dati/config locali, il codice resta centrale)",
         "dati_locali/orchestrazione/",
         "schema/evento.v1.json",
         "schema/compito.v1.json",
@@ -125,10 +115,15 @@ def index():
         raise HTTPException(status_code=404, detail="File interfaccia.html non trovato")
     return FileResponse(PERCORSO_HTML)
 
-def comandi_disponibili_progetto(p_path: Path) -> list[dict[str, str]]:
+def percorso_comandi_progetto(p_path: Path) -> Path:
     p_comandi_path = p_path / "config" / "comandi.json"
-    if not p_comandi_path.exists():
-        p_comandi_path = p_path / "config" / "comandi.esempio.json"
+    if p_comandi_path.exists():
+        return p_comandi_path
+    return p_path / "config" / "comandi.esempio.json"
+
+
+def comandi_disponibili_progetto(p_path: Path) -> list[dict[str, str]]:
+    p_comandi_path = percorso_comandi_progetto(p_path)
     if not p_comandi_path.exists():
         return []
     try:
@@ -215,19 +210,33 @@ def interpreta_output_sentinella(output_std: str, output_err: str = "") -> dict:
 
 @app.post("/api/sentinella")
 def esegui_sentinella(input_data: SentinellaInput):
+    """Lancia sempre la sentinella centrale (questa cartella), mai una copia nel
+    progetto target: --config/--registro puntano ai file del target e cwd=p_path fa
+    si' che "cartella": "." nei comandi risolva nel progetto giusto. Cosi' un
+    aggiornamento di sentinella.py/registro.py vale per tutti i progetti integrati."""
     progetti = leggi_progetti()
     target = next((p for p in progetti if p["id"] == input_data.progetto_id), None)
     if not target:
         raise HTTPException(status_code=404, detail="Progetto non trovato")
 
     p_path = Path(target["percorso"])
-    sentinella_script = p_path / "sentinella.py"
-    if not sentinella_script.exists():
-        raise HTTPException(status_code=400, detail="sentinella.py non trovato nel progetto di destinazione")
+    percorso_comandi = percorso_comandi_progetto(p_path)
+    if not percorso_comandi.exists():
+        raise HTTPException(
+            status_code=400,
+            detail="Nessuna configurazione comandi trovata nel progetto (config/comandi.json o comandi.esempio.json)",
+        )
+    percorso_registro = p_path / "dati_locali" / "orchestrazione" / "eventi.jsonl"
 
     try:
         completato = subprocess.run(
-            [sys.executable, str(sentinella_script), input_data.comando],
+            [
+                sys.executable,
+                str(SCRIPT_SENTINELLA_CENTRALE),
+                input_data.comando,
+                "--config", str(percorso_comandi),
+                "--registro", str(percorso_registro),
+            ],
             cwd=p_path,
             text=True,
             stdout=subprocess.PIPE,
