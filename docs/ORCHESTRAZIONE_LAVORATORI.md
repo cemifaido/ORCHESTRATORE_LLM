@@ -87,16 +87,15 @@ Campi minimi:
 
 ## Sentinella
 
-La sentinella esegue solo comandi dichiarati in:
-
-`config/comandi.esempio.json`
+La sentinella esegue solo comandi dichiarati in `config/comandi.json` (se presente, altrimenti ripiega su `comandi.esempio.json`).
 
 Ogni comando ha:
 
 - `cartella`;
 - `argomenti`;
 - `timeout_secondi`;
-- `limite_output_caratteri`.
+- `limite_output_caratteri`;
+- `verifiche_connessione` (opzionale): array di URL o indirizzi (es. `["http://localhost:5173"]`) che devono essere raggiungibili via TCP prima di lanciare il test. Se offline, la Sentinella abortisce immediatamente l'avvio e registra `esito_gate` come `"errore_ambiente"`, evitando di calcolare un falso rework.
 
 Non esiste esecuzione shell arbitraria.
 
@@ -174,9 +173,10 @@ Ogni progetto mantiene il proprio file `eventi.jsonl` isolato in `dati_locali/or
 
 Il framework si autoinstalla all'interno del progetto di destinazione quando questo viene registrato tramite l'interfaccia. L'integrazione esegue:
 1. Creazione delle cartelle di runtime `dati_locali/orchestrazione/` nel percorso di destinazione.
-2. Copia dello schema di validazione degli eventi `schema/event.v1.json`.
+2. Copia degli schemi di validazione degli eventi `schema/evento.v1.json` e `schema/compito.v1.json`.
 3. Copia dei file di configurazione di esempio `config/comandi.esempio.json` e `config/agenti.esempio.json` se non già presenti.
 4. Installazione locale dei tre script del framework (`registro.py`, `sentinella.py`, `genera_cruscotto.py`) in modo che il progetto possa eseguire la sentinella o registrare eventi in locale in modo indipendente.
+5. Aggiornamento automatico del file `.gitignore` del progetto target per escludere tutti i file copiati/gestiti dall'orchestratore, prevenendo commit indesiderati nei repository dei singoli progetti.
 
 ## Interfaccia Web (Dashboard)
 

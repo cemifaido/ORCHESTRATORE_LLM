@@ -5,17 +5,21 @@ import argparse
 import hashlib
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 import registro
 
 
-PERCORSO_COMANDI_PREDEFINITO = Path("config") / "comandi.esempio.json"
+_PERCORSO_REAL = Path("config") / "comandi.json"
+_PERCORSO_ESEMPIO = Path("config") / "comandi.esempio.json"
+PERCORSO_COMANDI_PREDEFINITO = _PERCORSO_REAL if _PERCORSO_REAL.exists() else _PERCORSO_ESEMPIO
 PERCORSO_REGISTRO_PREDEFINITO = Path("dati_locali") / "orchestrazione" / "eventi.jsonl"
 PERCORSO_LOG_PREDEFINITO = Path("dati_locali") / "orchestrazione" / "log_comandi"
 
@@ -51,10 +55,36 @@ def salva_log_output(id_evento: str, output: str, cartella_log: Path = PERCORSO_
     }
 
 
+def verifica_connessione(indirizzo: str) -> bool:
+    try:
+        if indirizzo.startswith("http://") or indirizzo.startswith("https://"):
+            parsed = urlparse(indirizzo)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        else:
+            parti = indirizzo.split(":")
+            host = parti[0]
+            port = int(parti[1]) if len(parti) > 1 else 80
+            
+        with socket.create_connection((host, port), timeout=2.0):
+            return True
+    except Exception:
+        return False
+
+
 def esegui(nome: str, comandi: dict) -> tuple[str, int, int, str]:
     if nome not in comandi:
         raise ValueError(f"comando non ammesso: {nome}")
     configurazione = comandi[nome]
+    
+    # Pre-check di rete/infrastruttura
+    risorse = configurazione.get("verifiche_connessione", [])
+    if isinstance(risorse, list) and risorse:
+        for risorsa in risorse:
+            if not verifica_connessione(risorsa):
+                messaggio = f"[Errore Ambiente] La risorsa di rete '{risorsa}' non è raggiungibile. Assicurati che il server sia acceso e in ascolto prima di lanciare il test."
+                return "errore_ambiente", 111, 0, messaggio
+
     argomenti = configurazione.get("argomenti")
     if not isinstance(argomenti, list) or not argomenti:
         raise ValueError(f"argomenti non validi per comando {nome}")

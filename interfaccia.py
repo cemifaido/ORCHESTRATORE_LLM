@@ -57,10 +57,11 @@ def integra_progetto(dest_path: Path):
     (dest_path / "schema").mkdir(parents=True, exist_ok=True)
     (dest_path / "config").mkdir(parents=True, exist_ok=True)
     
-    # 2. Copia schema event.v1.json
-    src_schema = Path("schema") / "event.v1.json"
-    if src_schema.exists():
-        shutil.copy(src_schema, dest_path / "schema" / "event.v1.json")
+    # 2. Copia gli schemi se esistono
+    for schema_file in ["evento.v1.json", "compito.v1.json"]:
+        src_schema = Path("schema") / schema_file
+        if src_schema.exists():
+            shutil.copy(src_schema, dest_path / "schema" / schema_file)
         
     # 3. Copia configurazioni di esempio se non esistono già
     for cfg in ["comandi.esempio.json", "agenti.esempio.json"]:
@@ -76,6 +77,43 @@ def integra_progetto(dest_path: Path):
         if src_script.exists():
             shutil.copy(src_script, dest_script)
 
+    # 5. Aggiorna il file .gitignore del progetto target
+    gitignore_path = dest_path / ".gitignore"
+    regole_orchestratore = [
+        "\n# File dell'Orchestratore LLM",
+        "registro.py",
+        "sentinella.py",
+        "genera_cruscotto.py",
+        "dati_locali/orchestrazione/",
+        "schema/evento.v1.json",
+        "schema/compito.v1.json",
+        "config/comandi.json",
+        "config/comandi.esempio.json",
+        "config/agenti.json",
+        "config/agenti.esempio.json"
+    ]
+    
+    contenuto_attuale = ""
+    if gitignore_path.exists():
+        try:
+            contenuto_attuale = gitignore_path.read_text(encoding="utf-8")
+        except Exception:
+            pass
+            
+    nuove_regole = []
+    for r in regole_orchestratore:
+        if r.strip() and r.strip() not in contenuto_attuale:
+            nuove_regole.append(r)
+            
+    if nuove_regole:
+        try:
+            with open(gitignore_path, "a", encoding="utf-8") as f:
+                if contenuto_attuale and not contenuto_attuale.endswith("\n"):
+                    f.write("\n")
+                f.write("\n".join(nuove_regole) + "\n")
+        except Exception:
+            pass
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     if not PERCORSO_HTML.exists():
@@ -85,6 +123,7 @@ def index():
 @app.get("/api/stato")
 def get_stato():
     progetti = leggi_progetti()
+    progetti_arricchiti = []
     tutti_eventi = []
     progetto_stats = {}
     agente_stats = defaultdict(lambda: {"esecuzioni": 0, "costo": 0.0, "latenza": 0, "rework": 0})
@@ -94,6 +133,25 @@ def get_stato():
         p_nome = proj["nome"]
         p_path = Path(proj["percorso"])
         p_eventi_path = p_path / "dati_locali" / "orchestrazione" / "eventi.jsonl"
+        
+        # Legge comandi whitelistati per il progetto
+        comandi_disponibili = []
+        p_comandi_path = p_path / "config" / "comandi.json"
+        if not p_comandi_path.exists():
+            p_comandi_path = p_path / "config" / "comandi.esempio.json"
+        if p_comandi_path.exists():
+            try:
+                dati_c = json.loads(p_comandi_path.read_text(encoding="utf-8"))
+                comandi_disponibili = list(dati_c.get("comandi", {}).keys())
+            except Exception:
+                pass
+                
+        progetti_arricchiti.append({
+            "id": p_id,
+            "nome": p_nome,
+            "percorso": str(p_path),
+            "comandi": comandi_disponibili
+        })
         
         eventi_progetto = []
         if p_eventi_path.exists():
@@ -132,7 +190,7 @@ def get_stato():
     tutti_eventi.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
 
     return {
-        "progetti": progetti,
+        "progetti": progetti_arricchiti,
         "globali": {
             "progetti_totali": len(progetti),
             "eventi_totali": len(tutti_eventi),
@@ -143,6 +201,7 @@ def get_stato():
         "agente_stats": agente_stats,
         "eventi": tutti_eventi[:50]
     }
+
 
 @app.post("/api/progetti")
 def aggiungi_progetto(proj: ProgettoInput):

@@ -369,9 +369,10 @@
       color: #f87171;
     }
 
-    .status-badge.timeout {
+    .status-badge.timeout, .status-badge.errore_ambiente {
       background: rgba(245, 158, 11, 0.15);
       color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
     }
 
     .status-badge.in_corso, .status-badge.gate_in_corso {
@@ -475,12 +476,7 @@
             <div class="form-group">
               <label for="sentinelCmd">Comando Whitelistato</label>
               <select id="sentinelCmd" required>
-                <option value="stato_git">Stato Git (git status --short)</option>
-                <option value="controllo_diff">Controllo Diff (git diff --check)</option>
-                <option value="controllo_salute">Salute Branch (git status --branch)</option>
-                <option value="test_servizi">Pytest Backend (pytest tests)</option>
-                <option value="test_interfaccia">Vitest Frontend (vitest run)</option>
-                <option value="build_interfaccia">Build Frontend (npm run build)</option>
+                <option value="">Seleziona prima un progetto...</option>
               </select>
             </div>
             <button type="submit" class="btn-action">Lancia Gate Esecuzione</button>
@@ -540,6 +536,7 @@
   <script>
     let costChartInstance = null;
     let runsChartInstance = null;
+    let progettiCorrenti = [];
 
     document.addEventListener("DOMContentLoaded", () => {
       aggiornaDati();
@@ -550,12 +547,16 @@
       document.getElementById("refreshBtn").addEventListener("click", aggiornaDati);
       document.getElementById("addProjectForm").addEventListener("submit", aggiungiProgetto);
       document.getElementById("sentinelForm").addEventListener("submit", eseguiSentinella);
+      
+      // Listener per aggiornare la lista dei comandi quando cambia il progetto
+      document.getElementById("sentinelProj").addEventListener("change", aggiornaComandiSelect);
     });
 
     function showFeedback(text, type = "success") {
       const banner = document.getElementById("feedbackBanner");
       banner.textContent = text;
       banner.className = "banner " + type;
+      banner.style.display = "block";
       setTimeout(() => {
         banner.style.display = "none";
       }, 5000);
@@ -573,8 +574,13 @@
         document.getElementById("valCost").textContent = `$${data.globali.costo_totale.toFixed(4)}`;
         document.getElementById("valLatency").textContent = `${data.globali.latenza_totale.toLocaleString()} ms`;
 
-        // 2. Select Sentinella
+        // Salva progetti correnti globalmente
+        progettiCorrenti = data.progetti;
+
+        // 2. Select Sentinella (Preserva il progetto selezionato)
         const sentinelSelect = document.getElementById("sentinelProj");
+        const prevSelectedProj = sentinelSelect.value;
+        
         sentinelSelect.innerHTML = "";
         data.progetti.forEach(p => {
           const opt = document.createElement("option");
@@ -582,6 +588,13 @@
           opt.textContent = p.nome;
           sentinelSelect.appendChild(opt);
         });
+
+        if (prevSelectedProj && data.progetti.some(p => p.id === prevSelectedProj)) {
+          sentinelSelect.value = prevSelectedProj;
+        }
+
+        // Popola/filtra la lista dei comandi
+        aggiornaComandiSelect();
 
         // 3. Progetti list
         const pList = document.getElementById("projectsList");
@@ -621,7 +634,7 @@
               <td>${ev.timestamp || '—'}</td>
               <td><span class="tag-project">${ev._progetto_nome || '—'}</span></td>
               <td>${ev.id_compito || '—'}</td>
-              <td><span class="tag-agent">${ev.agent || '—'}</span></td>
+              <td><span class="tag-agent">${ev.agente || '—'}</span></td>
               <td>${ev.tipo_compito || '—'}</td>
               <td><span class="status-badge ${ev.stato || ''}">${ev.stato || '—'}</span></td>
               <td><span class="status-badge ${ev.esito_gate || ''}">${ev.esito_gate || '—'}</span></td>
@@ -637,6 +650,50 @@
 
       } catch (err) {
         showFeedback(`Errore nel caricamento dei dati: ${err.message}`, "error");
+      }
+    }
+
+    function aggiornaComandiSelect() {
+      const projSelect = document.getElementById("sentinelProj");
+      const cmdSelect = document.getElementById("sentinelCmd");
+      const selectedProjId = projSelect.value;
+      const prevSelectedCmd = cmdSelect.value;
+
+      cmdSelect.innerHTML = "";
+
+      const proj = progettiCorrenti.find(p => p.id === selectedProjId);
+      if (!proj || !proj.comandi || proj.comandi.length === 0) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "Nessun comando configurato";
+        cmdSelect.appendChild(opt);
+        return;
+      }
+
+      // Mappa nomi visivi amichevoli per i comandi noti
+      const nomiComandi = {
+        "stato_git": "Stato Git (git status --short)",
+        "controllo_diff": "Controllo Diff (git diff --check)",
+        "controllo_salute": "Salute Branch (git status --branch)",
+        "test_servizi": "Test Servizi (unittest / pytest)",
+        "test_completi": "Esegui suite test completa",
+        "test_backend": "Test Backend (pytest)",
+        "test_frontend": "Test Frontend (vitest / npm run test)",
+        "test_pytest": "Test Pytest",
+        "controllo_qualita": "Controllo Qualità (Ruff/Mypy/Xenon)",
+        "build_interfaccia": "Build Frontend (npm run build)",
+        "test_interfaccia": "Test Interfaccia"
+      };
+
+      proj.comandi.forEach(cmd => {
+        const opt = document.createElement("option");
+        opt.value = cmd;
+        opt.textContent = nomiComandi[cmd] || cmd;
+        cmdSelect.appendChild(opt);
+      });
+
+      if (prevSelectedCmd && proj.comandi.includes(prevSelectedCmd)) {
+        cmdSelect.value = prevSelectedCmd;
       }
     }
 
