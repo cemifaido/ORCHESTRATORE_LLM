@@ -61,7 +61,9 @@ Il registro è un file JSONL append-only:
 
 `dati_locali/orchestrazione/eventi.jsonl`
 
-Ogni riga è validata da `schema/evento.v1.json`.
+Ogni riga è validata da `schema/evento.v1.json` con la libreria `jsonschema` (Draft 2020-12 reale: type union, `format: date-time`, enum, ecc. — non un sottoinsieme fatto a mano). I due errori più comuni (campi obbligatori mancanti, campi non previsti) restano in messaggi italiani; gli altri usano il testo di `jsonschema` prefissato dal campo.
+
+Un registro presente ma illeggibile (JSON corrotto o evento non conforme allo schema) non viene mai presentato come "nessun evento": sia la dashboard (`interfaccia.py`) sia `genera_cruscotto.py` mostrano esplicitamente quale progetto ha il registro corrotto e perché, invece di azzerare silenziosamente le statistiche.
 
 I dati runtime non si committano: possono contenere path, costi, output e informazioni operative.
 
@@ -178,7 +180,10 @@ Il framework si autoinstalla all'interno del progetto di destinazione quando que
 2. Copia degli schemi di validazione degli eventi `schema/evento.v1.json` e `schema/compito.v1.json`.
 3. Copia dei file di configurazione di esempio `config/comandi.esempio.json` e `config/agenti.esempio.json` se non già presenti.
 4. Installazione locale dei tre script del framework (`registro.py`, `sentinella.py`, `genera_cruscotto.py`) in modo che il progetto possa eseguire la sentinella o registrare eventi in locale in modo indipendente.
-5. Aggiornamento automatico del file `.gitignore` del progetto target per escludere tutti i file copiati/gestiti dall'orchestratore, prevenendo commit indesiderati nei repository dei singoli progetti.
+5. Scrittura di `requirements-orchestratore.txt` nel progetto target con le dipendenze runtime richieste dagli script copiati (`jsonschema`, `rfc3339-validator`), da installare separatamente nell'ambiente del progetto.
+6. Aggiornamento automatico del file `.gitignore` del progetto target per escludere tutti i file copiati/gestiti dall'orchestratore, prevenendo commit indesiderati nei repository dei singoli progetti.
+
+**Limite noto**: gli script copiati sono uno snapshot al momento dell'integrazione. Se l'orchestratore evolve (nuove funzioni in `registro.py`, nuove dipendenze), i progetti già integrati restano con le copie vecchie finché non si ri-registra il progetto. Non c'è ancora un meccanismo di versione/aggiornamento automatico — da valutare se il drift diventa un problema pratico.
 
 ## Interfaccia Web (Dashboard)
 

@@ -280,6 +280,16 @@
       color: #f87171;
     }
 
+    .project-error {
+      margin-top: 0.5rem;
+      padding: 0.4rem 0.6rem;
+      border-radius: 6px;
+      background: rgba(244, 63, 94, 0.12);
+      border: 1px solid rgba(244, 63, 94, 0.35);
+      color: #f87171;
+      font-size: 0.8rem;
+    }
+
     /* Charts Container */
     .chart-container {
       position: relative;
@@ -552,6 +562,12 @@
       document.getElementById("sentinelProj").addEventListener("change", aggiornaComandiSelect);
     });
 
+    function escapeHtml(testo) {
+      const div = document.createElement("div");
+      div.textContent = testo ?? "";
+      return div.innerHTML;
+    }
+
     function showFeedback(text, type = "success") {
       const banner = document.getElementById("feedbackBanner");
       banner.textContent = text;
@@ -606,6 +622,9 @@
             const pStat = data.progetto_stats[p.id] || { esecuzioni: 0, costo: 0, latenza: 0, rework: 0 };
             const card = document.createElement("div");
             card.className = "project-card";
+            const avviso = pStat.errore
+              ? `<div class="project-error">⚠ Registro non leggibile: ${escapeHtml(pStat.errore)}</div>`
+              : "";
             card.innerHTML = `
               <div class="project-head">
                 <span class="project-name">${p.nome}</span>
@@ -617,6 +636,7 @@
                 <span>Costo: <b>$${pStat.costo.toFixed(4)}</b></span>
                 <span>Rework: <b class="badge rework">${pStat.rework}</b></span>
               </div>
+              ${avviso}
             `;
             pList.appendChild(card);
           });
@@ -800,7 +820,7 @@
         }
 
         const esito = data.status;
-        const gateInfo = data.dati.esito_gate || "non_eseguito";
+        const gateInfo = data.dati.esito || data.dati.evento?.esito_gate || "non_eseguito";
         const returncode = data.returncode;
         const output = data.dati.output || "";
 

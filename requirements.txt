@@ -1,3 +1,5 @@
 fastapi
 uvicorn
 pydantic
+jsonschema
+rfc3339-validator

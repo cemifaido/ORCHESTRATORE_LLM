@@ -41,6 +41,23 @@ class RegistroTest(unittest.TestCase):
         errori = registro.valida_evento(evento)
         self.assertTrue(any("campi non previsti" in errore for errore in errori))
 
+    def test_valida_rifiuta_union_type_non_corrispondente(self) -> None:
+        evento = self.evento_valido()
+        evento["voto_qualita"] = "alto"  # schema: ["integer", "null"]
+        errori = registro.valida_evento(evento)
+        self.assertTrue(any("voto_qualita" in errore for errore in errori))
+
+    def test_valida_accetta_null_in_union_type(self) -> None:
+        evento = self.evento_valido()
+        evento["voto_qualita"] = None
+        self.assertEqual(registro.valida_evento(evento), [])
+
+    def test_valida_rifiuta_timestamp_non_conforme_a_date_time(self) -> None:
+        evento = self.evento_valido()
+        evento["timestamp"] = "non-e-una-data"
+        errori = registro.valida_evento(evento)
+        self.assertTrue(any("timestamp" in errore for errore in errori))
+
     def test_costruisci_evento_non_emette_rework(self) -> None:
         args = argparse.Namespace(
             id_evento="",
@@ -102,6 +119,21 @@ class RegistroTest(unittest.TestCase):
             tutti_eventi, progetto_stats = registro.carica_eventi_multi_progetto(progetti)
             self.assertEqual(tutti_eventi, [])
             self.assertEqual(progetto_stats["vuoto"]["esecuzioni"], 0)
+            self.assertNotIn("errore", progetto_stats["vuoto"])
+
+    def test_carica_eventi_multi_progetto_segnala_registro_corrotto_invece_di_nasconderlo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp) / "progetto_rotto"
+            percorso_eventi = p_path / "dati_locali" / "orchestrazione" / "eventi.jsonl"
+            percorso_eventi.parent.mkdir(parents=True, exist_ok=True)
+            percorso_eventi.write_text("questa non e' una riga json valida\n", encoding="utf-8")
+
+            progetti = [{"id": "progetto_rotto", "nome": "Progetto Rotto", "percorso": str(p_path)}]
+            tutti_eventi, progetto_stats = registro.carica_eventi_multi_progetto(progetti)
+
+            self.assertEqual(tutti_eventi, [])
+            self.assertIn("errore", progetto_stats["progetto_rotto"])
+            self.assertIn("corrotto", progetto_stats["progetto_rotto"]["errore"])
 
 
 if __name__ == "__main__":

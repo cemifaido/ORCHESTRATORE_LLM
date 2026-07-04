@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import jsonschema
+
 
 RADICE = Path(__file__).resolve().parent
 PERCORSO_REGISTRO_PREDEFINITO = Path("dati_locali") / "orchestrazione" / "eventi.jsonl"
@@ -38,60 +40,32 @@ def lista_csv(valore: str) -> list[str]:
     return [parte.strip() for parte in valore.split(",") if parte.strip()]
 
 
-def _tipo_valido(valore: Any, tipo_schema: str) -> bool:
-    if tipo_schema == "string":
-        return isinstance(valore, str)
-    if tipo_schema == "integer":
-        return isinstance(valore, int) and not isinstance(valore, bool)
-    if tipo_schema == "number":
-        return isinstance(valore, (int, float)) and not isinstance(valore, bool)
-    if tipo_schema == "array":
-        return isinstance(valore, list)
-    if tipo_schema == "object":
-        return isinstance(valore, dict)
-    return True
+def _validatore_per_schema(schema: dict[str, Any]) -> jsonschema.protocols.Validator:
+    classe = jsonschema.validators.validator_for(schema)
+    classe.check_schema(schema)
+    return classe(schema, format_checker=jsonschema.FormatChecker())
 
 
-def _valida_valore(campo: str, valore: Any, regola: dict[str, Any]) -> list[str]:
-    errori: list[str] = []
-    if "const" in regola and valore != regola["const"]:
-        errori.append(f"{campo} deve essere {regola['const']!r}")
-    tipo = regola.get("type")
-    if isinstance(tipo, str) and not _tipo_valido(valore, tipo):
-        errori.append(f"{campo} deve essere di tipo {tipo}")
-    if "enum" in regola and valore not in regola["enum"]:
-        errori.append(f"{campo} non valido: {valore!r}")
-    if isinstance(valore, (int, float)) and "minimum" in regola and valore < regola["minimum"]:
-        errori.append(f"{campo} deve essere >= {regola['minimum']}")
-    if isinstance(valore, str) and "minLength" in regola and len(valore) < regola["minLength"]:
-        errori.append(f"{campo} deve avere almeno {regola['minLength']} caratteri")
-    if isinstance(valore, list) and regola.get("items", {}).get("type") == "string":
-        if not all(isinstance(item, str) for item in valore):
-            errori.append(f"{campo} deve contenere solo stringhe")
-    return errori
+def _messaggio_errore(errore: jsonschema.exceptions.ValidationError, evento: dict[str, Any]) -> str:
+    # I due casi piu' comuni restano in italiano per compatibilita' con l'uso esistente
+    # (CLI e dashboard); gli altri usano il messaggio di jsonschema, con vera semantica
+    # JSON Schema (union type, format, minimum, ecc.) al prezzo di un testo in inglese.
+    if errore.validator == "required":
+        mancanti = sorted(set(errore.validator_value) - set(evento))
+        return "campi obbligatori mancanti: " + ", ".join(mancanti)
+    if errore.validator == "additionalProperties":
+        proprieta = errore.schema.get("properties", {})
+        extra = sorted(set(evento) - set(proprieta))
+        return "campi non previsti dallo schema: " + ", ".join(extra)
+    campo = ".".join(str(parte) for parte in errore.absolute_path)
+    return f"{campo}: {errore.message}" if campo else errore.message
 
 
 def valida_evento(evento: dict[str, Any], schema: dict[str, Any] | None = None) -> list[str]:
     schema = schema or carica_schema_evento()
-    proprieta = schema.get("properties", {})
-    obbligatori = set(schema.get("required", []))
-    errori: list[str] = []
-
-    mancanti = sorted(obbligatori - set(evento))
-    if mancanti:
-        errori.append("campi obbligatori mancanti: " + ", ".join(mancanti))
-
-    if schema.get("additionalProperties") is False:
-        extra = sorted(set(evento) - set(proprieta))
-        if extra:
-            errori.append("campi non previsti dallo schema: " + ", ".join(extra))
-
-    for campo, valore in evento.items():
-        regola = proprieta.get(campo)
-        if not isinstance(regola, dict):
-            continue
-        errori.extend(_valida_valore(campo, valore, regola))
-    return errori
+    validatore = _validatore_per_schema(schema)
+    errori = sorted(validatore.iter_errors(evento), key=lambda e: list(e.absolute_path))
+    return [_messaggio_errore(errore, evento) for errore in errori]
 
 
 def aggiungi_evento(percorso: Path, evento: dict[str, Any]) -> None:
@@ -155,18 +129,24 @@ def metriche(eventi: list[dict[str, Any]]) -> dict[str, dict[str, float | int]]:
     return statistiche
 
 
-def leggi_eventi_progetto(percorso_progetto: Path) -> list[dict[str, Any]]:
+def leggi_eventi_progetto(percorso_progetto: Path) -> tuple[list[dict[str, Any]], str | None]:
+    """Legge gli eventi di un progetto. Ritorna (eventi, errore): errore e' None solo se
+    il registro non esiste ancora (progetto nuovo) o e' stato letto senza problemi. Un
+    registro presente ma corrotto NON deve sembrare un progetto senza eventi: l'errore va
+    riportato a chi chiama, non inghiottito, perche' questo e' uno strumento di controllo."""
     percorso_eventi = percorso_progetto / "dati_locali" / "orchestrazione" / "eventi.jsonl"
     if not percorso_eventi.exists():
-        return []
+        return [], None
     try:
-        return leggi_eventi(percorso_eventi)
-    except Exception:
-        return []
+        return leggi_eventi(percorso_eventi), None
+    except Exception as errore:
+        return [], f"registro corrotto ({percorso_eventi}): {errore}"
 
 
-def statistiche_progetto(p_id: str, p_nome: str, p_path: Path, eventi_progetto: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
+def statistiche_progetto(
+    p_id: str, p_nome: str, p_path: Path, eventi_progetto: list[dict[str, Any]], errore: str | None = None
+) -> dict[str, Any]:
+    stat = {
         "nome": p_nome,
         "percorso": str(p_path),
         "esecuzioni": len(eventi_progetto),
@@ -175,20 +155,25 @@ def statistiche_progetto(p_id: str, p_nome: str, p_path: Path, eventi_progetto: 
         "rework": sum(1 for ev in eventi_progetto if evento_indica_rework(ev)),
         "id": p_id,
     }
+    if errore:
+        stat["errore"] = errore
+    return stat
 
 
 def carica_eventi_multi_progetto(progetti: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
-    """Legge gli eventi di piu progetti, li etichetta e calcola le statistiche per progetto."""
+    """Legge gli eventi di piu progetti, li etichetta e calcola le statistiche per progetto.
+    Un progetto con registro corrotto contribuisce 0 eventi alle aggregazioni ma la sua voce
+    in progetto_stats porta il campo "errore": non deve sparire nel conteggio globale."""
     tutti_eventi: list[dict[str, Any]] = []
     progetto_stats: dict[str, dict[str, Any]] = {}
     for proj in progetti:
         p_id, p_nome, p_path = proj["id"], proj["nome"], Path(proj["percorso"])
-        eventi_progetto = leggi_eventi_progetto(p_path)
+        eventi_progetto, errore = leggi_eventi_progetto(p_path)
         for evento in eventi_progetto:
             evento["_progetto_nome"] = p_nome
             evento["_progetto_id"] = p_id
         tutti_eventi.extend(eventi_progetto)
-        progetto_stats[p_id] = statistiche_progetto(p_id, p_nome, p_path, eventi_progetto)
+        progetto_stats[p_id] = statistiche_progetto(p_id, p_nome, p_path, eventi_progetto, errore)
     return tutti_eventi, progetto_stats
 
 

@@ -49,6 +49,19 @@ class RenderizzaTest(unittest.TestCase):
             markdown = genera_cruscotto.renderizza(progetti)
             self.assertIn("Eventi totali registrati: **0**", markdown)
 
+    def test_renderizza_segnala_registro_corrotto_invece_di_nasconderlo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp) / "progetto_rotto"
+            percorso_eventi = p_path / "dati_locali" / "orchestrazione" / "eventi.jsonl"
+            percorso_eventi.parent.mkdir(parents=True, exist_ok=True)
+            percorso_eventi.write_text("non e' json valido\n", encoding="utf-8")
+
+            progetti = [{"id": "progetto_rotto", "nome": "Progetto Rotto", "percorso": str(p_path)}]
+            markdown = genera_cruscotto.renderizza(progetti)
+
+            self.assertIn("Registri non leggibili", markdown)
+            self.assertIn("Progetto Rotto", markdown)
+
 
 if __name__ == "__main__":
     unittest.main()

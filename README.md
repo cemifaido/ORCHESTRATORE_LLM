@@ -8,7 +8,7 @@ Il principio è semplice:
 
 ## Componenti
 
-- `registro.py` — appende e valida eventi nel registro JSONL.
+- `registro.py` — appende e valida (con `jsonschema`) eventi nel registro JSONL.
 - `genera_cruscotto.py` — genera un cruscotto Markdown dal registro.
 - `sentinella.py` — esegue solo comandi dichiarati in whitelist e registra l'esito.
 - `schema/` — schemi versionati per eventi e compiti.

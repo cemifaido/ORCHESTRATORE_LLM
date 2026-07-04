@@ -61,6 +61,12 @@ def renderizza(progetti: list[dict]) -> str:
     for stat in sorted(progetto_stats.values(), key=lambda s: s["nome"]):
         righe.append(f"| {stat['nome']} | {stat['esecuzioni']} | {denaro(stat['costo'])} | {stat['latenza']} | {stat['rework']} |")
 
+    progetti_con_errore = [stat for stat in progetto_stats.values() if stat.get("errore")]
+    if progetti_con_errore:
+        righe.extend(["", "## ⚠ Registri non leggibili", ""])
+        for stat in sorted(progetti_con_errore, key=lambda s: s["nome"]):
+            righe.append(f"- **{stat['nome']}**: {stat['errore']}")
+
     righe.extend([
         "",
         "## Per Agente (Globale)",

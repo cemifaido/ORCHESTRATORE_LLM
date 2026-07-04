@@ -75,13 +75,20 @@ def integra_progetto(dest_path: Path):
         if src_script.exists():
             shutil.copy(src_script, dest_script)
 
-    # 5. Aggiorna il file .gitignore del progetto target
+    # 5. Scrive il manifest delle dipendenze runtime richieste dagli script copiati
+    #    (registro.py usa jsonschema per la validazione reale dello schema evento).
+    requirements_path = dest_path / "requirements-orchestratore.txt"
+    if not requirements_path.exists():
+        requirements_path.write_text("jsonschema\nrfc3339-validator\n", encoding="utf-8")
+
+    # 6. Aggiorna il file .gitignore del progetto target
     gitignore_path = dest_path / ".gitignore"
     regole_orchestratore = [
         "\n# File dell'Orchestratore LLM",
         "registro.py",
         "sentinella.py",
         "genera_cruscotto.py",
+        "requirements-orchestratore.txt",
         "dati_locali/orchestrazione/",
         "schema/evento.v1.json",
         "schema/compito.v1.json",
@@ -196,6 +203,16 @@ def aggiungi_progetto(proj: ProgettoInput):
     salva_progetti(progetti)
     return {"status": "ok", "progetto": nuovo}
 
+def interpreta_output_sentinella(output_std: str, output_err: str = "") -> dict:
+    """sentinella.py stampa un unico blob JSON (indentato, multi-riga) su stdout e i
+    messaggi di avanzamento su stderr. Va decodificato lo stdout per intero: prendere
+    solo l'ultima riga (euristica precedente) restituisce "}" con JSON indentato."""
+    try:
+        return json.loads(output_std.strip())
+    except Exception:
+        return {"output": output_std, "stderr": output_err}
+
+
 @app.post("/api/sentinella")
 def esegui_sentinella(input_data: SentinellaInput):
     progetti = leggi_progetti()
@@ -214,18 +231,11 @@ def esegui_sentinella(input_data: SentinellaInput):
             cwd=p_path,
             text=True,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             timeout=180,
             shell=False
         )
-        # Tenta di decodificare l'output JSON emesso da sentinella.py
-        output_std = completato.stdout or ""
-        dati_output = {}
-        try:
-            # sentinella.py stampa l'evento JSON alla fine
-            dati_output = json.loads(output_std.strip().splitlines()[-1])
-        except Exception:
-            dati_output = {"output": output_std}
+        dati_output = interpreta_output_sentinella(completato.stdout or "", completato.stderr or "")
 
         return {
             "status": "success" if completato.returncode == 0 else "failed",
