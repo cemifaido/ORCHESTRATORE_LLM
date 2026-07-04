@@ -1,0 +1,11 @@
+[tool.ruff]
+line-length = 160
+exclude = ["dati_locali", ".venv", "venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+exclude = ["dati_locali", ".venv", "venv"]

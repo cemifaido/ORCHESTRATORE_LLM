@@ -99,6 +99,8 @@ Ogni comando ha:
 
 Non esiste esecuzione shell arbitraria.
 
+Il quality gate minimo (lint, type check, complessità) è dichiarato come comandi whitelistati come gli altri: `controllo_lint` (ruff), `controllo_tipi` (mypy), `controllo_complessita` (xenon, soglie `--max-absolute C --max-modules B --max-average B`). Le dipendenze sono in `requirements-dev.txt`, separate da quelle di runtime.
+
 ## Routing
 
 All'inizio il routing resta tabellare:

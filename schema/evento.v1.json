@@ -73,6 +73,7 @@
         "gate_in_corso",
         "passato",
         "fallito",
+        "errore_ambiente",
         "accettato",
         "respinto"
       ]

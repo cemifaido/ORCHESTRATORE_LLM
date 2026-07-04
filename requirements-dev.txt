@@ -1,0 +1,5 @@
+# Strumenti di quality gate per lo sviluppo (lint, type check, complessita).
+# Non servono a runtime: installare solo in locale/CI.
+ruff
+mypy
+xenon

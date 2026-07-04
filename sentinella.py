@@ -61,11 +61,13 @@ def verifica_connessione(indirizzo: str) -> bool:
             parsed = urlparse(indirizzo)
             host = parsed.hostname or "localhost"
             port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        elif ":" in indirizzo:
+            host, _, porta = indirizzo.rpartition(":")
+            port = int(porta)
         else:
-            parti = indirizzo.split(":")
-            host = parti[0]
-            port = int(parti[1]) if len(parti) > 1 else 80
-            
+            host = indirizzo
+            port = 80
+
         with socket.create_connection((host, port), timeout=2.0):
             return True
     except Exception:
@@ -76,13 +78,16 @@ def esegui(nome: str, comandi: dict) -> tuple[str, int, int, str]:
     if nome not in comandi:
         raise ValueError(f"comando non ammesso: {nome}")
     configurazione = comandi[nome]
-    
+
     # Pre-check di rete/infrastruttura
     risorse = configurazione.get("verifiche_connessione", [])
     if isinstance(risorse, list) and risorse:
         for risorsa in risorse:
             if not verifica_connessione(risorsa):
-                messaggio = f"[Errore Ambiente] La risorsa di rete '{risorsa}' non è raggiungibile. Assicurati che il server sia acceso e in ascolto prima di lanciare il test."
+                messaggio = (
+                    f"[Errore Ambiente] La risorsa di rete '{risorsa}' non è raggiungibile. "
+                    "Assicurati che il server sia acceso e in ascolto prima di lanciare il test."
+                )
                 return "errore_ambiente", 111, 0, messaggio
 
     argomenti = configurazione.get("argomenti")
@@ -120,13 +125,20 @@ def esegui(nome: str, comandi: dict) -> tuple[str, int, int, str]:
         esito = "superato" if codice == 0 else "fallito"
     except subprocess.TimeoutExpired as errore:
         codice = 124
-        output = errore.stdout or ""
-        if isinstance(output, bytes):
-            output = output.decode(errors="replace")
+        output_parziale = errore.stdout or ""
+        output = output_parziale.decode(errors="replace") if isinstance(output_parziale, bytes) else output_parziale
         esito = "timeout"
 
     latenza_ms = int((time.perf_counter() - inizio) * 1000)
     return esito, codice, latenza_ms, tronca(output, limite_output)
+
+
+def determina_stato(esito: str) -> str:
+    if esito == "superato":
+        return "passato"
+    if esito == "errore_ambiente":
+        return "errore_ambiente"
+    return "fallito"
 
 
 def main() -> int:
@@ -153,7 +165,7 @@ def main() -> int:
         "id_compito": args.id_compito,
         "agente": "locale",
         "tipo_compito": "monitoraggio" if esito == "superato" else "errore_test",
-        "stato": "passato" if esito == "superato" else "fallito",
+        "stato": determina_stato(esito),
         "esito_gate": esito,
         "verdetto_umano": "non_revisionato",
         "costo_stimato_usd": 0.0,

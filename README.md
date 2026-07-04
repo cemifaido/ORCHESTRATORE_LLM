@@ -52,6 +52,19 @@ python -B -m unittest discover -s tests -v
 
 Coprono validazione schema, rifiuto dei campi extra, rework derivato, sentinella whitelistata e adapter LiteLLM opzionale.
 
+## Quality gate
+
+Lint, type check e controllo complessità sono in `requirements-dev.txt` (non servono a runtime):
+
+```powershell
+pip install -r requirements-dev.txt
+python -m ruff check .
+python -m mypy .
+python -m xenon --max-absolute C --max-modules B --max-average B .
+```
+
+Sono richiamabili anche come comandi whitelistati dalla sentinella: `controllo_lint`, `controllo_tipi`, `controllo_complessita` (vedi `config/comandi.json`).
+
 ## Regole non negoziabili
 
 1. Il LLM locale non modifica codice di produzione.

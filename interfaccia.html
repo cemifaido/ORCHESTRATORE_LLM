@@ -670,29 +670,14 @@
         return;
       }
 
-      // Mappa nomi visivi amichevoli per i comandi noti
-      const nomiComandi = {
-        "stato_git": "Stato Git (git status --short)",
-        "controllo_diff": "Controllo Diff (git diff --check)",
-        "controllo_salute": "Salute Branch (git status --branch)",
-        "test_servizi": "Test Servizi (unittest / pytest)",
-        "test_completi": "Esegui suite test completa",
-        "test_backend": "Test Backend (pytest)",
-        "test_frontend": "Test Frontend (vitest / npm run test)",
-        "test_pytest": "Test Pytest",
-        "controllo_qualita": "Controllo Qualità (Ruff/Mypy/Xenon)",
-        "build_interfaccia": "Build Frontend (npm run build)",
-        "test_interfaccia": "Test Interfaccia"
-      };
-
       proj.comandi.forEach(cmd => {
         const opt = document.createElement("option");
-        opt.value = cmd;
-        opt.textContent = nomiComandi[cmd] || cmd;
+        opt.value = cmd.nome;
+        opt.textContent = cmd.descrizione || cmd.nome;
         cmdSelect.appendChild(opt);
       });
 
-      if (prevSelectedCmd && proj.comandi.includes(prevSelectedCmd)) {
+      if (prevSelectedCmd && proj.comandi.some(cmd => cmd.nome === prevSelectedCmd)) {
         cmdSelect.value = prevSelectedCmd;
       }
     }

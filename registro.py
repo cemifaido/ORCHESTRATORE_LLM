@@ -133,7 +133,7 @@ def media_voto(somma: int, conteggio: int) -> float | None:
 
 
 def metriche(eventi: list[dict[str, Any]]) -> dict[str, dict[str, float | int]]:
-    statistiche = defaultdict(lambda: {
+    statistiche: defaultdict[str, dict[str, float | int]] = defaultdict(lambda: {
         "esecuzioni": 0, "costo": 0.0, "latenza": 0, "rework": 0,
         "voto_q_somma": 0, "voto_q_n": 0, "voto_v_somma": 0, "voto_v_n": 0,
     })
@@ -153,6 +153,43 @@ def metriche(eventi: list[dict[str, Any]]) -> dict[str, dict[str, float | int]]:
             statistiche[agente]["voto_v_somma"] += vv
             statistiche[agente]["voto_v_n"] += 1
     return statistiche
+
+
+def leggi_eventi_progetto(percorso_progetto: Path) -> list[dict[str, Any]]:
+    percorso_eventi = percorso_progetto / "dati_locali" / "orchestrazione" / "eventi.jsonl"
+    if not percorso_eventi.exists():
+        return []
+    try:
+        return leggi_eventi(percorso_eventi)
+    except Exception:
+        return []
+
+
+def statistiche_progetto(p_id: str, p_nome: str, p_path: Path, eventi_progetto: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "nome": p_nome,
+        "percorso": str(p_path),
+        "esecuzioni": len(eventi_progetto),
+        "costo": sum(float(ev.get("costo_stimato_usd") or 0.0) for ev in eventi_progetto),
+        "latenza": sum(int(ev.get("latenza_ms") or 0) for ev in eventi_progetto),
+        "rework": sum(1 for ev in eventi_progetto if evento_indica_rework(ev)),
+        "id": p_id,
+    }
+
+
+def carica_eventi_multi_progetto(progetti: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    """Legge gli eventi di piu progetti, li etichetta e calcola le statistiche per progetto."""
+    tutti_eventi: list[dict[str, Any]] = []
+    progetto_stats: dict[str, dict[str, Any]] = {}
+    for proj in progetti:
+        p_id, p_nome, p_path = proj["id"], proj["nome"], Path(proj["percorso"])
+        eventi_progetto = leggi_eventi_progetto(p_path)
+        for evento in eventi_progetto:
+            evento["_progetto_nome"] = p_nome
+            evento["_progetto_id"] = p_id
+        tutti_eventi.extend(eventi_progetto)
+        progetto_stats[p_id] = statistiche_progetto(p_id, p_nome, p_path, eventi_progetto)
+    return tutti_eventi, progetto_stats
 
 
 def costruisci_evento(args: argparse.Namespace) -> dict[str, Any]:

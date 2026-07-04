@@ -2,6 +2,7 @@
   "versione_schema": 1,
   "comandi": {
     "stato_git": {
+      "descrizione": "Stato Git (git status --short)",
       "cartella": ".",
       "argomenti": [
         "git",
@@ -12,6 +13,7 @@
       "limite_output_caratteri": 20000
     },
     "controllo_diff": {
+      "descrizione": "Controllo Diff (git diff --check)",
       "cartella": ".",
       "argomenti": [
         "git",
@@ -22,6 +24,7 @@
       "limite_output_caratteri": 20000
     },
     "build_interfaccia": {
+      "descrizione": "Build Frontend (npm run build)",
       "cartella": "interfaccia",
       "argomenti": [
         "npm",
@@ -32,6 +35,7 @@
       "limite_output_caratteri": 60000
     },
     "test_servizi": {
+      "descrizione": "Test Servizi (pytest)",
       "cartella": ".",
       "argomenti": [
         ".venv/Scripts/python.exe",
@@ -44,6 +48,7 @@
       "limite_output_caratteri": 60000
     },
     "test_interfaccia": {
+      "descrizione": "Test Frontend (vitest / npm run test)",
       "cartella": "interfaccia",
       "argomenti": [
         "npm",
@@ -54,6 +59,7 @@
       "limite_output_caratteri": 60000
     },
     "controllo_salute": {
+      "descrizione": "Salute Branch (git status --branch)",
       "cartella": ".",
       "argomenti": [
         "git",
@@ -63,6 +69,46 @@
       ],
       "timeout_secondi": 30,
       "limite_output_caratteri": 20000
+    },
+    "controllo_lint": {
+      "descrizione": "Lint (ruff check)",
+      "cartella": ".",
+      "argomenti": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "ruff",
+        "check",
+        "."
+      ],
+      "timeout_secondi": 60,
+      "limite_output_caratteri": 40000
+    },
+    "controllo_tipi": {
+      "descrizione": "Type check (mypy)",
+      "cartella": ".",
+      "argomenti": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "mypy",
+        "."
+      ],
+      "timeout_secondi": 120,
+      "limite_output_caratteri": 40000
+    },
+    "controllo_complessita": {
+      "descrizione": "Complessita (xenon)",
+      "cartella": ".",
+      "argomenti": [
+        ".venv/Scripts/python.exe",
+        "-m",
+        "xenon",
+        "--max-absolute", "C",
+        "--max-modules", "B",
+        "--max-average", "B",
+        "."
+      ],
+      "timeout_secondi": 60,
+      "limite_output_caratteri": 40000
     }
   }
 }
