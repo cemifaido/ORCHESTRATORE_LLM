@@ -29,7 +29,9 @@ Questo indice è il punto di ingresso per copiare o collegare la documentazione 
 - [genera_cruscotto.py](../genera_cruscotto.py) — riepilogo Markdown.
 - [capoturno.py](../capoturno.py) — motore di orchestrazione reale (routing, agente, gate, rework).
 - [instrada.py](../instrada.py) — suggerisce l'agente per un tipo di compito.
-- [adattatori/litellm.py](../adattatori/litellm.py) — adapter opzionale LiteLLM.
+- [adattatori/litellm.py](../adattatori/litellm.py) — adapter opzionale LiteLLM (chiamate a pagamento e locali, estrazione testo/misurazione condivisa).
+- [triage_locale.py](../triage_locale.py) — classificazione routine/escalation di un output a costo zero col modello locale.
+- [commit_replay.py](../commit_replay.py) — correla un commit reale alla finestra di eventi del registro, per il replay in dashboard.
 - [utility/installa_hook.py](../utility/installa_hook.py) — installa l'hook Git pre-commit del quality gate.
 - [esempi/chiamata_agente_litellm.py](../esempi/chiamata_agente_litellm.py) — esempio eseguibile di chiamata LiteLLM con fallback mock.
 

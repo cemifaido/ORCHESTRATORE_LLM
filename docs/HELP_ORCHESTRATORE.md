@@ -130,3 +130,18 @@ A fine esecuzione, l'evento (`passato`, `fallito` o `errore_ambiente`) viene scr
 **Requisito**: serve `pip install litellm` e una chiave API valida per il provider usato (variabile d'ambiente, mai nel codice) **disponibile al processo della dashboard**: se hai impostato la chiave dopo aver avviato `interfaccia.py`, riavvialo (bottone "⟲ Riavvia Sistema") perché la erediti. Senza LiteLLM installato o senza crediti/chiave validi, il compito termina con `stato=errore_ambiente` — è il comportamento atteso, non un errore del framework: significa "manca l'infrastruttura per procedere", non "l'agente ha scritto codice sbagliato".
 
 Specifica completa: `docs/ORCHESTRAZIONE_LAVORATORI.md` (sezione Capoturno).
+
+---
+
+## 7. Rivivere un Commit Reale (Replay Demo)
+
+Nello stesso pannello "🤝 Live Agent Handoff & Cooperazione", il blocco "Rivivi un commit reale" mostra un selettore con gli ultimi commit del progetto selezionato (hash, data, autore, messaggio — letti da `git log`, non inventati).
+
+Passi:
+1. Scegli un commit dal menu a tendina: una card mostra hash breve, data, autore e messaggio del commit scelto.
+2. Clic su **"🎬 Riproduci"**: la dashboard calcola la finestra temporale tra questo commit e il precedente, recupera gli eventi reali del registro caduti in quella finestra e li anima in sequenza sul diagramma SVG — con le linee che seguono la direzione cronologica reale tra gli agenti (verdi se l'esito è passato, rosse se fallito/da rivedere) e si chiudono verso il nodo "umano" a fine sequenza.
+3. Al termine viene mostrata una stima onesta di risparmio: percentuale di controlli di verifica gestiti gratis dal modello locale sul totale (varia per commit, non è mai un numero fisso), e una stima in $ calcolata solo sui token realmente misurati negli eventi `agente=locale`, moltiplicati per il prezzo pubblico di un modello di riferimento dichiarato (GPT-4o-mini, tariffa input). Un commit senza eventi di verifica mostra correttamente "nessun controllo da cui stimare un risparmio", invece di forzare una percentuale a caso.
+
+Utile per dimostrare (a te stesso o a terzi) cosa è successo davvero durante un commit, senza scenari finti o numeri inventati.
+
+Specifica completa: `docs/ORCHESTRAZIONE_LAVORATORI.md` (sezione "Replay di un commit reale").

@@ -141,6 +141,15 @@ Anche il modello locale (`triage_locale.py`) ora registra un evento (`--agente l
 `tipo_compito=monitoraggio`) per ogni classificazione: prima il suo lavoro spariva in
 stdout, ora ha la stessa visibilità degli altri tre nella dashboard/registro.
 
+Il registro non racconta solo cosa ha fatto un agente: quando l'operatore umano dà
+un'approvazione esplicita e finale (tipicamente prima di un `git commit`, o comunque
+prima di una decisione irreversibile), va registrato un evento separato
+`--agente umano --verdetto-umano approvato --stato accettato`. Senza questo, il campo
+`verdetto_umano` dello schema resterebbe sempre `non_revisionato`: il via libera
+dell'umano è un fatto operativo quanto il lavoro dell'agente, non va perso. Non va fatto
+per ogni messaggio (sarebbe rumore) — solo per un'approvazione concreta a un'azione con
+effetto reale. Dettagli pratici (comando esatto) in `CLAUDE.md`/`GEMINI.md`/`AGENTS.md`.
+
 **Limite noto**: il modello locale (llama-server, quantizzazione Q3_K_M) a volte genera
 un carattere accentato come sequenza UTF-8 malformata (es. "è" → `�`), probabilmente per
 un token spezzato male in fase di generazione. Non altera mai l'esito
@@ -177,7 +186,7 @@ Pannello **"🤝 Live Agent Handoff & Cooperazione"**: seleziona progetto target
 
 ### Replay di un commit reale (demo)
 
-Nello stesso pannello, "Rivivi un commit reale" mostra un selettore di commit (`GET /api/commit/lista`, da `git log`) e un pulsante "🎬 Riproduci". Alla scelta, `GET /api/commit/eventi?progetto_id=...&hash=...` (modulo `commit_replay.py`) calcola la finestra temporale del commit (tra il suo timestamp e quello del commit precedente, confrontati come date timezone-aware in UTC — non come stringhe, perché git usa il fuso locale e il registro usa sempre `Z`) e ritorna gli eventi del registro caduti in quella finestra. La dashboard li anima in sequenza sullo stesso diagramma SVG, poi mostra una statistica reale, non uno scenario finto:
+Nello stesso pannello, "Rivivi un commit reale" mostra un selettore di commit (`GET /api/commit/lista`, da `git log`, con hash/data/autore/messaggio) e un pulsante "🎬 Riproduci". Alla scelta, una card mostra i metadati del commit (hash breve, data, autore, messaggio) e `GET /api/commit/eventi?progetto_id=...&hash=...` (modulo `commit_replay.py`) calcola la finestra temporale del commit (tra il suo timestamp e quello del commit precedente, confrontati come date timezone-aware in UTC — non come stringhe, perché git usa il fuso locale e il registro usa sempre `Z`) e ritorna gli eventi del registro caduti in quella finestra. La dashboard li anima in sequenza sullo stesso diagramma SVG — inferendo la direzione linea-per-linea dall'ordine cronologico degli eventi (verde se passato, rossa se fallito/da rivedere) e chiudendo il ciclo verso il nodo "umano" a fine sequenza — poi mostra una statistica reale, non uno scenario finto:
 
 - **percentuale di controlli di verifica gestiti gratis dal modello locale** sul totale (locale + eventuali revisioni/sicurezza fatte da un agente a pagamento nella stessa finestra) — varia per commit, non è mai fissa al 100%;
 - **stima in $ del risparmio**, calcolata solo sui `token_totali` realmente misurati (metadati degli eventi `agente=locale`) moltiplicati per il prezzo pubblico di un modello di riferimento dichiarato (GPT-4o-mini, tariffa input, scelta conservativa) — mai un numero inventato.
