@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import interfaccia
+import registro
 
 
 class IntegraProgettoTest(unittest.TestCase):
@@ -159,6 +160,77 @@ class EseguiSentinellaTest(unittest.TestCase):
 
             eventi_path = p_path / "dati_locali" / "orchestrazione" / "eventi.jsonl"
             self.assertTrue(eventi_path.exists())
+
+
+class StatoApiPaginazioneTest(unittest.TestCase):
+    def _progetto_con_n_eventi(self, tmp: str, n: int) -> list[dict]:
+        p_path = Path(tmp)
+        registro_dir = p_path / "dati_locali" / "orchestrazione"
+        registro_dir.mkdir(parents=True, exist_ok=True)
+        percorso_eventi = registro_dir / "eventi.jsonl"
+        base = {
+            "versione_schema": 1,
+            "agente": "locale",
+            "tipo_compito": "monitoraggio",
+            "stato": "passato",
+            "esito_gate": "superato",
+            "verdetto_umano": "non_revisionato",
+            "costo_stimato_usd": 0.0,
+            "origine_costo": "stimato",
+            "latenza_ms": 0,
+            "regole_incluse": [],
+            "file_modificati": [],
+            "note": "",
+            "metadati": {},
+        }
+        for i in range(n):
+            evento = dict(base)
+            evento["id_evento"] = f"evt-{i:03d}"
+            evento["id_compito"] = f"task-{i:03d}"
+            evento["timestamp"] = f"2026-07-04T00:{i // 60:02d}:{i % 60:02d}Z"
+            registro.aggiungi_evento(percorso_eventi, evento)
+        return [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
+
+    def test_pagina_predefinita_contiene_50_eventi(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti = self._progetto_con_n_eventi(tmp, 120)
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                stato = interfaccia.get_stato()
+
+            self.assertEqual(len(stato["eventi"]), 50)
+            self.assertEqual(stato["paginazione"]["pagina"], 1)
+            self.assertEqual(stato["paginazione"]["pagine_totali"], 3)
+            self.assertEqual(stato["paginazione"]["eventi_totali"], 120)
+
+    def test_seconda_pagina_restituisce_eventi_successivi(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti = self._progetto_con_n_eventi(tmp, 120)
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                pagina1 = interfaccia.get_stato(pagina=1, per_pagina=50)
+                pagina2 = interfaccia.get_stato(pagina=2, per_pagina=50)
+
+            id_pagina1 = {ev["id_evento"] for ev in pagina1["eventi"]}
+            id_pagina2 = {ev["id_evento"] for ev in pagina2["eventi"]}
+            self.assertEqual(len(id_pagina2), 50)
+            self.assertEqual(id_pagina1 & id_pagina2, set())
+
+    def test_pagina_oltre_il_totale_si_clampa_all_ultima(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti = self._progetto_con_n_eventi(tmp, 120)
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                stato = interfaccia.get_stato(pagina=999, per_pagina=50)
+
+            self.assertEqual(stato["paginazione"]["pagina"], 3)
+            self.assertEqual(len(stato["eventi"]), 20)
+
+    def test_aggregati_calcolati_su_tutti_gli_eventi_non_solo_sulla_pagina(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti = self._progetto_con_n_eventi(tmp, 120)
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                stato = interfaccia.get_stato(pagina=1, per_pagina=50)
+
+            self.assertEqual(stato["globali"]["eventi_totali"], 120)
+            self.assertEqual(stato["agente_stats"]["locale"]["esecuzioni"], 120)
 
 
 class StatoApiTest(unittest.TestCase):

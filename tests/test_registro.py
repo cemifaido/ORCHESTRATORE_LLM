@@ -87,6 +87,42 @@ class RegistroTest(unittest.TestCase):
         dati = registro.metriche([evento_gate, evento_umano])
         self.assertEqual(dati["codex"]["rework"], 2)
 
+    def test_metriche_per_livello_smista_per_tipo_compito(self) -> None:
+        evento_frontend = self.evento_valido()
+        evento_frontend["id_evento"] = "evt-frontend"
+        evento_frontend["tipo_compito"] = "interfaccia"
+        evento_db = self.evento_valido()
+        evento_db["id_evento"] = "evt-db"
+        evento_db["tipo_compito"] = "database"
+        evento_backend = self.evento_valido()
+        evento_backend["id_evento"] = "evt-backend"
+        evento_backend["tipo_compito"] = "servizi"
+
+        dati = registro.metriche_per_livello([evento_frontend, evento_db, evento_backend])
+
+        self.assertEqual(dati["codex"]["frontend"], 1)
+        self.assertEqual(dati["codex"]["database"], 1)
+        self.assertEqual(dati["codex"]["backend"], 1)
+
+    def test_metriche_per_livello_categorie_trasversali_confluiscono_in_backend(self) -> None:
+        tipi_trasversali = ["revisione", "sicurezza", "monitoraggio", "orchestrazione", "documentazione", "sconosciuto"]
+        eventi = []
+        for i, tipo in enumerate(tipi_trasversali):
+            evento = self.evento_valido()
+            evento["id_evento"] = f"evt-{i}"
+            evento["tipo_compito"] = tipo
+            eventi.append(evento)
+
+        dati = registro.metriche_per_livello(eventi)
+
+        self.assertEqual(dati["codex"]["backend"], len(tipi_trasversali))
+        self.assertEqual(dati["codex"]["database"], 0)
+        self.assertEqual(dati["codex"]["frontend"], 0)
+
+    def test_metriche_per_livello_agente_senza_eventi_non_compare(self) -> None:
+        dati = registro.metriche_per_livello([self.evento_valido()])
+        self.assertNotIn("umano", dati)
+
     def test_aggiungi_e_leggi_evento(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             percorso = Path(tmp) / "eventi.jsonl"

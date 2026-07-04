@@ -116,6 +116,11 @@
       transform: translateY(-1px);
     }
 
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
     .btn-riavvia:disabled {
       opacity: 0.6;
       cursor: not-allowed;
@@ -943,6 +948,14 @@
             <canvas id="runsChart"></canvas>
           </div>
         </div>
+
+        <!-- Agent Work Share by Architectural Layer -->
+        <div class="widget">
+          <h2>📊 Quota Lavoro per Agente (DB / Backend / Frontend)</h2>
+          <div class="chart-container">
+            <canvas id="livelloChart"></canvas>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1075,6 +1088,18 @@
       </div>
     </div>
 
+    <!-- Quota Lavoro per Livello Architetturale (anelli concentrici, decorativo) -->
+    <div class="widget">
+      <h2>🎯 Quota Lavoro per Livello (Database · Backend · Frontend)</h2>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+        Anello interno = Database, anello centrale = Backend, anello esterno = Frontend. Ogni anello è diviso per agente (stesso colore del diagramma sopra). Vista decorativa: per confrontare i valori con precisione usa il grafico a barre "Quota Lavoro per Agente".
+      </p>
+      <div style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap; justify-content:center;">
+        <svg id="livelloRingsSvg" width="220" height="220" viewBox="0 0 200 200"></svg>
+        <div id="livelloRingsLegend" style="display:flex; flex-direction:column; gap:0.5rem; font-size:0.82rem;"></div>
+      </div>
+    </div>
+
     <!-- Combined Event Timeline -->
     <div class="widget">
       <h2>⏳ Timeline degli Eventi Aggregati</h2>
@@ -1100,14 +1125,21 @@
           </tbody>
         </table>
       </div>
+      <div style="display:flex; justify-content:center; align-items:center; gap:1rem; margin-top:1rem;">
+        <button id="timelinePrevBtn" class="btn" style="background: rgba(255,255,255,0.08); border: 1px solid var(--card-border); color: var(--text-main); padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">‹ Precedente</button>
+        <span id="timelinePageInfo" style="color: var(--text-muted); font-size:0.85rem;">Pagina 1</span>
+        <button id="timelineNextBtn" class="btn" style="background: rgba(255,255,255,0.08); border: 1px solid var(--card-border); color: var(--text-main); padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">Successiva ›</button>
+      </div>
     </div>
   </div>
 
   <script>
     let costChartInstance = null;
     let runsChartInstance = null;
+    let livelloChartInstance = null;
     let progettiCorrenti = [];
     let commitCorrenti = [];
+    let paginaTimelineCorrente = 1;
     let usdToEurRate = 0.92; // Fallback di base se offline
 
     function escapeHtml(str) {
@@ -1224,6 +1256,18 @@
       caricaCommit();
       document.getElementById("realProjSelect").addEventListener("change", caricaCommit);
       document.getElementById("replayCommitBtn").addEventListener("click", avviaReplayCommit);
+
+      // Paginazione della timeline eventi (50 record per pagina)
+      document.getElementById("timelinePrevBtn").addEventListener("click", () => {
+        if (paginaTimelineCorrente > 1) {
+          paginaTimelineCorrente--;
+          aggiornaDati();
+        }
+      });
+      document.getElementById("timelineNextBtn").addEventListener("click", () => {
+        paginaTimelineCorrente++;
+        aggiornaDati();
+      });
     });
 
     async function riavviaSistema() {
@@ -1275,7 +1319,7 @@
 
     async function aggiornaDati() {
       try {
-        const res = await fetch("/api/stato");
+        const res = await fetch(`/api/stato?pagina=${paginaTimelineCorrente}&per_pagina=50`);
         if (!res.ok) throw new Error("Risposta del server non valida");
         const data = await res.json();
 
@@ -1376,8 +1420,16 @@
           });
         }
 
+        const paginazione = data.paginazione || { pagina: 1, pagine_totali: 1, eventi_totali: data.eventi.length };
+        paginaTimelineCorrente = paginazione.pagina;
+        document.getElementById("timelinePageInfo").textContent =
+          `Pagina ${paginazione.pagina} di ${paginazione.pagine_totali} (${paginazione.eventi_totali} eventi totali)`;
+        document.getElementById("timelinePrevBtn").disabled = paginazione.pagina <= 1;
+        document.getElementById("timelineNextBtn").disabled = paginazione.pagina >= paginazione.pagine_totali;
+
         // 5. Grafici
-        renderizzaGrafici(data.agente_stats);
+        renderizzaGrafici(data.agente_stats, data.livello_stats || {});
+        renderizzaAnelliLivello(data.livello_stats || {});
 
       } catch (err) {
         showFeedback(`Errore nel caricamento dei dati: ${err.message}`, "error");
@@ -1413,7 +1465,7 @@
       }
     }
 
-    function renderizzaGrafici(agenteStats) {
+    function renderizzaGrafici(agenteStats, livelloStats) {
       const agenti = Object.keys(agenteStats).sort();
       const costi = agenti.map(a => agenti.includes(a) ? agenteStats[a].costo * usdToEurRate : 0);
       const esecuzioni = agenti.map(a => agenteStats[a].esecuzioni);
@@ -1496,6 +1548,115 @@
             }
           }
         }
+      });
+
+      // Chart 3: quota di lavoro per agente, ripartita per livello architetturale
+      const agentiLivello = Object.keys(livelloStats).sort();
+      const datiDatabase = agentiLivello.map(a => livelloStats[a].database || 0);
+      const datiBackend = agentiLivello.map(a => livelloStats[a].backend || 0);
+      const datiFrontend = agentiLivello.map(a => livelloStats[a].frontend || 0);
+
+      if (livelloChartInstance) livelloChartInstance.destroy();
+      const ctxLivello = document.getElementById("livelloChart").getContext("2d");
+      livelloChartInstance = new Chart(ctxLivello, {
+        type: 'bar',
+        data: {
+          labels: agentiLivello,
+          datasets: [
+            { label: 'Database', data: datiDatabase, backgroundColor: '#3987e5', borderColor: '#3987e5', borderWidth: 1 },
+            { label: 'Backend', data: datiBackend, backgroundColor: '#c98500', borderColor: '#c98500', borderWidth: 1 },
+            { label: 'Frontend', data: datiFrontend, backgroundColor: '#d55181', borderColor: '#d55181', borderWidth: 1 }
+          ]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { stacked: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', stepSize: 1 } },
+            y: { stacked: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } }
+          },
+          plugins: {
+            legend: {
+              labels: { color: '#f3f4f6', font: { family: 'Inter' } }
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return `${context.dataset.label}: ${context.parsed.x}`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    const COLORI_AGENTE = { umano: '#10b981', gemini: '#00f0ff', claude: '#ff6b00', codex: '#bd00ff', locale: '#94a3b8' };
+    const ORDINE_AGENTI = ['umano', 'gemini', 'claude', 'codex', 'locale'];
+
+    function renderizzaAnelliLivello(livelloStats) {
+      const svg = document.getElementById("livelloRingsSvg");
+      const legenda = document.getElementById("livelloRingsLegend");
+      if (!svg || !legenda) return;
+      svg.innerHTML = "";
+      legenda.innerHTML = "";
+
+      const ns = "http://www.w3.org/2000/svg";
+      const CX = 100, CY = 100, SPESSORE = 18, GAP = 2;
+      const ANELLI = [
+        { livello: "database", raggio: 30, etichetta: "Database (centro)" },
+        { livello: "backend", raggio: 55, etichetta: "Backend (centrale)" },
+        { livello: "frontend", raggio: 80, etichetta: "Frontend (superficie)" }
+      ];
+
+      ANELLI.forEach(anello => {
+        const circonferenza = 2 * Math.PI * anello.raggio;
+
+        const traccia = document.createElementNS(ns, "circle");
+        traccia.setAttribute("cx", CX);
+        traccia.setAttribute("cy", CY);
+        traccia.setAttribute("r", anello.raggio);
+        traccia.setAttribute("fill", "none");
+        traccia.setAttribute("stroke", "rgba(255,255,255,0.05)");
+        traccia.setAttribute("stroke-width", SPESSORE);
+        svg.appendChild(traccia);
+
+        const totale = ORDINE_AGENTI.reduce((s, a) => s + ((livelloStats[a] && livelloStats[a][anello.livello]) || 0), 0);
+        if (totale === 0) return;
+
+        let offsetAccumulato = 0;
+        ORDINE_AGENTI.forEach(agente => {
+          const valore = (livelloStats[agente] && livelloStats[agente][anello.livello]) || 0;
+          if (valore === 0) return;
+          const lunghezzaArco = (valore / totale) * circonferenza;
+
+          const segmento = document.createElementNS(ns, "circle");
+          segmento.setAttribute("cx", CX);
+          segmento.setAttribute("cy", CY);
+          segmento.setAttribute("r", anello.raggio);
+          segmento.setAttribute("fill", "none");
+          segmento.setAttribute("stroke", COLORI_AGENTE[agente] || "#94a3b8");
+          segmento.setAttribute("stroke-width", SPESSORE);
+          segmento.setAttribute("stroke-dasharray", `${Math.max(lunghezzaArco - GAP, 0)} ${circonferenza - lunghezzaArco + GAP}`);
+          segmento.setAttribute("stroke-dashoffset", String(-offsetAccumulato));
+          segmento.setAttribute("transform", `rotate(-90 ${CX} ${CY})`);
+
+          const titolo = document.createElementNS(ns, "title");
+          titolo.textContent = `${agente}: ${valore} (${anello.etichetta})`;
+          segmento.appendChild(titolo);
+          svg.appendChild(segmento);
+          offsetAccumulato += lunghezzaArco;
+        });
+      });
+
+      ORDINE_AGENTI.forEach(agente => {
+        const riga = document.createElement("div");
+        riga.style.display = "flex";
+        riga.style.alignItems = "center";
+        riga.style.gap = "0.4rem";
+        riga.innerHTML = `<span style="width:10px; height:10px; border-radius:50%; background:${COLORI_AGENTE[agente]}; display:inline-block;"></span><span style="color:var(--text-muted);">${escapeHtml(agente)}</span>`;
+        legenda.appendChild(riga);
       });
     }
 

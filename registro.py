@@ -129,6 +129,42 @@ def metriche(eventi: list[dict[str, Any]]) -> dict[str, dict[str, float | int]]:
     return statistiche
 
 
+LIVELLI_ARCHITETTURALI = ("database", "backend", "frontend")
+
+# tipo_compito -> livello architetturale (per il cruscotto "quota lavoro per agente").
+# interfaccia/database hanno un livello proprio univoco; le categorie trasversali
+# (revisione, sicurezza, monitoraggio, orchestrazione, documentazione, errore_test,
+# sconosciuto) non hanno un livello unico: in questo progetto sono quasi sempre
+# infrastruttura/logica interna, quindi confluiscono in "backend" per default.
+MAPPA_LIVELLO_TIPO_COMPITO: dict[str, str] = {
+    "interfaccia": "frontend",
+    "database": "database",
+    "servizi": "backend",
+    "errore_test": "backend",
+    "revisione": "backend",
+    "sicurezza": "backend",
+    "monitoraggio": "backend",
+    "orchestrazione": "backend",
+    "documentazione": "backend",
+    "sconosciuto": "backend",
+}
+
+
+def metriche_per_livello(eventi: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    """Ripartisce gli eventi di ciascun agente per livello architetturale
+    (database/backend/frontend), dedotto da tipo_compito tramite
+    MAPPA_LIVELLO_TIPO_COMPITO. Conta esecuzioni, non costo: e' una misura di
+    "quanto lavoro", non "quanto e' costato" (vedi metriche())."""
+    statistiche: defaultdict[str, dict[str, int]] = defaultdict(
+        lambda: {livello: 0 for livello in LIVELLI_ARCHITETTURALI}
+    )
+    for evento in eventi:
+        agente = evento["agente"]
+        livello = MAPPA_LIVELLO_TIPO_COMPITO.get(evento.get("tipo_compito", "sconosciuto"), "backend")
+        statistiche[agente][livello] += 1
+    return statistiche
+
+
 def leggi_eventi_progetto(percorso_progetto: Path) -> tuple[list[dict[str, Any]], str | None]:
     """Legge gli eventi di un progetto. Ritorna (eventi, errore): errore e' None solo se
     il registro non esiste ancora (progetto nuovo) o e' stato letto senza problemi. Un

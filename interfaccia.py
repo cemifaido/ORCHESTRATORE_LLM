@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import threading
 import time
+from math import ceil
 from pathlib import Path
 from typing import Any
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -328,13 +329,23 @@ def arricchisci_progetto(proj: dict) -> dict:
 
 
 @app.get("/api/stato")
-def get_stato():
+def get_stato(pagina: int = 1, per_pagina: int = 50):
     progetti = leggi_progetti()
     progetti_arricchiti = [arricchisci_progetto(proj) for proj in progetti]
 
     tutti_eventi, progetto_stats = registro.carica_eventi_multi_progetto(progetti)
     tutti_eventi.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
     agente_stats = registro.metriche(tutti_eventi)
+    livello_stats = registro.metriche_per_livello(tutti_eventi)
+
+    # Paginazione: solo la tabella timeline viene affettata. Gli aggregati sopra
+    # (agente_stats, livello_stats, globali) restano calcolati su TUTTI gli eventi,
+    # non solo sulla pagina corrente.
+    per_pagina = max(1, per_pagina)
+    pagine_totali = max(1, ceil(len(tutti_eventi) / per_pagina))
+    pagina = min(max(1, pagina), pagine_totali)
+    inizio = (pagina - 1) * per_pagina
+    eventi_pagina = tutti_eventi[inizio:inizio + per_pagina]
 
     return {
         "progetti": progetti_arricchiti,
@@ -346,7 +357,14 @@ def get_stato():
         },
         "progetto_stats": progetto_stats,
         "agente_stats": agente_stats,
-        "eventi": tutti_eventi[:50]
+        "livello_stats": livello_stats,
+        "eventi": eventi_pagina,
+        "paginazione": {
+            "pagina": pagina,
+            "per_pagina": per_pagina,
+            "pagine_totali": pagine_totali,
+            "eventi_totali": len(tutti_eventi),
+        },
     }
 
 
