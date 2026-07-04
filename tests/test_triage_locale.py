@@ -73,6 +73,19 @@ class ClassificaTest(unittest.TestCase):
         self.assertEqual(risultato["esito"], "escalation")
         self.assertIn("non raggiungibile", risultato["motivo"])
 
+    @patch("adattatori.litellm.completamento_locale")
+    def test_classifica_risposta_a_forma_inattesa_ritorna_escalation_senza_crash(
+        self, mock_completamento: MagicMock
+    ) -> None:
+        """Se il provider locale (o un futuro cambio di endpoint/libreria) ritorna una
+        forma diversa da ModelResponse, testo_da_risposta() torna "" invece di far
+        sollevare AttributeError qui: il triage deve degradare a escalation, mai
+        crashare — e' proprio quello che deve intercettare un problema inatteso."""
+        mock_completamento.return_value = (object(), _misurazione_finta())
+        risultato = triage_locale.classifica("output")
+        self.assertEqual(risultato["esito"], "escalation")
+        self.assertIn("non interpretabile", risultato["motivo"])
+
 
 class RegistraClassificazioneTest(unittest.TestCase):
     def test_registra_classificazione_scrive_evento_valido(self) -> None:

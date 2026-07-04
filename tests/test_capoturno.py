@@ -65,7 +65,7 @@ class CapoturnoTest(unittest.TestCase):
         """litellm.completion() reale ritorna un oggetto ModelResponse con
         .choices[0].message.content, non una stringa: i mock degli altri test la
         semplificano a stringa e mascherano un TypeError che si presenta solo con
-        una risposta a forma reale (vedi Capoturno._testo_da_risposta)."""
+        una risposta a forma reale (vedi adattatori.litellm.testo_da_risposta)."""
         risposta_reale = MagicMock()
         risposta_reale.choices = [MagicMock()]
         risposta_reale.choices[0].message.content = "```python\ndef reale(): pass\n```"

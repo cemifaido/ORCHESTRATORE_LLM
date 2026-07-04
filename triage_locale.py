@@ -48,7 +48,7 @@ def classifica(output: str, contesto: str = "") -> dict[str, Any]:
     except Exception as errore:
         return {"esito": "escalation", "motivo": f"modello locale non raggiungibile: {errore}", "token_totali": None}
 
-    testo = risposta.choices[0].message.content or ""
+    testo = litellm.testo_da_risposta(risposta)
     try:
         inizio = testo.index("{")
         fine = testo.rindex("}") + 1

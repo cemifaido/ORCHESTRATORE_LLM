@@ -45,23 +45,6 @@ class Capoturno:
         if self.on_passo:
             self.on_passo(da, a, agente_attivo, messaggio, esito)
 
-    def _testo_da_risposta(self, risposta: object) -> str:
-        """Estrae il testo generato da una risposta di litellm.completion() (un
-        oggetto ModelResponse con .choices[0].message.content, non una stringa).
-        Gestisce anche stringhe/dict semplici, usati nei test come mock."""
-        if isinstance(risposta, str):
-            return risposta
-        try:
-            return risposta.choices[0].message.content or ""  # type: ignore[attr-defined]
-        except (AttributeError, IndexError, TypeError):
-            pass
-        if isinstance(risposta, dict):
-            try:
-                return risposta["choices"][0]["message"]["content"] or ""
-            except (KeyError, IndexError, TypeError):
-                pass
-        return ""
-
     def _estrai_codice(self, risposta_testo: str) -> str | None:
         # Trova codice racchiuso tra tripli backtick
         match = re.search(r"```(?:python)?\n(.*?)\n```", risposta_testo, re.DOTALL)
@@ -223,7 +206,7 @@ class Capoturno:
             latenze[agente_corrente] = latenze.get(agente_corrente, 0) + latenza_passo
 
             # 3. Estrazione e scrittura del codice
-            codice_proposto = self._estrai_codice(self._testo_da_risposta(risposta))
+            codice_proposto = self._estrai_codice(litellm.testo_da_risposta(risposta))
             if not codice_proposto:
                 ultimo_errore = "Non è stato possibile estrarre codice Python valido dal blocco markdown della risposta."
                 rework_effettuato += 1

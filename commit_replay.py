@@ -59,7 +59,7 @@ def lista_commit(percorso_repo: Path, limite: int = 20) -> list[dict[str, str]]:
     # codifica di default della console (spesso cp1252), mangliando em-dash e accenti
     # nei messaggi di commit.
     risultato = subprocess.run(
-        ["git", "log", f"-{limite}", "--format=%H|%cI|%s"],
+        ["git", "log", f"-{limite}", "--format=%H|%cI|%an|%s"],
         cwd=percorso_repo, capture_output=True, text=True, encoding="utf-8", timeout=10,
     )
     if risultato.returncode != 0:
@@ -68,8 +68,8 @@ def lista_commit(percorso_repo: Path, limite: int = 20) -> list[dict[str, str]]:
     for riga in risultato.stdout.strip().splitlines():
         if not riga:
             continue
-        hash_commit, data, messaggio = riga.split("|", 2)
-        commit.append({"hash": hash_commit, "data": data, "messaggio": messaggio})
+        hash_commit, data, autore, messaggio = riga.split("|", 3)
+        commit.append({"hash": hash_commit, "data": data, "autore": autore, "messaggio": messaggio})
     return commit
 
 

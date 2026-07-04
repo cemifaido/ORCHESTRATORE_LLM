@@ -501,148 +501,258 @@
 
     /* Linee di handoff (archi) */
     .handoff-line {
-      stroke: rgba(255, 255, 255, 0.08);
+      stroke: rgba(255, 255, 255, 0.05);
       stroke-width: 3;
       stroke-linecap: round;
-      transition: stroke 0.4s ease;
+      transition: stroke 0.4s ease, stroke-width 0.4s ease;
     }
 
     /* Effetto impulso laser */
     .handoff-line.active {
       stroke: #38bdf8;
       stroke-width: 4;
-      stroke-dasharray: 8 8;
-      animation: laserFlow 1.2s infinite linear;
-      filter: drop-shadow(0 0 3px #0284c7);
+      stroke-dasharray: 6 6;
+      animation: laserFlow 0.8s infinite linear;
+      filter: drop-shadow(0 0 4px #0284c7);
     }
 
     .handoff-line.active-success {
-      stroke: #34d399;
+      stroke: #10b981;
       stroke-width: 4;
-      stroke-dasharray: 8 8;
-      animation: laserFlow 1.2s infinite linear;
-      filter: drop-shadow(0 0 3px #059669);
+      stroke-dasharray: 6 6;
+      animation: laserFlow 0.8s infinite linear;
+      filter: drop-shadow(0 0 5px #10b981);
     }
 
     .handoff-line.active-fail {
-      stroke: #f87171;
+      stroke: #f43f5e;
       stroke-width: 4;
-      stroke-dasharray: 8 8;
-      animation: laserFlow 1.2s infinite linear;
-      filter: drop-shadow(0 0 3px #dc2626);
+      stroke-dasharray: 6 6;
+      animation: laserFlow 0.8s infinite linear;
+      filter: drop-shadow(0 0 5px #f43f5e);
     }
 
     @keyframes laserFlow {
       to {
-        stroke-dashoffset: -32;
+        stroke-dashoffset: -24;
       }
+    }
+
+    /* Variabili e Colori Neon Agenti */
+    :root {
+      --color-umano: #10b981;
+      --color-gemini: #06b6d4;
+      --color-claude: #f97316;
+      --color-codex: #8b5cf6;
+      --color-locale: #64748b;
     }
 
     /* Nodi degli Agenti */
     .agent-node circle {
-      fill: #1e293b;
-      stroke: rgba(255, 255, 255, 0.15);
+      fill: #0b1329;
+      stroke: rgba(255, 255, 255, 0.12);
       stroke-width: 3;
-      transition: fill 0.3s, stroke 0.3s, r 0.3s;
+      transition: fill 0.4s, stroke 0.4s, r 0.4s, filter 0.4s;
     }
 
     .agent-node text {
-      fill: #9ca3af;
+      fill: #64748b;
       font-size: 11px;
       font-weight: 600;
       text-anchor: middle;
       font-family: 'Inter', sans-serif;
       pointer-events: none;
-      transition: fill 0.3s;
+      transition: fill 0.4s, font-size 0.4s;
     }
 
-    /* Agente attivo (Pulse Glow) */
+    /* Glow Neon e Pulsazione per Agenti Specifici */
     .agent-node.active circle {
-      fill: rgba(56, 189, 248, 0.15);
-      stroke: #38bdf8;
-      stroke-width: 4;
-      filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.6));
       animation: nodePulse 2s infinite ease-in-out;
     }
-
+    
     .agent-node.active text {
-      fill: #f3f4f6;
+      fill: #ffffff;
+      font-size: 11.5px;
     }
 
-    /* Stile specifico per agente attivo basato su esito */
+    /* Glow per ogni specifico ID nodo */
+    .agent-node#node_umano.active circle { fill: rgba(16, 185, 129, 0.12); stroke: var(--color-umano); filter: drop-shadow(0 0 8px var(--color-umano)); }
+    .agent-node#node_gemini.active circle { fill: rgba(6, 182, 212, 0.12); stroke: var(--color-gemini); filter: drop-shadow(0 0 8px var(--color-gemini)); }
+    .agent-node#node_claude.active circle { fill: rgba(249, 115, 22, 0.12); stroke: var(--color-claude); filter: drop-shadow(0 0 8px var(--color-claude)); }
+    .agent-node#node_codex.active circle { fill: rgba(139, 92, 246, 0.12); stroke: var(--color-codex); filter: drop-shadow(0 0 8px var(--color-codex)); }
+    .agent-node#node_locale.active circle { fill: rgba(100, 116, 139, 0.12); stroke: var(--color-locale); filter: drop-shadow(0 0 8px var(--color-locale)); }
+
+    /* Override di successo ed errore con colori pieni */
     .agent-node.active-success circle {
-      fill: rgba(52, 211, 153, 0.15);
-      stroke: #34d399;
-      filter: drop-shadow(0 0 8px rgba(52, 211, 153, 0.6));
+      stroke: #10b981 !important;
+      fill: rgba(16, 185, 129, 0.15) !important;
+      filter: drop-shadow(0 0 10px #10b981) !important;
     }
 
     .agent-node.active-fail circle {
-      fill: rgba(248, 113, 113, 0.15);
-      stroke: #f87171;
-      filter: drop-shadow(0 0 8px rgba(248, 113, 113, 0.6));
+      stroke: #f43f5e !important;
+      fill: rgba(244, 63, 94, 0.15) !important;
+      filter: drop-shadow(0 0 10px #f43f5e) !important;
     }
 
     @keyframes nodePulse {
       0%, 100% { transform: scale(1); transform-origin: center; }
-      50% { transform: scale(1.05); transform-origin: center; }
+      50% { transform: scale(1.04); transform-origin: center; }
     }
 
-    /* Console di Cooperazione */
+    /* Git Commit Info Card (Premium Glassmorphism) */
+    .commit-card {
+      background: rgba(15, 23, 42, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 0.9rem 1.2rem;
+      margin-top: 1rem;
+      margin-bottom: 0.5rem;
+      display: none;
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      animation: slideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      width: 100%;
+    }
+    
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .commit-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.4rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      padding-bottom: 0.3rem;
+    }
+
+    .commit-card-hash {
+      font-family: 'Fira Code', monospace;
+      font-size: 0.72rem;
+      background: rgba(139, 92, 246, 0.15);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      color: #c4b5fd;
+      padding: 0.1rem 0.45rem;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-weight: 600;
+    }
+
+    .commit-card-msg {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 0.25rem;
+      line-height: 1.3;
+    }
+
+    .commit-card-meta {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    /* Console di Cooperazione stile Cyberpunk */
     .handoff-console {
-      background: #040711;
+      background: #02040a;
       border: 1px solid var(--card-border);
       border-radius: 10px;
       display: flex;
       flex-direction: column;
       height: 320px;
       overflow: hidden;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
     }
 
     .handoff-console .console-title {
-      background: rgba(255, 255, 255, 0.03);
+      background: rgba(255, 255, 255, 0.02);
       border-bottom: 1px solid var(--card-border);
       padding: 0.6rem 1rem;
       font-size: 0.85rem;
       font-weight: 600;
       color: var(--text-main);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
 
     .handoff-console .console-body {
-      padding: 0.8rem;
-      font-family: monospace;
-      font-size: 0.8rem;
+      padding: 0.9rem;
+      font-family: 'Fira Code', 'Courier New', monospace;
+      font-size: 0.78rem;
       overflow-y: auto;
       flex-grow: 1;
       display: flex;
       flex-direction: column;
       gap: 0.6rem;
+      color: #e2e8f0;
+      line-height: 1.45;
     }
 
     .handoff-msg {
-      background: rgba(255, 255, 255, 0.02);
+      background: rgba(255, 255, 255, 0.015);
       border-left: 3px solid #3b82f6;
       padding: 0.4rem 0.6rem;
       border-radius: 4px;
-      animation: fadeIn 0.4s ease-out;
+      animation: fadeIn 0.35s ease-out;
     }
 
     .handoff-msg.system {
-      border-left-color: #6b7280;
-      background: rgba(255, 255, 255, 0.01);
+      border-left-color: #475569;
+      background: rgba(255, 255, 255, 0.005);
+      color: #94a3b8;
     }
 
     .handoff-msg.success {
       border-left-color: #10b981;
-      background: rgba(16, 185, 129, 0.05);
+      background: rgba(16, 185, 129, 0.04);
     }
 
     .handoff-msg.fail {
-      border-left-color: #ef4444;
-      background: rgba(239, 68, 68, 0.05);
+      border-left-color: #f43f5e;
+      background: rgba(244, 63, 94, 0.04);
+    }
+
+    /* Tag lavoratore colorati */
+    .tag-agent {
+      display: inline-block;
+      padding: 0.08rem 0.35rem;
+      border-radius: 4px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-right: 0.3rem;
+      letter-spacing: 0.02em;
+    }
+    
+    .tag-agent.umano { background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.25); color: var(--color-umano); }
+    .tag-agent.gemini { background: rgba(6, 182, 212, 0.12); border: 1px solid rgba(6, 182, 212, 0.25); color: var(--color-gemini); }
+    .tag-agent.claude { background: rgba(249, 115, 22, 0.12); border: 1px solid rgba(249, 115, 22, 0.25); color: var(--color-claude); }
+    .tag-agent.codex { background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(139, 92, 246, 0.25); color: var(--color-codex); }
+    .tag-agent.locale { background: rgba(100, 116, 139, 0.12); border: 1px solid rgba(100, 116, 139, 0.25); color: var(--color-locale); }
+
+    /* Blinking cursor terminale */
+    .terminal-cursor {
+      display: inline-block;
+      width: 7px;
+      height: 13px;
+      background: #10b981;
+      margin-left: 4px;
+      animation: terminalBlink 1.1s infinite step-end;
+      vertical-align: middle;
+    }
+    
+    @keyframes terminalBlink {
+      50% { opacity: 0; }
     }
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(5px); }
+      from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
     }
   </style>
@@ -807,6 +917,18 @@
             <select id="commitSelect" style="min-width:280px; flex:1;"></select>
             <button id="replayCommitBtn" class="btn" style="background: rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.4); color:#c4b5fd;">🎬 Riproduci</button>
           </div>
+          <!-- Git Commit Info Card (Visualizzatore Metadati) -->
+          <div id="commitCard" class="commit-card">
+            <div class="commit-card-header">
+              <span class="commit-card-hash" id="commitCardHash">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="display:inline-block; vertical-align:middle; margin-bottom:1px; margin-right:3px;"><path d="M5 3.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zm0 2.122a2.25 2.25 0 1 0-1.5 0v5.256a2.251 2.251 0 1 0 1.5 0V5.372zm8-.122a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zM11.5 7.5a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5zM5 11.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zm8 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0z"></path></svg>
+                <span id="commitHashVal"></span>
+              </span>
+              <span class="commit-card-meta" id="commitDateVal"></span>
+            </div>
+            <div class="commit-card-msg" id="commitMsgVal"></div>
+            <div class="commit-card-meta" id="commitAuthorVal"></div>
+          </div>
         </div>
 
         <!-- Area Diagramma Visuale (SVG) -->
@@ -888,6 +1010,7 @@
     let costChartInstance = null;
     let runsChartInstance = null;
     let progettiCorrenti = [];
+    let commitCorrenti = [];
     let usdToEurRate = 0.92; // Fallback di base se offline
 
     function escapeHtml(str) {
@@ -1390,12 +1513,15 @@
               }
 
               // Scrive il messaggio in console
-              const badgeAgente = `<span class="tag-agent">${escapeHtml(passo.agente_attivo.toUpperCase())}</span>`;
+              logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
+
+              const badgeAgente = `<span class="tag-agent ${escapeHtml(passo.agente_attivo || '')}">${escapeHtml(passo.agente_attivo.toUpperCase())}</span>`;
               let msgClass = "handoff-msg";
               if (passo.esito === "fallito" || passo.esito === "ambiente_errore") msgClass += " fail";
               else if (passo.esito === "successo") msgClass += " success";
 
               logBox.innerHTML += `<div class="${msgClass}"><b>${badgeAgente}</b>: ${escapeHtml(passo.messaggio)}</div>`;
+              logBox.innerHTML += `<span class="terminal-cursor"></span>`;
               logBox.scrollTop = logBox.scrollHeight;
             }
             passiMostrati = data.passi.length;
@@ -1404,6 +1530,8 @@
           if (data.finito) {
             clearInterval(simTimer);
             simTimer = null;
+
+            logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
 
             if (data.successo) {
               logBox.innerHTML += `
@@ -1417,6 +1545,7 @@
             } else {
               logBox.innerHTML += `<div class="handoff-msg fail"><b>[Sistema]</b> Esecuzione reale del compito terminata con FALLIMENTO o bloccata per errore ambientale. Controlla i log o riprova.</div>`;
             }
+            logBox.innerHTML += `<span class="terminal-cursor"></span>`;
             logBox.scrollTop = logBox.scrollHeight;
 
             // Invia reset
@@ -1440,6 +1569,7 @@
       }
       document.getElementById("startSimBtn").style.display = "inline-block";
       document.getElementById("stopSimBtn").style.display = "none";
+      document.getElementById("commitCard").style.display = "none";
 
       document.querySelectorAll(".agent-node").forEach(node => {
         node.classList.remove("active", "active-success", "active-fail");
@@ -1457,11 +1587,12 @@
         if (!res.ok) throw new Error("risposta non valida");
         const data = await res.json();
         commitSelect.innerHTML = "";
-        if (!data.commit || data.commit.length === 0) {
+        commitCorrenti = data.commit || [];
+        if (commitCorrenti.length === 0) {
           commitSelect.innerHTML = '<option value="">Nessun commit disponibile</option>';
           return;
         }
-        data.commit.forEach(c => {
+        commitCorrenti.forEach(c => {
           const opt = document.createElement("option");
           opt.value = c.hash;
           opt.textContent = `${c.data.slice(0, 16)} — ${c.messaggio.slice(0, 60)}`;
@@ -1469,6 +1600,7 @@
         });
       } catch (err) {
         commitSelect.innerHTML = '<option value="">Impossibile caricare i commit</option>';
+        commitCorrenti = [];
       }
     }
 
@@ -1485,7 +1617,18 @@
       fermaSimulazione();
       document.getElementById("startSimBtn").style.display = "none";
       document.getElementById("stopSimBtn").style.display = "inline-block";
-      logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Recupero gli eventi reali del commit selezionato...</div>`;
+
+      // Popola e mostra la Git Commit Card
+      const selectedCommit = commitCorrenti.find(c => c.hash === hash);
+      if (selectedCommit) {
+        document.getElementById("commitHashVal").textContent = selectedCommit.hash.slice(0, 7);
+        document.getElementById("commitDateVal").textContent = new Date(selectedCommit.data).toLocaleString();
+        document.getElementById("commitMsgVal").textContent = selectedCommit.messaggio;
+        document.getElementById("commitAuthorVal").textContent = `Autore: ${selectedCommit.autore}`;
+        document.getElementById("commitCard").style.display = "block";
+      }
+
+      logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Recupero gli eventi reali del commit selezionato...<span class="terminal-cursor"></span></div>`;
 
       let dati;
       try {
@@ -1496,26 +1639,21 @@
         }
         dati = await res.json();
       } catch (err) {
-        logBox.innerHTML += `<div class="handoff-msg fail"><b>[Sistema] Errore:</b> ${escapeHtml(err.message)}</div>`;
+        logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
+        logBox.innerHTML += `<div class="handoff-msg fail"><b>[Sistema] Errore:</b> ${escapeHtml(err.message)}</div><span class="terminal-cursor"></span>`;
         fermaSimulazione();
         return;
       }
 
       const eventi = dati.eventi || [];
       if (eventi.length === 0) {
-        logBox.innerHTML = `<div class="handoff-msg system">Nessun evento registrato nella finestra di questo commit.</div>`;
+        logBox.innerHTML = `<div class="handoff-msg system">Nessun evento registrato nella finestra di questo commit.</div><span class="terminal-cursor"></span>`;
         fermaSimulazione();
         return;
       }
 
-      logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Replay di ${eventi.length} eventi reali di questo commit...</div>`;
+      logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Replay di ${eventi.length} eventi reali di questo commit...<span class="terminal-cursor"></span></div>`;
 
-      // Il registro non ha un campo "da/a": si inferisce la direzione dalla sequenza
-      // cronologica (evento N -> evento N+1 = passaggio di mano da chi ha fatto N a
-      // chi ha fatto N+1). Si assume che il primo passo parta sempre dall'umano (chi
-      // ha commissionato il compito). Se non esiste un collegamento SVG per quella
-      // coppia specifica di agenti, si evidenzia comunque il nodo, semplicemente
-      // senza disegnare una linea inventata.
       let agentePrecedente = "umano";
       let indice = 0;
 
@@ -1529,6 +1667,9 @@
       }
 
       function passoSuccessivo() {
+        // Rimuove il cursore precedente
+        logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
+
         if (indice >= eventi.length) {
           // Chiusura del cerchio: il risultato torna all'umano per la revisione finale.
           document.querySelectorAll(".agent-node").forEach(node => node.classList.remove("active", "active-success", "active-fail"));
@@ -1555,6 +1696,7 @@
             riepilogo = `<div class="handoff-msg system">Nessun controllo di verifica in questo commit da cui stimare un risparmio.</div>`;
           }
           logBox.innerHTML += riepilogo;
+          logBox.innerHTML += `<span class="terminal-cursor"></span>`;
           logBox.scrollTop = logBox.scrollHeight;
           fermaSimulazione();
           return;
@@ -1574,9 +1716,10 @@
         }
         agentePrecedente = ev.agente;
 
-        const badge = `<span class="tag-agent">${escapeHtml((ev.agente || "?").toUpperCase())}</span>`;
+        const badge = `<span class="tag-agent ${escapeHtml(ev.agente || '')}">${escapeHtml((ev.agente || "?").toUpperCase())}</span>`;
         const msgClass = "handoff-msg" + (fallito ? " fail" : " success");
-        logBox.innerHTML += `<div class="${msgClass}"><b>${badge}</b> [${escapeHtml(ev.timestamp)}]: ${escapeHtml(ev.note || "")}</div>`;
+        logBox.innerHTML += `<div class="${msgClass}"><b>${badge}</b> [${escapeHtml(ev.timestamp.slice(11, 19))}]: ${escapeHtml(ev.note || "")}</div>`;
+        logBox.innerHTML += `<span class="terminal-cursor"></span>`;
         logBox.scrollTop = logBox.scrollHeight;
 
         indice++;

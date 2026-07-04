@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from adattatori import litellm
 
@@ -77,6 +77,28 @@ class LiteLLMAdapterTest(unittest.TestCase):
         arricchito = litellm.arricchisci_evento(evento, misurazione)
         self.assertEqual(arricchito["origine_costo"], "stimato")
         self.assertIsNone(arricchito["metadati"]["litellm"]["costo_usd"])
+
+    def test_testo_da_risposta_oggetto_modelresponse(self) -> None:
+        risposta = MagicMock()
+        risposta.choices = [MagicMock()]
+        risposta.choices[0].message.content = "ciao dal modello"
+        self.assertEqual(litellm.testo_da_risposta(risposta), "ciao dal modello")
+
+    def test_testo_da_risposta_stringa(self) -> None:
+        self.assertEqual(litellm.testo_da_risposta("gia' una stringa"), "gia' una stringa")
+
+    def test_testo_da_risposta_dict(self) -> None:
+        risposta = {"choices": [{"message": {"content": "ciao dal dict"}}]}
+        self.assertEqual(litellm.testo_da_risposta(risposta), "ciao dal dict")
+
+    def test_testo_da_risposta_forma_inattesa_torna_stringa_vuota(self) -> None:
+        """Una forma inattesa (es. None, un numero, un dict senza le chiavi giuste) non
+        deve far crashare il chiamante: chi usa questa funzione (capoturno, triage
+        locale) tratta "" come "nessun contenuto interpretabile", non come eccezione."""
+        self.assertEqual(litellm.testo_da_risposta(None), "")
+        self.assertEqual(litellm.testo_da_risposta(42), "")
+        self.assertEqual(litellm.testo_da_risposta({"choices": []}), "")
+        self.assertEqual(litellm.testo_da_risposta({}), "")
 
     def test_completamento_locale_forza_costo_zero_misurato_e_provider_locale(self) -> None:
         """L'inferenza locale non ha un costo API da stimare: e' un fatto noto (zero),

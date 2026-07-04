@@ -34,6 +34,7 @@ class RepoGitRealeTest(unittest.TestCase):
         for c in commit:
             self.assertIn("hash", c)
             self.assertIn("data", c)
+            self.assertIn("autore", c)
             self.assertIn("messaggio", c)
 
     def test_finestra_temporale_head_e_coerente_col_commit_precedente(self) -> None:

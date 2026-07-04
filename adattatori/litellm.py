@@ -63,6 +63,26 @@ def _provider_da_modello(modello: str) -> str | None:
     return provider or None
 
 
+def testo_da_risposta(risposta: Any) -> str:
+    """Estrae il testo generato da una risposta di litellm.completion() (un oggetto
+    ModelResponse con .choices[0].message.content). Gestisce anche dict e stringhe
+    semplici (usati nei test come mock, o da provider non standard), tornando ""
+    invece di sollevare se la forma e' inattesa: i chiamanti trattano "" come
+    "nessun contenuto interpretabile", non come crash."""
+    if isinstance(risposta, str):
+        return risposta
+    try:
+        return risposta.choices[0].message.content or ""
+    except (AttributeError, IndexError, TypeError):
+        pass
+    if isinstance(risposta, dict):
+        try:
+            return risposta["choices"][0]["message"]["content"] or ""
+        except (KeyError, IndexError, TypeError):
+            pass
+    return ""
+
+
 def costo_risposta(risposta: Any, modello: str) -> float | None:
     """Legge il costo già calcolato da LiteLLM o lo calcola se la libreria è disponibile."""
     costo = _float_o_nullo(_campo(risposta, "response_cost"))
