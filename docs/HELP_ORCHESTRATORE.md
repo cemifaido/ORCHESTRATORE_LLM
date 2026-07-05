@@ -20,7 +20,7 @@ python .\interfaccia.py
 ```
 
 * Il server si avvierà all'indirizzo: **`http://127.0.0.1:8095`**
-* Offre la visualizzazione dei grafici Chart.js dei costi e del tasso di rework per agente, la timeline aggregata e il terminale per lanciare la sentinella.
+* Offre la visualizzazione dei grafici Chart.js su esecuzioni/rework e tempo LLM per agente, la timeline aggregata e il terminale per lanciare la sentinella.
 
 **Bottone "⟲ Riavvia Sistema"**: uvicorn non ricarica mai il codice modificato su disco (nessun `--reload`), quindi dopo aver aggiornato `interfaccia.py`/`registro.py`/`sentinella.py` la dashboard resterebbe silenziosamente disallineata dal codice finché il processo non viene riavviato a mano. Questo bottone chiede conferma, avvia un nuovo processo (che ricarica tutto da disco) e termina quello vecchio non appena il nuovo ha preso la porta; la pagina si ricarica da sola quando il nuovo processo risponde. Da usare dopo ogni modifica al codice dell'orchestratore, invece di cercare e uccidere il processo manualmente.
 
@@ -61,7 +61,7 @@ python .\registro.py aggiungi `
   --note "Refactoring chiavi esterne tabelle"
 ```
 
-* Il comando convalida l'evento rispetto alle definizioni di `VALORI` ed ai tipi richiesti.
+* Il comando convalida l'evento rispetto a `schema/evento.v1.json` con `jsonschema`.
 * Scrive in modalità append-only su `dati_locali/orchestrazione/eventi.jsonl`.
 
 ---
@@ -157,3 +157,38 @@ Passi:
 Utile per dimostrare (a te stesso o a terzi) cosa è successo davvero durante un commit, senza scenari finti o numeri inventati.
 
 Specifica completa: `docs/ORCHESTRAZIONE_LAVORATORI.md` (sezione "Replay di un commit reale").
+
+---
+
+## 8. Bacheca Multi-Agente (messaggistica fra Claude/Codex/Gemini/locale/umano)
+
+Oltre al registro (audit di cosa è stato fatto), c'è una bacheca separata per la
+comunicazione asincrona fra agenti prima/durante il lavoro:
+`dati_locali/orchestrazione/messaggi.jsonl`, gestita da `bacheca.py` (CLI) e da un
+pannello dedicato nella dashboard.
+
+**Da riga di comando**, i comandi più comuni:
+```powershell
+python bacheca.py chiedi --a codex --testo "Obiettivo: ... Contesto: ... Output atteso: ... Vincoli: ..."
+python bacheca.py stato
+python bacheca.py prossimo --agente claude
+python bacheca.py approva --thread-id <id> --testo "Va bene, procedi."
+```
+Guida completa senza dettagli tecnici: `docs/GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md`.
+Disegno tecnico completo: `docs/RFC_BACHECA_MULTIAGENTE.md`.
+
+**Nella dashboard**, il pannello "🗂️ Bacheca Multi-Agente" (sopra la Timeline
+eventi) mostra: tabella dei thread con stato e chi aspetta, banner se c'è un
+conflitto segnalato, file attualmente in carico, cronologia al click su un thread.
+Solo visualizzazione — approvare/chiudere/assegnare restano comandi CLI.
+
+Due funzioni in più nel pannello:
+- **Attività live**: box che si aggiorna da solo ogni 5s (solo i messaggi nuovi),
+  va avviato con il pulsante "▶ Avvia" — non parte mai da solo.
+- **▶ Rivivi**: riproduce animatamente la cronologia di un thread nel pannello
+  "Live Agent Handoff" (stesso meccanismo del replay di un commit reale, §7 sopra).
+
+**Hook automatici**: se configurati (`.claude/settings.json`, `.codex/hooks.json`),
+Claude Code e Codex leggono da soli i messaggi in sospeso all'avvio di una sessione
+o all'invio di un prompt — verificato che funziona davvero, non solo in teoria.
+Gemini/Antigravity per ora resta manuale (`bacheca.py prossimo --agente gemini`).

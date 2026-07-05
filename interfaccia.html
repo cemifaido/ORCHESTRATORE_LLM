@@ -824,6 +824,28 @@
     .tag-agent.claude { background: rgba(255, 107, 0, 0.12); border: 1px solid rgba(255, 107, 0, 0.25); color: var(--color-claude); }
     .tag-agent.codex { background: rgba(189, 0, 255, 0.12); border: 1px solid rgba(189, 0, 255, 0.25); color: var(--color-codex); }
     .tag-agent.locale { background: rgba(148, 163, 184, 0.12); border: 1px solid rgba(148, 163, 184, 0.25); color: var(--color-locale); }
+    .tag-agent.sistema { background: rgba(148, 163, 184, 0.12); border: 1px solid rgba(148, 163, 184, 0.25); color: var(--text-muted); }
+
+    /* Bacheca multi-agente: stati dei thread (schema messaggio.v1.json, non gli
+       stessi valori di stato/esito_gate degli eventi - vedi bacheca.py:stato_thread) */
+    .status-badge.aperto, .status-badge.segnalazione_conflitto { background: rgba(244, 63, 94, 0.15); color: #f87171; }
+    .status-badge.preso_in_carico { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+    .status-badge.risposto { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+    .status-badge.chiuso { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .status-badge.annullato, .status-badge.sconosciuto { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+
+    .riga-conflitto td { background: rgba(244, 63, 94, 0.06); border-bottom-color: rgba(244, 63, 94, 0.2); }
+    .bacheca-banner-conflitto {
+      background: rgba(244, 63, 94, 0.12);
+      border: 1px solid rgba(244, 63, 94, 0.3);
+      color: #f87171;
+      padding: 0.6rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .bacheca-riga-thread { cursor: pointer; }
 
     /* Blinking cursor terminale verde Matrix */
     .terminal-cursor {
@@ -1107,6 +1129,46 @@
       </div>
     </div>
 
+    <!-- Bacheca Multi-Agente (solo visualizzazione - docs/RFC_BACHECA_MULTIAGENTE.md §9.5) -->
+    <div class="widget">
+      <h2>🗂️ Bacheca Multi-Agente</h2>
+      <div class="form-group" style="max-width:320px;">
+        <label for="bachecaProjSelect">Progetto</label>
+        <select id="bachecaProjSelect" style="width:100%;"></select>
+      </div>
+      <div id="bachecaBanner"></div>
+      <div style="display:flex; align-items:center; gap:0.8rem; margin-bottom:0.6rem;">
+        <h3 style="font-size:0.95rem; color:var(--text-muted); margin:0;">Attività live</h3>
+        <button id="bachecaFeedToggle" class="btn" style="background: rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#34d399; padding:0.3rem 0.7rem; font-size:0.78rem;">▶ Avvia</button>
+      </div>
+      <div class="handoff-console" style="height:240px; margin-bottom:1.5rem;">
+        <div id="bachecaFeed" class="console-body" style="background: transparent;">
+          <div class="handoff-msg system">Live ferma. Premi "▶ Avvia" per seguire l'attività in tempo reale (con qualche secondo di ritardo).</div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Thread</th>
+              <th>Stato</th>
+              <th>Ultimo mittente</th>
+              <th>Tipo</th>
+              <th>Aspetta</th>
+              <th>Verdetto umano</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="bachecaBody">
+            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Caricamento bacheca...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 style="font-size:0.95rem; color:var(--text-muted); margin-top:1.5rem;">File attualmente in carico</h3>
+      <div id="bachecaOccupati" style="font-size:0.85rem; color:var(--text-muted);">Nessuno.</div>
+      <div id="bachecaDettaglio" style="margin-top:1.5rem;"></div>
+    </div>
+
     <!-- Combined Event Timeline -->
     <div class="widget">
       <h2>⏳ Timeline degli Eventi Aggregati</h2>
@@ -1146,6 +1208,8 @@
     let progettiCorrenti = [];
     let commitCorrenti = [];
     let paginaTimelineCorrente = 1;
+    let bachecaFeedAttivo = false;
+    let bachecaFeedIdsMostrati = new Set();
 
     function escapeHtml(str) {
       if (str == null) return '';
@@ -1223,6 +1287,33 @@
       caricaCommit();
       document.getElementById("realProjSelect").addEventListener("change", caricaCommit);
       document.getElementById("replayCommitBtn").addEventListener("click", avviaReplayCommit);
+
+      // Bacheca multi-agente
+      document.getElementById("bachecaProjSelect").addEventListener("change", () => {
+        document.getElementById("bachecaDettaglio").innerHTML = "";
+        bachecaFeedIdsMostrati = new Set();
+        document.getElementById("bachecaFeed").innerHTML = '<div class="handoff-msg system">Progetto cambiato, in attesa di nuova attività...</div>';
+        caricaBacheca();
+        if (bachecaFeedAttivo) caricaBachecaFeed();
+      });
+      document.getElementById("bachecaFeedToggle").addEventListener("click", () => {
+        bachecaFeedAttivo = !bachecaFeedAttivo;
+        const btn = document.getElementById("bachecaFeedToggle");
+        if (bachecaFeedAttivo) {
+          btn.textContent = "⏸ Ferma";
+          btn.style.background = "rgba(244,63,94,0.15)";
+          btn.style.borderColor = "rgba(244,63,94,0.4)";
+          btn.style.color = "#f87171";
+          document.getElementById("bachecaFeed").innerHTML = '<div class="handoff-msg system">Live avviata, in attesa del prossimo aggiornamento (ogni 5s)...</div>';
+          bachecaFeedIdsMostrati = new Set();
+          caricaBachecaFeed();
+        } else {
+          btn.textContent = "▶ Avvia";
+          btn.style.background = "rgba(16,185,129,0.15)";
+          btn.style.borderColor = "rgba(16,185,129,0.4)";
+          btn.style.color = "#34d399";
+        }
+      });
 
       // Paginazione della timeline eventi (50 record per pagina)
       document.getElementById("timelinePrevBtn").addEventListener("click", () => {
@@ -1329,6 +1420,24 @@
             realProjSelect.value = prevRealProj;
           }
         }
+
+        // Popola anche il selettore della Bacheca Multi-Agente
+        const bachecaProjSelect = document.getElementById("bachecaProjSelect");
+        if (bachecaProjSelect) {
+          const prevBachecaProj = bachecaProjSelect.value;
+          bachecaProjSelect.innerHTML = "";
+          data.progetti.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = p.nome;
+            bachecaProjSelect.appendChild(opt);
+          });
+          if (prevBachecaProj && data.progetti.some(p => p.id === prevBachecaProj)) {
+            bachecaProjSelect.value = prevBachecaProj;
+          }
+        }
+        caricaBacheca();
+        if (bachecaFeedAttivo) caricaBachecaFeed();
 
         // Popola/filtra la lista dei comandi
         aggiornaComandiSelect();
@@ -1856,6 +1965,127 @@
       }
     }
 
+    async function caricaBacheca() {
+      const select = document.getElementById("bachecaProjSelect");
+      const progetto_id = (select && select.value) || "orchestratore";
+      const corpo = document.getElementById("bachecaBody");
+      const banner = document.getElementById("bachecaBanner");
+      const occupatiBox = document.getElementById("bachecaOccupati");
+      try {
+        const res = await fetch(`/api/bacheca?progetto_id=${encodeURIComponent(progetto_id)}`);
+        if (!res.ok) throw new Error("risposta non valida");
+        const data = await res.json();
+
+        if (data.errore) {
+          corpo.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#f87171;">⚠ Bacheca non leggibile: ${escapeHtml(data.errore)}</td></tr>`;
+          banner.innerHTML = "";
+          occupatiBox.innerHTML = "Nessuno.";
+          return;
+        }
+
+        const thread = data.thread || [];
+        const conflitti = thread.filter(t => t.ultimo_tipo === "segnalazione_conflitto" && t.stato !== "chiuso" && t.stato !== "annullato");
+        banner.innerHTML = conflitti.length > 0
+          ? `<div class="bacheca-banner-conflitto">⚠ ${conflitti.length} conflitto${conflitti.length > 1 ? "i" : ""} segnalat${conflitti.length > 1 ? "i" : "o"}, ancora da revisionare</div>`
+          : "";
+
+        if (thread.length === 0) {
+          corpo.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--text-muted);">Nessun thread in bacheca per questo progetto.</td></tr>`;
+        } else {
+          corpo.innerHTML = "";
+          thread.forEach(t => {
+            const tr = document.createElement("tr");
+            tr.className = "bacheca-riga-thread" + (conflitti.includes(t) ? " riga-conflitto" : "");
+            const aspetta = (t.aspetta && t.aspetta.length > 0)
+              ? t.aspetta.map(a => `<span class="tag-agent ${escapeHtml(a)}">${escapeHtml(a)}</span>`).join(" ")
+              : '<span style="color:var(--text-muted);">(nessuno)</span>';
+            tr.innerHTML = `
+              <td title="${escapeHtml(t.thread_id)}">${escapeHtml(t.thread_id.slice(0, 8))}</td>
+              <td><span class="status-badge ${escapeHtml(t.stato)}">${escapeHtml(t.stato)}</span></td>
+              <td><span class="tag-agent ${escapeHtml(t.ultimo_mittente)}">${escapeHtml(t.ultimo_mittente)}</span></td>
+              <td>${escapeHtml(t.ultimo_tipo)}</td>
+              <td>${aspetta}</td>
+              <td>${escapeHtml(t.verdetto_umano)}</td>
+              <td><button class="btn bacheca-btn-rivivi" style="background: rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.4); color:#c4b5fd; padding:0.3rem 0.6rem; font-size:0.75rem;">▶ Rivivi</button></td>
+            `;
+            tr.addEventListener("click", () => mostraDettaglioThreadBacheca(progetto_id, t.thread_id));
+            tr.querySelector(".bacheca-btn-rivivi").addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              avviaReplayThreadBacheca(progetto_id, t.thread_id);
+            });
+            corpo.appendChild(tr);
+          });
+        }
+
+        const occupati = data.occupati || {};
+        const fileOccupati = Object.keys(occupati);
+        occupatiBox.innerHTML = fileOccupati.length === 0
+          ? "Nessuno."
+          : fileOccupati.map(f => {
+              const info = occupati[f];
+              const scadenza = info.scadenza ? new Date(info.scadenza).toLocaleString() : "senza scadenza";
+              return `<div>- <b>${escapeHtml(f)}</b>: <span class="tag-agent ${escapeHtml(info.agente)}">${escapeHtml(info.agente)}</span> (lease ${scadenza})</div>`;
+            }).join("");
+      } catch (err) {
+        corpo.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#f87171;">Errore nel caricamento della bacheca.</td></tr>`;
+      }
+    }
+
+    async function caricaBachecaFeed() {
+      if (!bachecaFeedAttivo) return;
+      const select = document.getElementById("bachecaProjSelect");
+      const progetto_id = (select && select.value) || "orchestratore";
+      const feed = document.getElementById("bachecaFeed");
+      try {
+        const res = await fetch(`/api/bacheca/feed?progetto_id=${encodeURIComponent(progetto_id)}&limite=50`);
+        if (!res.ok) throw new Error("risposta non valida");
+        const data = await res.json();
+        const nuovi = (data.messaggi || []).filter(m => !bachecaFeedIdsMostrati.has(m.id_messaggio));
+        if (nuovi.length === 0) return;
+
+        // Al primo giro dopo l'avvio mostra tutta la storia recente senza distinguerla
+        // come "nuova"; dai giri successivi in poi solo i messaggi arrivati davvero
+        // dopo l'ultimo controllo hanno lo stesso effetto "ticker" di un log live.
+        const primoGiro = bachecaFeedIdsMostrati.size === 0;
+        if (primoGiro) feed.innerHTML = "";
+
+        nuovi.forEach(m => {
+          bachecaFeedIdsMostrati.add(m.id_messaggio);
+          const badge = `<span class="tag-agent ${escapeHtml(m.mittente)}">${escapeHtml(m.mittente.toUpperCase())}</span>`;
+          const destinatari = (m.destinatari || []).map(d => escapeHtml(d)).join(", ");
+          const classe = "handoff-msg" + (m.tipo === "segnalazione_conflitto" ? " fail" : m.tipo === "chiusura" ? " success" : " system");
+          const riga = document.createElement("div");
+          riga.className = classe;
+          riga.innerHTML = `<b>${badge} → ${destinatari}</b> [${escapeHtml(m.timestamp)}] (${escapeHtml(m.tipo)}): ${escapeHtml(m.testo)}`;
+          feed.appendChild(riga);
+        });
+        feed.scrollTop = feed.scrollHeight;
+      } catch (err) {
+        // silenzioso: non vogliamo che un feed opzionale interrompa il resto della dashboard
+      }
+    }
+
+    async function mostraDettaglioThreadBacheca(progetto_id, thread_id) {
+      const box = document.getElementById("bachecaDettaglio");
+      box.innerHTML = `<div class="handoff-console"><div class="handoff-msg system">Caricamento thread ${escapeHtml(thread_id.slice(0, 8))}...</div></div>`;
+      try {
+        const res = await fetch(`/api/bacheca/thread?progetto_id=${encodeURIComponent(progetto_id)}&thread_id=${encodeURIComponent(thread_id)}`);
+        if (!res.ok) throw new Error("thread non trovato");
+        const data = await res.json();
+        const righe = (data.messaggi || []).map(m => `
+          <div class="handoff-msg system">
+            <span style="color:var(--text-muted);">[${escapeHtml(m.timestamp)}]</span>
+            <span class="tag-agent ${escapeHtml(m.mittente)}">${escapeHtml(m.mittente)}</span>
+            → ${escapeHtml((m.destinatari || []).join(", "))}
+            (${escapeHtml(m.tipo)}): ${escapeHtml(m.testo)}
+          </div>
+        `).join("");
+        box.innerHTML = `<div class="handoff-console">${righe}</div>`;
+      } catch (err) {
+        box.innerHTML = `<div class="handoff-console"><div class="handoff-msg fail">Impossibile caricare la cronologia del thread.</div></div>`;
+      }
+    }
+
     async function avviaReplayCommit() {
       const progetto_id = document.getElementById("realProjSelect").value || "orchestratore";
       const hash = document.getElementById("commitSelect").value;
@@ -1981,6 +2211,86 @@
 
       passoSuccessivo();
       simTimer = setInterval(passoSuccessivo, 1800);
+    }
+
+    // Colore/esito per tipo di messaggio bacheca, per il replay animato: non c'e'
+    // un vero e proprio esito_gate/stato come negli eventi.jsonl, quindi il "fallito"
+    // qui e' solo un modo per riusare gli stessi stili handoff-msg/nodo esistenti,
+    // non un giudizio reale sul messaggio.
+    function _esitoVisivoTipoMessaggio(tipo) {
+      if (tipo === "segnalazione_conflitto") return "fail";
+      if (tipo === "chiusura") return "success";
+      return "neutro";
+    }
+
+    async function avviaReplayThreadBacheca(progetto_id, thread_id) {
+      const logBox = document.getElementById("handoffLogs");
+      const widgetHandoff = document.querySelector(".handoff-container").closest(".widget");
+      if (widgetHandoff) widgetHandoff.scrollIntoView({ behavior: "smooth", block: "start" });
+
+      fermaSimulazione();
+      document.getElementById("startSimBtn").style.display = "none";
+      document.getElementById("stopSimBtn").style.display = "inline-block";
+      document.getElementById("commitCard").style.display = "none";
+
+      logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Recupero la cronologia del thread bacheca...<span class="terminal-cursor"></span></div>`;
+
+      let dati;
+      try {
+        const res = await fetch(`/api/bacheca/thread?progetto_id=${encodeURIComponent(progetto_id)}&thread_id=${encodeURIComponent(thread_id)}`);
+        if (!res.ok) throw new Error("thread non trovato");
+        dati = await res.json();
+      } catch (err) {
+        logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
+        logBox.innerHTML += `<div class="handoff-msg fail"><b>[Sistema] Errore:</b> ${escapeHtml(err.message)}</div><span class="terminal-cursor"></span>`;
+        fermaSimulazione();
+        return;
+      }
+
+      const msgs = dati.messaggi || [];
+      if (msgs.length === 0) {
+        logBox.innerHTML = `<div class="handoff-msg system">Nessun messaggio in questo thread.</div><span class="terminal-cursor"></span>`;
+        fermaSimulazione();
+        return;
+      }
+
+      logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Rivivo ${msgs.length} messaggi del thread ${escapeHtml(thread_id.slice(0, 8))}...<span class="terminal-cursor"></span></div>`;
+
+      let indiceThread = 0;
+
+      function passoSuccessivoThread() {
+        logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
+
+        if (indiceThread >= msgs.length) {
+          document.querySelectorAll(".agent-node").forEach(node => node.setAttribute("class", "agent-node"));
+          logBox.innerHTML += `<div class="handoff-msg success"><b>📬 REPLAY DEL THREAD COMPLETATO</b></div><span class="terminal-cursor"></span>`;
+          logBox.scrollTop = logBox.scrollHeight;
+          fermaSimulazione();
+          return;
+        }
+
+        const m = msgs[indiceThread];
+        document.querySelectorAll(".agent-node").forEach(node => node.setAttribute("class", "agent-node"));
+
+        const esito = _esitoVisivoTipoMessaggio(m.tipo);
+        const nodo = document.getElementById(`node_${m.mittente}`);
+        if (nodo) {
+          nodo.classList.add("active");
+          if (esito !== "neutro") nodo.classList.add(`active-${esito}`);
+        }
+
+        const badgeMittente = `<span class="tag-agent ${escapeHtml(m.mittente)}">${escapeHtml(m.mittente.toUpperCase())}</span>`;
+        const destinatari = (m.destinatari || []).map(d => escapeHtml(d)).join(", ");
+        const msgClass = "handoff-msg" + (esito !== "neutro" ? ` ${esito}` : " system");
+        logBox.innerHTML += `<div class="${msgClass}"><b>${badgeMittente} → ${destinatari}</b> [${escapeHtml(m.timestamp.slice(11, 19))}] (${escapeHtml(m.tipo)}): ${escapeHtml(m.testo)}</div>`;
+        logBox.innerHTML += `<span class="terminal-cursor"></span>`;
+        logBox.scrollTop = logBox.scrollHeight;
+
+        indiceThread++;
+      }
+
+      passoSuccessivoThread();
+      simTimer = setInterval(passoSuccessivoThread, 1800);
     }
   </script>
 </body>

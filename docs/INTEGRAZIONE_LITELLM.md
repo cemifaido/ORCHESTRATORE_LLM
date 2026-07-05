@@ -119,5 +119,5 @@ Il framework deve registrare solo l'esito operativo e i dati misurati restituiti
 ## Prossimi passi
 
 1. Aggiungere un esempio di configurazione proxy quando avremo il primo progetto reale.
-2. Inserire nel cruscotto una distinzione visiva fra costo stimato e misurato.
+2. Mantenere nei dati/API la distinzione fra costo stimato e misurato; reintrodurla in dashboard solo se torna utile come vista operativa.
 3. Valutare un adapter `routing.py` solo dopo aver raccolto eventi reali.

@@ -33,6 +33,7 @@ sys.path.append(str(RADICE))
 import registro  # noqa: E402
 import capoturno  # noqa: E402
 import commit_replay  # noqa: E402
+import bacheca  # noqa: E402
 
 class ProgettoInput(BaseModel):
     nome: str
@@ -605,6 +606,69 @@ def eventi_commit_progetto(progetto_id: str, hash: str):
         "eventi": eventi,
         "stima_risparmio": stima,
     }
+
+
+@app.get("/api/bacheca")
+def bacheca_progetto(progetto_id: str = "orchestratore"):
+    """Stato della bacheca multi-agente di un progetto: un riepilogo per thread
+    (stato, chi aspetta, verdetto umano, ultimo messaggio) piu' i file attualmente
+    in carico. Solo visualizzazione (docs/RFC_BACHECA_MULTIAGENTE.md §9.5): nessuna
+    azione da qui, quelle restano CLI (bacheca.py chiedi/approva/prendi/...)."""
+    progetto = _progetto_o_404(progetto_id)
+    messaggi, errore = bacheca.leggi_messaggi_progetto(Path(progetto["percorso"]))
+    if errore:
+        return {"progetto_id": progetto_id, "errore": errore, "thread": [], "occupati": {}}
+
+    thread_ids = sorted({m["thread_id"] for m in messaggi})
+    thread_riepilogo = []
+    for tid in thread_ids:
+        ultimo = bacheca._messaggi_del_thread(messaggi, tid)[-1]
+        thread_riepilogo.append({
+            "thread_id": tid,
+            "stato": bacheca.stato_thread(messaggi, tid),
+            "ultimo_mittente": ultimo["mittente"],
+            "ultimo_tipo": ultimo["tipo"],
+            "ultimo_testo": ultimo["testo"][:200],
+            "aspetta": bacheca.destinatari_pendenti(messaggi, tid),
+            "verdetto_umano": bacheca.verdetto_umano_corrente(messaggi, tid),
+            "file_modificati": ultimo["file_modificati"],
+        })
+
+    occupati = {
+        f: {
+            "agente": info["agente"],
+            "thread_id": info["thread_id"],
+            "scadenza": info["scadenza"].isoformat() if info["scadenza"] else None,
+        }
+        for f, info in bacheca.file_occupati(messaggi).items()
+    }
+    return {"progetto_id": progetto_id, "thread": thread_riepilogo, "occupati": occupati}
+
+
+@app.get("/api/bacheca/feed")
+def bacheca_feed_progetto(progetto_id: str = "orchestratore", limite: int = 50):
+    """Ultimi messaggi in ordine cronologico (tutti i thread mescolati, non
+    raggruppati) per il feed live del pannello Bacheca: mostra l'attivita' man mano
+    che arriva, senza dover scegliere un thread specifico ne' cliccare nulla."""
+    progetto = _progetto_o_404(progetto_id)
+    messaggi, errore = bacheca.leggi_messaggi_progetto(Path(progetto["percorso"]))
+    if errore:
+        return {"progetto_id": progetto_id, "errore": errore, "messaggi": []}
+    messaggi_ordinati = sorted(messaggi, key=lambda m: m["timestamp"])
+    return {"progetto_id": progetto_id, "messaggi": messaggi_ordinati[-limite:]}
+
+
+@app.get("/api/bacheca/thread")
+def bacheca_thread_progetto(progetto_id: str, thread_id: str):
+    """Cronologia completa di un thread, per il drill-down nel pannello Bacheca."""
+    progetto = _progetto_o_404(progetto_id)
+    messaggi, errore = bacheca.leggi_messaggi_progetto(Path(progetto["percorso"]))
+    if errore:
+        raise HTTPException(status_code=500, detail=errore)
+    cronologia = bacheca._messaggi_del_thread(messaggi, thread_id)
+    if not cronologia:
+        raise HTTPException(status_code=404, detail="Thread non trovato")
+    return {"progetto_id": progetto_id, "thread_id": thread_id, "messaggi": cronologia}
 
 
 def _avvia_processo_sostituto() -> None:

@@ -2,7 +2,7 @@
 
 **Stato**: specifica operativa iniziale (2026-07-03). Documento vivo.
 
-Vedi anche: [Indice](INDEX.md) · [Regole generali di programmazione](REGOLE_GENERALI_PROGRAMMAZIONE_DA_RISPETTARE_SEMPRE.MD) · [Integrazione LiteLLM](INTEGRAZIONE_LITELLM.md).
+Vedi anche: [Indice](INDEX.md) · [Regole generali di programmazione](REGOLE_GENERALI_PROGRAMMAZIONE_DA_RISPETTARE_SEMPRE.MD) · [Integrazione LiteLLM](INTEGRAZIONE_LITELLM.md) · [RFC Bacheca multi-agente](RFC_BACHECA_MULTIAGENTE.md) (bozza, evoluzione proposta della sincronizzazione asincrona descritta qui sotto) · [Conformità ToS della bacheca](CONFORMITA_TOS_BACHECA.md).
 
 ## Scopo
 
@@ -150,11 +150,17 @@ sessioni separate, senza conversazione condivisa in tempo reale. Sincronizzano i
 asincrono attraverso il registro: ognuno legge le note degli eventi recenti all'inizio
 di un compito e registra un evento (`--agente claude|gemini|codex`) alla fine. Istruzioni
 dettagliate in `CLAUDE.md`, `GEMINI.md`, `AGENTS.md` (letti automaticamente dai
-rispettivi strumenti, **non ancora verificato** che antigravity-ide/Codex CLI li carichino
-davvero da soli come fa Claude Code con `CLAUDE.md` — la prima volta che apri una
-sessione con uno dei due, verifica esplicitamente che li abbia letti). Non è
+rispettivi strumenti — **verificato empiricamente** per Claude Code e Codex in
+sessioni fresche reali; per antigravity-ide/Gemini resta da verificare, la prima
+volta che apri una sessione controlla esplicitamente che l'abbia letto). Non è
 sincronizzazione in tempo reale — è un changelog condiviso, lo stesso che vede
 l'operatore umano nella dashboard.
+
+Esiste anche un meccanismo più strutturato per la comunicazione fra agenti (non solo
+changelog di audit, vera messaggistica con thread/destinatari/stato), con hook che
+iniettano automaticamente il contesto rilevante all'avvio di una sessione — vedi
+[RFC Bacheca multi-agente](RFC_BACHECA_MULTIAGENTE.md) e, in versione senza dettagli
+tecnici, [Guida semplice alla bacheca multi-agente](GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md).
 
 Anche il modello locale (`triage_locale.py`) ora registra un evento (`--agente locale`,
 `tipo_compito=monitoraggio`) per ogni classificazione: prima il suo lavoro spariva in
@@ -254,6 +260,8 @@ Specifica: `docs/INTEGRAZIONE_LITELLM.md`.
 - Cinque passaggi tra agenti per una modifica banale.
 - Far programmare il LLM locale.
 - Partire da A2A prima di avere registro e gate.
+- Pilotare UI proprietarie o usare abbonamenti flat come API non ufficiali (vedi
+  [Conformità ToS della bacheca](CONFORMITA_TOS_BACHECA.md)).
 - Usare token rimasti come criterio principale di routing.
 - Committare il registro runtime.
 
@@ -297,9 +305,10 @@ Nei progetti integrati prima di questo cambiamento possono restare copie storich
 Avvio quotidiano consigliato: `.\avvia_dashboard.ps1` (non avvia una seconda copia se la dashboard è già attiva sulla porta, poi apre il browser).
 
 Il server `interfaccia.py` (FastAPI/Uvicorn, porta `8095`) offre un'interfaccia di monitoraggio visiva ad alto impatto grafico (dark theme, glassmorphic layout) basata su:
-- **Grafici Chart.js**: Visualizzazione ripartita dei costi stimati ed istogrammi di esecuzioni/rework per ogni lavoratore.
+- **Grafici Chart.js**: Visualizzazione di esecuzioni/rework e ripartizione del tempo LLM cumulato per ogni lavoratore.
 - **Selettore Progetti**: Form per inserire il percorso assoluto e nome di una nuova cartella per effettuarne l'integrazione ed il monitoraggio automatico.
 - **Pannello Sentinella**: Console web interattiva per lanciare comandi deterministici whitelistati (es. pytest, git status) su un determinato progetto in un subprocesso isolato, visualizzandone il log di ritorno.
-- **Live Agent Handoff & Cooperazione**: pannello per lanciare un compito reale tramite `capoturno.py` (vedi [Capoturno](#capoturno)), con diagramma SVG animato e console che mostrano in tempo reale quale agente sta lavorando e con quale esito.
+- **Live Agent Handoff & Cooperazione**: pannello per lanciare un compito reale tramite `capoturno.py` (vedi [Capoturno](#capoturno)), con diagramma SVG animato e console che mostrano in tempo reale quale agente sta lavorando e con quale esito. Lo stesso diagramma/console riproduce anche, in modalità replay, un commit reale oppure un thread della bacheca multi-agente (pulsante "▶ Rivivi" nel pannello Bacheca — solo il nodo di chi scrive pulsa, senza linee fra coppie arbitrarie di agenti, perché il diagramma ha percorsi fissi pensati per il flusso di `capoturno.py`, non un grafo libero).
+- **Bacheca Multi-Agente** (vedi [RFC Bacheca multi-agente](RFC_BACHECA_MULTIAGENTE.md)): pannello di sola visualizzazione per `dati_locali/orchestrazione/messaggi.jsonl` — tabella thread con stato/chi aspetta/verdetto umano, banner per i conflitti segnalati, file attualmente in carico, drill-down della cronologia al click. Include un feed live opzionale (pulsante Avvia/Ferma, poll ogni 5s solo dei messaggi nuovi) e il replay animato descritto sopra. Nessuna azione da qui (approvare/chiudere/assegnare restano CLI, `bacheca.py`).
 - **Riavvio Sistema**: `POST /api/sistema/riavvia` avvia un nuovo processo `interfaccia.py` (che ricarica il codice corrente da disco) e termina quello in esecuzione non appena il nuovo ha preso la porta (`__main__` ritenta il bind per ~10s in caso di sovrapposizione). Necessario perché uvicorn non ricarica mai i moduli modificati: senza riavvio, la dashboard resta silenziosamente disallineata dal codice sorgente.
-- **Costi in EUR**: i costi (`costo_stimato_usd`) sono mostrati in dashboard convertiti in euro. Il tasso di cambio viene scaricato da un servizio esterno (`open.er-api.com`) al massimo una volta al giorno e tenuto in `localStorage` del browser: un riavvio del server o un semplice reload della pagina nello stesso giorno riusano il tasso già scaricato invece di rifare la chiamata.
+- **Tempo Elaborazione LLM Cumulato**: la dashboard usa `latenza_ms` aggregata per mostrare il tempo di elaborazione per agente/progetto. I costi restano nel registro e nelle API per audit/LiteLLM, ma non sono più una tile primaria della dashboard.

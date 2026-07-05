@@ -13,7 +13,8 @@ Il principio è semplice:
 - `sentinella.py` — esegue solo comandi dichiarati in whitelist e registra l'esito.
 - `capoturno.py` — motore di orchestrazione reale: instrada, chiama l'agente via LiteLLM, scrive la patch, valida con la sentinella e fa rework/failover automatico (vedi `docs/ORCHESTRAZIONE_LAVORATORI.md#capoturno`).
 - `instrada.py` — suggerisce l'agente più adatto per un tipo di compito.
-- `schema/` — schemi versionati per eventi e compiti.
+- `bacheca.py` — bacheca multi-agente: messaggistica strutturata fra Claude/Codex/Gemini/locale/umano senza API a pagamento (vedi `docs/RFC_BACHECA_MULTIAGENTE.md`).
+- `schema/` — schemi versionati per eventi, compiti e messaggi della bacheca.
 - `config/` — esempi di configurazione per agenti e comandi ammessi.
 - `adattatori/` — integrazioni opzionali, importate solo quando servono.
 - `utility/installa_hook.py` — installa un hook Git pre-commit che lancia il quality gate.
@@ -95,3 +96,4 @@ Sono richiamabili anche come comandi whitelistati dalla sentinella: `controllo_l
 6. Il capofila operativo resta l'umano: il modello locale fa solo guardia su output ripetitivi.
 
 La mappa documentale è in `docs/INDEX.md`; la specifica operativa completa è in `docs/ORCHESTRAZIONE_LAVORATORI.md`.
+La bacheca multi-agente senza API a pagamento (`bacheca.py`, implementata e testata, hook verificati per Claude Code e Codex) è documentata in `docs/RFC_BACHECA_MULTIAGENTE.md` (tecnico) e `docs/GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md` (senza dettagli tecnici).
