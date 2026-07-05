@@ -650,6 +650,7 @@ def bacheca_feed_progetto(progetto_id: str = "orchestratore", limite: int = 50):
     """Ultimi messaggi in ordine cronologico (tutti i thread mescolati, non
     raggruppati) per il feed live del pannello Bacheca: mostra l'attivita' man mano
     che arriva, senza dover scegliere un thread specifico ne' cliccare nulla."""
+    limite = max(1, min(limite, 200))
     progetto = _progetto_o_404(progetto_id)
     messaggi, errore = bacheca.leggi_messaggi_progetto(Path(progetto["percorso"]))
     if errore:

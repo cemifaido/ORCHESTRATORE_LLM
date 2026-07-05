@@ -1,7 +1,7 @@
 # RFC — Bacheca multi-agente senza API a pagamento
 
 **Stato**: MVP implementato e testato (`bacheca.py` + `tests/test_bacheca.py`,
-125/125 test). Hook **verificati empiricamente e confermati funzionanti** per Claude
+suite 131/131 test). Hook **verificati empiricamente e confermati funzionanti** per Claude
 Code e Codex (sessioni fresche reali, non solo configurazione — vedi §9): l'iniezione
 automatica del contesto dalla bacheca funziona senza intervento umano su entrambi.
 Per Codex serve un'autorizzazione esplicita una tantum nell'IDE (Antigravity/Codex
@@ -98,7 +98,7 @@ Campi e motivazione di ciascuno:
 | `timestamp` | date-time | Come in `evento.v1.json` |
 | `mittente` | enum `[gemini, claude, codex, locale, umano, sistema]` | Stesso enum di `agente` in `evento.v1.json`, per coerenza |
 | `destinatari` | array di enum (stesso set) | **Deciso** (v1): enumerazione esplicita, nessun valore "tutti" nello schema — vedi §7 per la motivazione |
-| `tipo` | enum `[richiesta, risposta, domanda, sintesi, presa_in_carico, chiusura, annullamento, segnalazione_conflitto]` | Determina lo stato derivato del thread (vedi §3.3). `segnalazione_conflitto` è il tipo dedicato per quando il dispatcher locale rileva un conflitto (§6.2) — non va infilato come campo libero dentro `sintesi` |
+| `tipo` | enum `[richiesta, risposta, domanda, sintesi, presa_in_carico, chiusura, annullamento, segnalazione_conflitto, checkpoint]` | Determina lo stato derivato del thread (vedi §3.3). `segnalazione_conflitto` è il tipo dedicato per quando il dispatcher locale rileva un conflitto (§6.2) — non va infilato come campo libero dentro `sintesi`. `checkpoint` annota avanzamento a metà lavoro senza cambiare lo stato globale del thread (§3.4bis) |
 | `testo` | string | Il contenuto — trattato come dato, non autorità (§2) |
 | `file_modificati` | array di string | **Stesso nome** di `evento.v1.json` (non un nome diverso tipo "risorse"), per restare compatibili fra i due registri e permettere alla dashboard di trattarli come lo stesso concetto |
 | `riferimenti` | array di string | Percorsi/URL di contesto che non sono file toccati (doc, altri thread, id_compito correlati) |
@@ -144,7 +144,7 @@ destinatari. Se un thread è indirizzato a `claude` e `codex` e risponde solo Cl
 Mirror strutturale di `registro.py` (stesso stile: `carica_schema_*`, `valida_*`,
 `aggiungi_*`, `leggi_*`, riusando `_validatore_per_schema`/`_messaggio_errore`/
 `adesso_utc`/`lista_csv` già presenti in `registro.py` invece di duplicarli). Comandi
-CLI implementati (`tests/test_bacheca.py`, 125 test, più diversi giri manuali end-to-end):
+CLI implementati (`tests/test_bacheca.py`, 49 test; suite complessiva 131 test, più diversi giri manuali end-to-end):
 
 ```
 python bacheca.py aggiungi --mittente claude --destinatari codex --tipo richiesta --testo "..."
@@ -156,6 +156,13 @@ python bacheca.py chiudi --thread-id <id> --mittente umano --testo "..."
 python bacheca.py riepilogo
 python bacheca.py valida
 ```
+
+Hardening applicato dopo i primi giri d'uso: i comandi operativi che continuano un
+thread (`prendi`, `checkpoint`, `chiudi`/`approva`/`respingi`) rifiutano un
+`thread_id` inesistente invece di creare cronologie orfane per errore. Anche
+`aggiungi --correla-a <id_messaggio>` ora rifiuta riferimenti a messaggi inesistenti:
+la comodità resta l'ereditarietà automatica del `thread_id` quando `correla_a` è
+valido, non l'apertura silenziosa di un thread nuovo.
 
 **Coordinamento cooperativo sui file, non un lock del filesystem** (emerso in
 discussione: cosa succede se due agenti devono toccare lo stesso file?). Non c'è un
@@ -256,10 +263,8 @@ sì — restano due atti distinti, anche se a volte coincidono nello stesso mome
 Due correzioni di parsing emerse dallo spike (§6): la normalizzazione case-insensitive
 dei nomi agente (`Gemini` → `gemini`) è **fatta** (`bacheca.py:normalizza_agente`,
 testata). Il modello locale che a volte restituisce `"conflitto": "null"` come
-stringa invece di `null` JSON resta **da gestire quando esisterà** un comando che
-integra davvero il dispatcher locale (es. un futuro `bacheca.py sintetizza`) — non
-ancora scritto: `bacheca.py` oggi copre solo i comandi umani/agente, non ancora
-un'integrazione diretta con `adattatori/litellm.py`.
+stringa invece di `null` JSON è gestito in `bacheca.py sintetizza`, con test di
+regressione.
 
 ### 3.5 Flusso di lavoro end-to-end (esempio concreto)
 
@@ -656,7 +661,8 @@ piano, riflette cosa è stato costruito davvero, in ordine cronologico:
    corretti in corso d'opera: derivazione dello stato per destinatario (confronto
    timestamp a parità di secondo, corretto usando la posizione nella lista invece
    della stringa), eredità di `thread_id` da `correla_a` in `aggiungi` (prima ne
-   apriva uno nuovo per sbaglio).
+   apriva uno nuovo per sbaglio), rifiuto di `correla_a` inesistenti e di comandi
+   operativi su `thread_id` inesistenti.
 2. **Fatto e VERIFICATO EMPIRICAMENTE**: `.claude/settings.json` e
    `.codex/hooks.json` configurati con `SessionStart`/`UserPromptSubmit` →
    `bacheca.py prossimo --agente X --formato hook --evento <nome>`. Confermato in
@@ -696,7 +702,8 @@ piano, riflette cosa è stato costruito davvero, in ordine cronologico:
    - elenco file attualmente in carico (da `occupati`);
    - drill-down della cronologia di un thread al click su una riga;
    - **feed live**: box che si aggiorna da solo ogni 5s aggiungendo solo i
-     messaggi nuovi mai mostrati (nuovo endpoint `GET /api/bacheca/feed`),
+     messaggi nuovi mai mostrati (endpoint `GET /api/bacheca/feed`, con `limite`
+     clampato a 1..200 per evitare richieste accidentali troppo grandi o vuote),
      attivabile/disattivabile con un pulsante Avvia/Ferma — non parte da solo
      all'apertura della pagina, va richiesto esplicitamente;
    - pulsante **"▶ Rivivi"** per riprodurre animatamente un thread nel pannello
@@ -708,8 +715,8 @@ piano, riflette cosa è stato costruito davvero, in ordine cronologico:
      testuale con mittente/destinatari/tipo/testo.
    Nuovo helper difensivo `bacheca.leggi_messaggi_progetto()` (mirror di
    `registro.leggi_eventi_progetto()`) perché una bacheca corrotta non deve far
-   cadere l'intera dashboard. Suite a 125/125 test (solo backend/route toccati dai
-   test; il frontend è verificato a vista).
+   cadere l'intera dashboard. Suite a 131/131 test (backend/route coperti dai test;
+   il frontend è verificato a vista).
 8. **Da fare**: revisione di questo documento e dello schema da parte di Gemini —
    non ancora avvenuta.
 9. **Da fare**: verifica empirica dell'hook Antigravity/Gemini (§4.3), rimandata a

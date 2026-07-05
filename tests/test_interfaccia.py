@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import interfaccia
+import bacheca
 import registro
 
 
@@ -250,6 +251,40 @@ class StatoApiTest(unittest.TestCase):
             stat_proj = stato["progetto_stats"]["corrupted_proj"]
             self.assertIn("errore", stat_proj)
             self.assertIn("registro corrotto", stat_proj["errore"])
+
+
+class BachecaFeedApiTest(unittest.TestCase):
+    def _progetto_con_n_messaggi(self, tmp: str, n: int) -> list[dict]:
+        p_path = Path(tmp)
+        percorso_messaggi = p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+        for i in range(n):
+            messaggio = bacheca.costruisci_messaggio(
+                mittente="umano",
+                destinatari=["codex"],
+                tipo="richiesta",
+                testo=f"messaggio {i}",
+            )
+            messaggio["timestamp"] = f"2026-07-05T00:{i // 60:02d}:{i % 60:02d}Z"
+            bacheca.aggiungi_messaggio(percorso_messaggi, messaggio)
+        return [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
+
+    def test_feed_clampa_limite_minimo_a_un_messaggio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti = self._progetto_con_n_messaggi(tmp, 3)
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                risultato = interfaccia.bacheca_feed_progetto(progetto_id="test_proj", limite=0)
+
+            self.assertEqual(len(risultato["messaggi"]), 1)
+            self.assertEqual(risultato["messaggi"][0]["testo"], "messaggio 2")
+
+    def test_feed_clampa_limite_massimo_a_duecento_messaggi(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti = self._progetto_con_n_messaggi(tmp, 250)
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                risultato = interfaccia.bacheca_feed_progetto(progetto_id="test_proj", limite=1000)
+
+            self.assertEqual(len(risultato["messaggi"]), 200)
+            self.assertEqual(risultato["messaggi"][0]["testo"], "messaggio 50")
 
 
 if __name__ == "__main__":

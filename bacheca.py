@@ -407,6 +407,11 @@ def _default_destinatari(messaggi: list[dict[str, Any]], thread_id: str, esclusi
     return destinatari
 
 
+def _richiedi_thread_esistente(messaggi: list[dict[str, Any]], thread_id: str) -> None:
+    if not _messaggi_del_thread(messaggi, thread_id):
+        raise ValueError(f"thread_id {thread_id!r} non esiste")
+
+
 # --------------------------------------------------------------------------
 # Comandi CLI
 # --------------------------------------------------------------------------
@@ -416,12 +421,14 @@ def comando_aggiungi(args: argparse.Namespace) -> int:
     percorso = Path(args.bacheca)
     correla_a = args.correla_a or None
     thread_id = args.thread_id or None
-    if correla_a and not thread_id:
+    if correla_a:
         # eredita il thread del messaggio correlato, come gia' fa 'rispondi' - senza
         # questo, --correla-a senza --thread-id apre per sbaglio un thread nuovo
         # invece di restare in quello originale (bug reale trovato in uso).
         correlati = [m for m in leggi_messaggi(percorso) if m["id_messaggio"] == correla_a]
-        if correlati:
+        if not correlati:
+            raise ValueError(f"nessun messaggio con id_messaggio={correla_a!r}")
+        if not thread_id:
             thread_id = correlati[0]["thread_id"]
     messaggio = costruisci_messaggio(
         mittente=normalizza_agente(args.mittente),
@@ -511,6 +518,7 @@ def comando_prendi(args: argparse.Namespace) -> int:
     percorso = Path(args.bacheca)
     messaggi = leggi_messaggi(percorso)
     agente = normalizza_agente(args.agente)
+    _richiedi_thread_esistente(messaggi, args.thread_id)
     file_nuovi = lista_csv(args.file_modificati)
 
     if file_nuovi:
@@ -590,6 +598,7 @@ def comando_checkpoint(args: argparse.Namespace) -> int:
     percorso = Path(args.bacheca)
     messaggi = leggi_messaggi(percorso)
     agente = normalizza_agente(args.agente)
+    _richiedi_thread_esistente(messaggi, args.thread_id)
     destinatari = (
         [normalizza_agente(a) for a in lista_csv(args.destinatari)]
         if args.destinatari
@@ -764,6 +773,7 @@ def comando_sintetizza(args: argparse.Namespace) -> int:
 def _chiudi(args: argparse.Namespace, tipo: str, verdetto_umano: str) -> int:
     percorso = Path(args.bacheca)
     messaggi = leggi_messaggi(percorso)
+    _richiedi_thread_esistente(messaggi, args.thread_id)
     mittente = normalizza_agente(args.mittente)
     destinatari = (
         [normalizza_agente(a) for a in lista_csv(args.destinatari)]

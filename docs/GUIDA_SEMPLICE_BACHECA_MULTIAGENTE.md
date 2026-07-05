@@ -166,6 +166,7 @@ python bacheca.py prendi --thread-id <id-thread> --agente codex --ttl-minuti 60
 Significa: "Codex ci sta lavorando per circa 60 minuti".
 
 Non è un lock rigido. Serve a ridurre sovrapposizioni.
+Il thread deve esistere già: `prendi` non apre thread nuovi.
 
 Se dichiari anche i file su cui lavori, la bacheca avvisa se un altro agente li ha
 già in carico:
@@ -187,6 +188,9 @@ python bacheca.py occupati
 ```powershell
 python bacheca.py rispondi --correla-a <id-messaggio> --mittente codex --testo "Ho rivisto lo schema: il rischio principale è ..."
 ```
+
+`correla-a` deve puntare a un messaggio reale già presente in bacheca: serve a
+tenere la risposta nello stesso thread invece di creare cronologie scollegate.
 
 ### Approvare o respingere un thread
 
@@ -218,6 +222,7 @@ python bacheca.py checkpoint --thread-id <id-thread> --agente claude --obiettivo
 ```
 
 Il checkpoint non chiude il thread: resta "in carico", pronto per essere ripreso.
+Anche qui il thread deve già esistere.
 
 ### Alla ripresa
 
@@ -299,7 +304,8 @@ Due cose in più, pensate per non dover controllare a mano ogni volta:
 
 - **Attività live**: un box che si aggiorna da solo ogni 5 secondi mostrando solo i
   messaggi nuovi, come un log che si allunga — parte solo premendo "▶ Avvia" (non è
-  mai attivo di default).
+  mai attivo di default). Il feed usa comunque un limite interno, così non carica
+  accidentalmente uno storico enorme.
 - **▶ Rivivi**: riproduce animatamente, un messaggio alla volta, la cronologia di un
   thread nel pannello "Live Agent Handoff" già esistente.
 
@@ -319,8 +325,10 @@ Al momento sono stati aggiunti:
 - `docs/RFC_BACHECA_MULTIAGENTE.md`: disegno tecnico completo;
 - `docs/CONFORMITA_TOS_BACHECA.md`: guardrail rispetto ai termini di servizio.
 
-Gli hook sono configurati, ma vanno ancora verificati empiricamente aprendo sessioni
-fresche degli strumenti.
+Gli hook di Claude Code e Codex sono configurati e verificati empiricamente in
+sessioni fresche. Gemini/Antigravity ha ancora solo un hook di test: quando Gemini
+torna disponibile va verificato che Antigravity inietti `TEST_HOOK_BACHECA_OK`, poi
+si potrà collegare davvero a `bacheca.py prossimo --agente gemini --formato hook`.
 
 ## Cosa non è
 

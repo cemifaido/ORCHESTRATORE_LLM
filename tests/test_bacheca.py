@@ -224,6 +224,25 @@ class BachecaTest(unittest.TestCase):
             messaggi = bacheca.leggi_messaggi(percorso)
             self.assertEqual(messaggi[0]["thread_id"], messaggi[0]["id_messaggio"])
 
+    def test_comando_aggiungi_rifiuta_correla_a_inesistente(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            args = argparse.Namespace(
+                bacheca=str(percorso),
+                mittente="claude",
+                destinatari="codex",
+                tipo="sintesi",
+                testo="rettifica",
+                thread_id="",
+                file_modificati="",
+                riferimenti="",
+                correla_a="messaggio-inesistente",
+                ttl_minuti=None,
+                verdetto_umano="non_revisionato",
+            )
+            with self.assertRaises(ValueError):
+                bacheca.comando_aggiungi(args)
+
     # -- file_occupati: coordinamento cooperativo su file in carico --------
 
     def test_file_occupati_vuoto_senza_prese_in_carico(self) -> None:
@@ -313,6 +332,16 @@ class BachecaTest(unittest.TestCase):
             ultimo = messaggi[-1]
             self.assertTrue(ultimo["metadati"]["forzato_su_conflitto"])
             self.assertIn("bacheca.py", ultimo["metadati"]["occupato_da"])
+
+    def test_comando_prendi_rifiuta_thread_inesistente_anche_con_destinatari(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            args = argparse.Namespace(
+                bacheca=str(percorso), thread_id="thread-inesistente", agente="codex",
+                destinatari="umano", ttl_minuti=60, testo="", file_modificati="", forza=False,
+            )
+            with self.assertRaises(ValueError):
+                bacheca.comando_prendi(args)
 
     # -- checkpoint: non cambia lo stato globale, ma rende pending i destinatari --
 
@@ -409,6 +438,27 @@ class BachecaTest(unittest.TestCase):
             self.assertEqual(messaggi[-1]["tipo"], "checkpoint")
             self.assertIn("Obiettivo: Sistema X", messaggi[-1]["testo"])
             self.assertEqual(bacheca.stato_thread(messaggi, richiesta["thread_id"]), "aperto")
+
+    def test_comando_checkpoint_rifiuta_thread_inesistente_anche_con_destinatari(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            args = argparse.Namespace(
+                bacheca=str(percorso), thread_id="thread-inesistente", agente="codex",
+                destinatari="umano", obiettivo="", stato_attuale="", file_modificati="",
+                manca="", test="", rischi="", prossimo_passo="",
+            )
+            with self.assertRaises(ValueError):
+                bacheca.comando_checkpoint(args)
+
+    def test_comando_chiudi_rifiuta_thread_inesistente_anche_con_destinatari(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            args = argparse.Namespace(
+                bacheca=str(percorso), thread_id="thread-inesistente", mittente="codex",
+                destinatari="umano", testo="chiudo",
+            )
+            with self.assertRaises(ValueError):
+                bacheca.comando_chiudi(args)
 
     # -- ripresa / emergenza -------------------------------------------------
 
