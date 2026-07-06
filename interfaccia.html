@@ -901,6 +901,20 @@
       background: rgba(59, 130, 246, 0.22);
       border-color: rgba(96, 165, 250, 0.7);
     }
+    .bacheca-sveglia-btn {
+      flex: 0 0 auto;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: #fbbf24;
+      padding: 0.3rem 0.55rem;
+      border-radius: 6px;
+      font-size: 0.74rem;
+      cursor: pointer;
+    }
+    .bacheca-sveglia-btn:hover {
+      background: rgba(245, 158, 11, 0.22);
+      border-color: rgba(251, 191, 36, 0.7);
+    }
 
     /* Blinking cursor terminale verde Matrix */
     .terminal-cursor {
@@ -1167,7 +1181,9 @@
         <label for="bachecaProjSelect">Progetto</label>
         <select id="bachecaProjSelect" style="width:100%;"></select>
       </div>
-      <h3 style="font-size:0.95rem; color:var(--text-muted); margin:0 0 0.6rem;">Messaggi pendenti per agente</h3>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem; flex-wrap:wrap; gap:0.5rem;">
+        <h3 style="font-size:0.95rem; color:var(--text-muted); margin:0;">Messaggi pendenti per agente</h3>
+      </div>
       <div id="bachecaPendingAgenti" class="bacheca-pending-grid">
         <div style="color:var(--text-muted); font-size:0.85rem;">Caricamento...</div>
       </div>
@@ -1388,6 +1404,8 @@
         paginaTimelineCorrente++;
         aggiornaDati();
       });
+
+
     });
 
     async function riavviaSistema() {
@@ -1903,7 +1921,10 @@
               <div style="font-size:0.72rem; color:var(--text-muted); margin-top:0.15rem;">${escapeHtml(agente.modo)}</div>
             </div>
           </div>
-          <button type="button" class="bacheca-copy-btn" title="${escapeHtml(comando)}">Copia comando</button>
+          <div style="display: flex; gap: 0.35rem; flex: 0 0 auto;">
+            <button type="button" class="bacheca-copy-btn" title="${escapeHtml(comando)}">Copia</button>
+            <button type="button" class="bacheca-sveglia-btn" title="Sveglia agente nell'IDE/CLI">Sveglia</button>
+          </div>
         `;
         card.querySelector(".bacheca-copy-btn").addEventListener("click", async () => {
           try {
@@ -1911,6 +1932,19 @@
             showFeedback(`Comando copiato: ${comando}`, "success");
           } catch (err) {
             showFeedback(`Impossibile copiare il comando: ${comando}`, "error");
+          }
+        });
+        card.querySelector(".bacheca-sveglia-btn").addEventListener("click", async () => {
+          try {
+            const resp = await fetch(`/api/bacheca/sveglia?agente=${encodeURIComponent(agente.id)}`, { method: "POST" });
+            if (resp.ok) {
+              showFeedback(`Sveglia inviata a ${agente.label}!`, "success");
+            } else {
+              const data = await resp.json();
+              showFeedback(`Errore sveglia: ${data.detail || 'errore'}`, "error");
+            }
+          } catch (err) {
+            showFeedback(`Errore di connessione.`, "error");
           }
         });
         box.appendChild(card);

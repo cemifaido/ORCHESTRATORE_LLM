@@ -13,6 +13,7 @@ Questo indice è il punto di ingresso per copiare o collegare la documentazione 
 ## Bacheca multi-agente
 
 - [RFC Bacheca multi-agente](RFC_BACHECA_MULTIAGENTE.md) — disegno tecnico e stato dell'MVP della messaggistica strutturata fra Claude/Codex/Gemini/locale/umano senza API a pagamento.
+- [Esperimento Sveglia e Polling Asincrono](ESPERIMENTO_SVEGLIA_POLLING.md) — report scientifico ed esito dei test di stimolazione in background di Claude, Codex e Gemini.
 
 ## Integrazioni opzionali
 
