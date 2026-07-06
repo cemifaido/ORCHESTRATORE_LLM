@@ -1937,6 +1937,23 @@
       }
     }
 
+    async function eseguiRisvegliBacheca(progettoId) {
+      try {
+        const res = await fetch(`/api/bacheca/risvegli?progetto_id=${encodeURIComponent(progettoId)}`, {
+          method: "POST"
+        });
+        if (!res.ok) throw new Error("risposta non valida");
+        const data = await res.json();
+        const risvegli = data.risvegli || [];
+        if (risvegli.length > 0) {
+          const agenti = risvegli.map(r => r.agente).join(", ");
+          showFeedback(`Risveglio automatico inviato per: ${agenti}`, "success");
+        }
+      } catch (err) {
+        console.warn("Risveglio automatico non riuscito:", err);
+      }
+    }
+
     function renderizzaPendingBacheca(pendingPerAgente, claudeSessionId) {
       const box = document.getElementById("bachecaPendingAgenti");
       if (!box) return;
@@ -2007,6 +2024,7 @@
         }
 
         renderizzaPendingBacheca(data.pending_per_agente, data.claude_session_id);
+        await eseguiRisvegliBacheca(progetto_id);
         const thread = data.thread || [];
         const conflitti = thread.filter(t => t.ultimo_tipo === "segnalazione_conflitto" && t.stato !== "chiuso" && t.stato !== "annullato");
         banner.innerHTML = conflitti.length > 0

@@ -526,6 +526,153 @@ def _trova_ultima_sessione_claude(percorso_progetto: Path) -> str | None:
     return sessioni[0][1]
 
 
+def _genera_prompt_risveglio_con_llm(agente: str, cronologia_thread: list[dict]) -> str:
+    """Interroga il modello locale (llama-server) per generare un prompt personalizzato
+    e contestuale basato sui messaggi pendenti nel thread corrente.
+    Se fallisce o se il modello non e' raggiungibile, ritorna il prompt statico di fallback."""
+    prompt_fallback = f"Leggi i messaggi pendenti in bacheca per {agente} ed esegui quanto richiesto: python bacheca.py prossimo --agente {agente}"
+    if not cronologia_thread:
+        return prompt_fallback
+
+    # Costruisci la cronologia dei messaggi del thread formattata
+    cronologia_formattata = "\n".join(
+        f"- Mittente: {m['mittente']} -> Destinatari: {', '.join(m.get('destinatari') or [])} ({m['tipo']}): {m['testo']}"
+        for m in cronologia_thread
+    )
+
+    PROMPT_SISTEMA_DISPATCHER = (
+        "Sei l'agente controllore di volo e smistatore di compiti dell'Orchestratore LLM.\n"
+        "Ricevi la cronologia recente di un thread della bacheca multi-agente e devi generare il prompt "
+        "ideale in linguaggio naturale (in italiano) da far trovare pronto all'agente nel suo composer.\n"
+        f"L'agente da risvegliare e': {agente}.\n"
+        "Il prompt che generi deve essere chiaro, riassumere il contesto degli ultimi messaggi, spiegare cosa "
+        "l'agente deve fare, e concludersi invitandolo a lanciare il comando di bacheca:\n"
+        f"python bacheca.py prossimo --agente {agente}\n"
+        "Rispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza blocchi di codice markdown, senza altro testo. "
+        "L'oggetto JSON deve avere due chiavi:\n"
+        '- "agente": il nome dell\'agente (es. "claude", "codex", o "gemini")\n'
+        '- "prompt": il prompt personalizzato in italiano da copiare negli appunti.'
+    )
+
+    messaggi = [
+        {"role": "system", "content": PROMPT_SISTEMA_DISPATCHER},
+        {"role": "user", "content": f"Ecco la cronologia del thread attivo da analizzare:\n\n{cronologia_formattata}"}
+    ]
+
+    try:
+        from adattatori import litellm
+        risposta, _ = litellm.completamento_locale(messaggi=messaggi, max_tokens=250, temperature=0.3)
+        testo = litellm.testo_da_risposta(risposta).strip()
+
+        # Estrai il blocco JSON
+        inizio = testo.index("{")
+        fine = testo.rindex("}") + 1
+        dati = json.loads(testo[inizio:fine])
+        prompt_generato = dati.get("prompt")
+        if prompt_generato and isinstance(prompt_generato, str):
+            return prompt_generato
+    except Exception as e:
+        print(f"[DISPATCHER LOCAL] Impossibile usare il prompt dinamico (uso fallback): {e}")
+
+    return prompt_fallback
+
+
+def _percorso_stato_risvegli(percorso_progetto: Path) -> Path:
+    return percorso_progetto / "dati_locali" / "orchestrazione" / "risvegli_notificati.json"
+
+
+def _leggi_stato_risvegli(percorso_stato: Path) -> tuple[dict, bool]:
+    if not percorso_stato.exists():
+        return {"versione_schema": 1, "notificati": {}}, False
+    try:
+        stato = json.loads(percorso_stato.read_text(encoding="utf-8"))
+    except Exception:
+        return {"versione_schema": 1, "notificati": {}}, False
+    if not isinstance(stato, dict):
+        return {"versione_schema": 1, "notificati": {}}, False
+    notificati = stato.get("notificati")
+    if not isinstance(notificati, dict):
+        stato["notificati"] = {}
+    stato.setdefault("versione_schema", 1)
+    return stato, True
+
+
+def _scrivi_stato_risvegli(percorso_stato: Path, stato: dict) -> None:
+    percorso_stato.parent.mkdir(parents=True, exist_ok=True)
+    percorso_stato.write_text(json.dumps(stato, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _thread_pendenti_per_agente(messaggi: list[dict]) -> dict[str, list[dict]]:
+    pendenti: dict[str, list[dict]] = {agente: [] for agente in AGENTI_BACHECA_DASHBOARD}
+    for tid in sorted({m["thread_id"] for m in messaggi}):
+        cronologia = bacheca._messaggi_del_thread(messaggi, tid)
+        if not cronologia:
+            continue
+        ultimo = cronologia[-1]
+        aspetta = bacheca.destinatari_pendenti(messaggi, tid)
+        for agente in AGENTI_BACHECA_DASHBOARD:
+            if agente in aspetta:
+                pendenti[agente].append({
+                    "id_messaggio": ultimo["id_messaggio"],
+                    "thread_id": tid,
+                    "timestamp": ultimo["timestamp"],
+                    "cronologia": cronologia,
+                })
+    for agente in pendenti:
+        pendenti[agente].sort(key=lambda item: item["timestamp"])
+    return pendenti
+
+
+def _esegui_risveglio_os(
+    agente: str,
+    cronologia_thread: list[dict],
+    claude_session_id: str | None = None,
+) -> dict:
+    prompt = _genera_prompt_risveglio_con_llm(agente, cronologia_thread)
+
+    # Costruisci l'URI di focalizzazione dell'IDE
+    if agente == "claude":
+        import urllib.parse
+        prompt_enc = urllib.parse.quote(prompt)
+        sess_param = f"&session={claude_session_id}" if claude_session_id else ""
+        uri = f"antigravity-ide://anthropic.claude-code/open?prompt={prompt_enc}{sess_param}"
+    elif agente == "codex":
+        uri = "antigravity-ide://openai.chatgpt/"
+    elif agente == "gemini":
+        uri = "antigravity-ide://"
+    else:
+        return {"status": "ignorato", "motivo": "agente non supportato", "prompt": prompt, "uri": ""}
+
+    # Evita di svegliare l'OS reale durante l'esecuzione dei test unitari
+    in_test = (
+        "unittest" in sys.modules
+        or any("unittest" in arg or "pytest" in arg for arg in sys.argv)
+        or os.environ.get("TESTING") == "true"
+    )
+
+    if in_test:
+        print(f"[RISVEGLIO OS] [TEST MODE] Sveglierei {agente} con prompt: {prompt}")
+        return {"status": "test", "prompt": prompt, "uri": uri}
+
+    try:
+        # 1. Copia il prompt negli appunti di Windows usando PowerShell.
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command", "$input | Set-Clipboard"],
+            input=prompt,
+            text=True,
+            check=True,
+        )
+
+        # 2. Lancia l'URI per focalizzare l'IDE
+        os.startfile(uri)
+        print(f"[RISVEGLIO OS] Eseguito risveglio automatico per {agente}")
+        return {"status": "eseguito", "prompt": prompt, "uri": uri}
+    except Exception as e:
+        # Se fallisce (es. se non siamo su Windows o permessi), stampiamo sui log ma non blocchiamo la risposta dell'API
+        print(f"[RISVEGLIO OS] Errore risveglio per {agente}: {e}")
+        return {"status": "errore", "prompt": prompt, "uri": uri, "errore": str(e)}
+
+
 @app.get("/api/bacheca")
 def bacheca_progetto(progetto_id: str = "orchestratore"):
     """Stato della bacheca multi-agente di un progetto: un riepilogo per thread
@@ -572,6 +719,7 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
         }
         for f, info in bacheca.file_occupati(messaggi).items()
     }
+
     return {
         "progetto_id": progetto_id,
         "thread": thread_riepilogo,
@@ -579,6 +727,57 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
         "pending_per_agente": pending_per_agente,
         "claude_session_id": _trova_ultima_sessione_claude(Path(progetto["percorso"])),
     }
+
+
+@app.post("/api/bacheca/risvegli")
+def esegui_risvegli_bacheca(progetto_id: str = "orchestratore"):
+    """Risveglia gli agenti che hanno nuovi thread pendenti.
+
+    La GET /api/bacheca resta read-only: clipboard e focus dell'IDE sono effetti OS e
+    passano solo da questo endpoint POST. Lo stato persistente per progetto evita
+    risvegli ripetuti dopo refresh o riavvii della dashboard.
+    """
+    progetto = _progetto_o_404(progetto_id)
+    percorso_progetto = Path(progetto["percorso"])
+    messaggi, errore = bacheca.leggi_messaggi_progetto(percorso_progetto)
+    if errore:
+        return {"progetto_id": progetto_id, "errore": errore, "risvegli": []}
+
+    pendenti = _thread_pendenti_per_agente(messaggi)
+    percorso_stato = _percorso_stato_risvegli(percorso_progetto)
+    stato, gia_inizializzato = _leggi_stato_risvegli(percorso_stato)
+    notificati = stato.setdefault("notificati", {})
+
+    if not gia_inizializzato:
+        for agente, items in pendenti.items():
+            notificati[agente] = [item["id_messaggio"] for item in items]
+        _scrivi_stato_risvegli(percorso_stato, stato)
+        return {"progetto_id": progetto_id, "inizializzato": True, "risvegli": []}
+
+    claude_session_id = _trova_ultima_sessione_claude(percorso_progetto)
+    risvegli = []
+    stato_modificato = False
+    for agente, items in pendenti.items():
+        gia_notificati = set(notificati.get(agente, []))
+        candidato = next((item for item in reversed(items) if item["id_messaggio"] not in gia_notificati), None)
+        if candidato is None:
+            continue
+
+        esito = _esegui_risveglio_os(agente, candidato["cronologia"], claude_session_id)
+        gia_notificati.add(candidato["id_messaggio"])
+        notificati[agente] = sorted(gia_notificati)
+        stato_modificato = True
+        risvegli.append({
+            "agente": agente,
+            "thread_id": candidato["thread_id"],
+            "id_messaggio": candidato["id_messaggio"],
+            "status": esito.get("status"),
+        })
+
+    if stato_modificato:
+        _scrivi_stato_risvegli(percorso_stato, stato)
+
+    return {"progetto_id": progetto_id, "inizializzato": True, "risvegli": risvegli}
 
 
 @app.get("/api/bacheca/feed")

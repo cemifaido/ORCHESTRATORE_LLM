@@ -288,6 +288,18 @@ class BachecaFeedApiTest(unittest.TestCase):
 
 
 class BachecaApiTest(unittest.TestCase):
+    def _progetto_con_richiesta(self, tmp: str, agente: str = "codex", testo: str = "serve una review") -> tuple[list[dict], dict]:
+        p_path = Path(tmp)
+        percorso_messaggi = p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="umano",
+            destinatari=[agente],
+            tipo="richiesta",
+            testo=testo,
+        )
+        bacheca.aggiungi_messaggio(percorso_messaggi, richiesta)
+        return [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}], richiesta
+
     def test_bacheca_riporta_pending_per_agente_operativo(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             p_path = Path(tmp)
@@ -321,6 +333,70 @@ class BachecaApiTest(unittest.TestCase):
                 risultato = interfaccia.bacheca_progetto(progetto_id="test_proj")
 
             self.assertEqual(risultato["pending_per_agente"], {"claude": 1, "codex": 0, "gemini": 1})
+
+    def test_bacheca_get_non_esegue_side_effect_di_risveglio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti, _richiesta = self._progetto_con_richiesta(tmp, agente="codex")
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti), \
+                 patch.object(interfaccia, "_esegui_risveglio_os") as risveglio:
+                risultato = interfaccia.bacheca_progetto(progetto_id="test_proj")
+
+            self.assertEqual(risultato["pending_per_agente"]["codex"], 1)
+            risveglio.assert_not_called()
+
+    def test_risvegli_prima_scansione_crea_baseline_senza_side_effect(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti, richiesta = self._progetto_con_richiesta(tmp, agente="codex")
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti), \
+                 patch.object(interfaccia, "_esegui_risveglio_os") as risveglio:
+                risultato = interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+
+            self.assertEqual(risultato["risvegli"], [])
+            risveglio.assert_not_called()
+            stato_path = Path(tmp) / "dati_locali" / "orchestrazione" / "risvegli_notificati.json"
+            stato = json.loads(stato_path.read_text(encoding="utf-8"))
+            self.assertIn(richiesta["id_messaggio"], stato["notificati"]["codex"])
+
+    def test_risvegli_notifica_solo_nuovi_messaggi_una_volta(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti, _richiesta = self._progetto_con_richiesta(tmp, agente="codex", testo="vecchio")
+            p_path = Path(tmp)
+            percorso_messaggi = p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+
+            nuova = bacheca.costruisci_messaggio(
+                mittente="umano",
+                destinatari=["codex"],
+                tipo="richiesta",
+                testo="nuovo",
+            )
+            bacheca.aggiungi_messaggio(percorso_messaggi, nuova)
+
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti), \
+                 patch.object(interfaccia, "_genera_prompt_risveglio_con_llm", return_value="prompt dinamico"):
+                primo = interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+                secondo = interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+
+            self.assertEqual(len(primo["risvegli"]), 1)
+            self.assertEqual(primo["risvegli"][0]["agente"], "codex")
+            self.assertEqual(primo["risvegli"][0]["id_messaggio"], nuova["id_messaggio"])
+            self.assertEqual(primo["risvegli"][0]["status"], "test")
+            self.assertEqual(secondo["risvegli"], [])
+
+    def test_risveglio_claude_usa_prompt_dinamico_nell_uri(self) -> None:
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="umano",
+            destinatari=["claude"],
+            tipo="richiesta",
+            testo="esegui i test",
+        )
+        with patch.object(interfaccia, "_genera_prompt_risveglio_con_llm", return_value="Prompt dinamico per Claude"):
+            risultato = interfaccia._esegui_risveglio_os("claude", [richiesta], claude_session_id="sessione123")
+
+        self.assertEqual(risultato["status"], "test")
+        self.assertIn("Prompt%20dinamico%20per%20Claude", risultato["uri"])
+        self.assertIn("session=sessione123", risultato["uri"])
 
 
 if __name__ == "__main__":
