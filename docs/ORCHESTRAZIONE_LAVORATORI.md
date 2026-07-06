@@ -188,9 +188,9 @@ ancora investigato a fondo: non è un bug nel codice dell'orchestratore.
 | Modalità | Chi scrive davvero il codice | Quando si attiva | Note |
 |---|---|---|---|
 | **Sessione interattiva (default)** | L'assistente Claude Code, direttamente in conversazione, con accesso reale a file/terminale | Quando il compito viene chiesto direttamente in chat | Nessuna chiamata API esterna da capoturno, nessun rischio di crediti/chiave esauriti |
-| Gemini (via LiteLLM) | Modello chiamato da `capoturno.py` | Solo se si lancia dal pannello dashboard "Live Agent Handoff" con Tipo Compito → interfaccia | Richiede `OPENAI_API_KEY`: l'etichetta è "gemini" ma il modello reale chiamato è `openai/gpt-4o-mini`, non un vero modello Google (limite noto, da correggere) |
+| Gemini (via LiteLLM) | Modello chiamato da `capoturno.py` | Solo se si lancia dal pannello dashboard "Live Agent Handoff" con Tipo Compito → interfaccia | Mappato su `gemini/gemini-1.5-flash` se è presente `GEMINI_API_KEY` o `GOOGLE_API_KEY`, altrimenti esegue il fallback su `openai/gpt-4o-mini` (richiede `OPENAI_API_KEY`). |
 | Claude (via LiteLLM) | Modello Claude chiamato da `capoturno.py` | Idem, Tipo Compito → servizi/database/documentazione | Richiede chiave Anthropic, soggetto a crediti/quota come qualunque chiamata API |
-| Codex | — | Suggerito dal routing per revisione/sicurezza | **Non cablato in `capoturno.py`**: se scelto, il motore chiamerebbe comunque il modello Claude ma registrerebbe l'evento come `agente=codex` — bug noto, non usare questo instradamento finché non è corretto |
+| Codex (via LiteLLM) | Modello Codex chiamato da `capoturno.py` | Suggerito dal routing per revisione/sicurezza | Mappato su `openai/gpt-4o` per controlli approfonditi (richiede `OPENAI_API_KEY`). |
 
 Finché la delega via LiteLLM resta legata a crediti/chiavi che possono mancare o esaurirsi, la sessione interattiva resta la via primaria per il lavoro reale; il pannello "Live Agent Handoff" resta disponibile per quando si vuole tornare alla delega automatica via API.
 
@@ -222,8 +222,8 @@ Un commit senza eventi di verifica (es. solo lavoro conversazionale, costo sempr
 
 - Un solo compito reale alla volta: lo stato (`STATO_COMPITO_CORRENTE`) è globale in memoria nel processo `interfaccia.py`, non per-progetto. Un secondo tentativo di avvio viene rifiutato finché il primo non è `finito`.
 - "Serve umano prima" (rischio alto): l'umano che lancia il compito dalla dashboard è già il gate umano (ha compilato il form e cliccato "Lancia"), quindi il backend non blocca nulla — ma se `rischio=alto` il frontend chiede una conferma esplicita in più (`confirm()` col riepilogo del compito) prima di inviare la richiesta. Non è ancora una sospensione lato server: un secondo canale (es. API diretta) potrebbe bypassarla.
-- Il modello viene scelto solo in base a `gemini` vs "tutto il resto → claude": se il routing suggerisce `locale` o `codex` (tipi come `monitoraggio`/`revisione`), il motore chiamerebbe comunque un LLM reale con modello Claude invece di restare deterministico — situazione non ancora incontrata nell'uso reale, da chiudere se emerge.
-- Quando l'agente scelto è `gemini`, il modello effettivamente chiamato via LiteLLM è `openai/gpt-4o-mini`, non un vero modello Google Gemini: l'etichetta "gemini" nel routing non corrisponde al provider reale usato. Per questo compito serve una chiave `OPENAI_API_KEY`, non una chiave Google — da correggere se si vuole davvero chiamare Gemini.
+- Scelta del modello per Codex e Locale: Codex è ora mappato su `openai/gpt-4o` per compiti di revisione profonda e sicurezza (richiede `OPENAI_API_KEY`). Il ruolo di Locale rimane dedicato al triage deterministico e al monitoraggio locale.
+- Mappatura dinamica Gemini: Per l'agente `gemini`, il motore prova a utilizzare un vero modello Google (`gemini/gemini-1.5-flash`) se trova in ambiente `GEMINI_API_KEY` o `GOOGLE_API_KEY`. In caso contrario, esegue un fallback su `openai/gpt-4o-mini` (usando `OPENAI_API_KEY`).
 - Il file da modificare va scelto a mano nel form: il motore non esplora il progetto né decide da solo dove scrivere, gestisce un solo file per compito. Un'evoluzione naturale (proposta e non ancora implementata) è una chiamata preliminare "di scoping" allo stesso agente suggerito dal routing, per fargli individuare il file più pertinente prima di scrivere la patch — lasciando comunque il campo compilabile a mano come opzione/override.
 
 ## Metriche

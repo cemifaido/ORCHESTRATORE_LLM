@@ -195,6 +195,20 @@ class CapoturnoTest(unittest.TestCase):
         self.assertEqual(eventi[0]["stato"], "errore_ambiente")
         self.assertEqual(eventi[0]["esito_gate"], "non_eseguito")
 
+    @patch.dict("os.environ", {}, clear=True)
+    def test_scegli_modello_per_agente_senza_chiavi(self) -> None:
+        self.assertEqual(capoturno._scegli_modello_per_agente("gemini"), "openai/gpt-4o-mini")
+        self.assertEqual(capoturno._scegli_modello_per_agente("claude"), "claude-3-haiku")
+        self.assertEqual(capoturno._scegli_modello_per_agente("codex"), "openai/gpt-4o")
+
+    @patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}, clear=True)
+    def test_scegli_modello_per_agente_con_gemini_key(self) -> None:
+        self.assertEqual(capoturno._scegli_modello_per_agente("gemini"), "gemini/gemini-1.5-flash")
+
+    @patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}, clear=True)
+    def test_scegli_modello_per_agente_con_google_key(self) -> None:
+        self.assertEqual(capoturno._scegli_modello_per_agente("gemini"), "gemini/gemini-1.5-flash")
+
 
 if __name__ == "__main__":
     unittest.main()

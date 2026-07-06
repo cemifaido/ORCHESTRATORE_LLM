@@ -8,6 +8,7 @@ il risultato con la Sentinella ed avviando cicli di Rework in caso di errori.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -25,6 +26,19 @@ from adattatori import litellm
 import instrada
 
 SCRIPT_SENTINELLA_CENTRALE = RADICE / "sentinella.py"
+
+
+def _scegli_modello_per_agente(agente: str) -> str:
+    """Ritorna il modello LiteLLM associato all'agente, considerando le chiavi disponibili."""
+    if agente == "gemini":
+        if os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
+            return "gemini/gemini-1.5-flash"
+        return "openai/gpt-4o-mini"
+    elif agente == "codex":
+        return "openai/gpt-4o"
+    else:
+        # Per Claude e fallbacks generici
+        return "claude-3-haiku"
 
 
 class Capoturno:
@@ -144,7 +158,7 @@ class Capoturno:
             t0 = time.perf_counter()
             try:
                 risposta, misurazione = litellm.completamento(
-                    modello="openai/gpt-4o-mini" if agente_tentato == "gemini" else "claude-3-haiku",
+                    modello=_scegli_modello_per_agente(agente_tentato),
                     messaggi=messaggi,
                     temperature=0.2
                 )
@@ -163,7 +177,7 @@ class Capoturno:
                 try:
                     t0_fallback = time.perf_counter()
                     risposta, misurazione = litellm.completamento(
-                        modello="openai/gpt-4o-mini" if agente_fallback == "gemini" else "claude-3-haiku",
+                        modello=_scegli_modello_per_agente(agente_fallback),
                         messaggi=messaggi,
                         temperature=0.2
                     )

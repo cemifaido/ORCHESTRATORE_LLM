@@ -131,7 +131,7 @@ Il pannello **"🤝 Live Agent Handoff & Cooperazione"** della dashboard lancia 
 
 Passi:
 1. **Progetto Target**: scegli tra i progetti già integrati (sezione 2). Attenzione: se il compito riguarda *questa dashboard* (es. modificare `interfaccia.html`), il progetto giusto è "Orchestratore Centrale", non un altro progetto monitorato.
-2. **Tipo Compito**: determina l'agente suggerito dal routing (es. `servizi` → Claude, `interfaccia` → Gemini). Nota: quando l'agente è `gemini`, il modello reale chiamato è `openai/gpt-4o-mini` (serve `OPENAI_API_KEY`, non una chiave Google) — è un'etichettatura da correggere, non ancora fatto.
+2. **Tipo Compito**: determina l'agente suggerito dal routing (es. `servizi` → Claude, `interfaccia` → Gemini, `revisione`/`sicurezza` → Codex). Nota: per l'agente `gemini`, il modello reale chiamato è `gemini/gemini-1.5-flash` se in ambiente è definita `GEMINI_API_KEY` o `GOOGLE_API_KEY` (in caso contrario, effettua il fallback su `openai/gpt-4o-mini` usando `OPENAI_API_KEY`). Per `codex` viene usato `openai/gpt-4o` per controlli di sicurezza e revisione.
 3. **File Target**: percorso relativo al progetto dove scrivere il codice (es. `esempi/test_codice.py`). Se non esiste viene creato. Obbligatorio: il motore non sceglie da solo il file, gestisce un solo file per compito.
 4. **Livello Rischio**: se scegli `alto`, il browser chiede una conferma esplicita in più prima di inviare la richiesta (riepilogo del compito). Non è ancora una sospensione lato server: chi lancia il compito dal form è già l'umano che approva.
 5. **Descrizione Compito**: prompt in linguaggio naturale di cosa deve fare l'agente.
