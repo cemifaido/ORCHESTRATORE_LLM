@@ -2,7 +2,13 @@
 
 Questo documento riporta l'analisi scientifica, le fasi sperimentali, gli intoppi tecnici e le conclusioni relative all'implementazione sperimentale di una "sveglia" (wake-up) automatica per stimolare gli agenti inattivi.
 
-**Stato attuale**: esperimento chiuso con esito negativo. Il codice operativo di sveglia e polling e' stato rimosso dalla dashboard: non esistono endpoint attivi `/api/bacheca/sveglia`, pulsanti "Sveglia" o poller automatici. La dashboard mantiene solo il badge dei messaggi pendenti e il pulsante per copiare il comando `python bacheca.py prossimo --agente <agente>`.
+**Stato attuale**: esperimento chiuso con esito negativo per la sveglia automatica
+in background. Non esistono endpoint attivi `/api/bacheca/sveglia` o poller
+automatici. La dashboard mantiene il badge dei messaggi pendenti, il pulsante per
+copiare `python bacheca.py prossimo --agente <agente>` e un risveglio assistito:
+Claude riceve il prompt tramite deep link; Codex/Gemini vengono aperti nell'IDE e il
+prompt operativo viene copiato negli appunti, perche' i rispettivi handler non
+espongono un canale verificato di iniezione testo nel composer.
 
 ---
 
@@ -61,5 +67,6 @@ L'esperimento ha dimostrato l'inutilizzabilità pratica della sveglia attiva asi
 2.  **Limiti dell'IPC GUI (Gemini/IDE)**: La CLI nativa dell'IDE non recapita correttamente le istruzioni di chat alla finestra attiva, rendendo inefficace il risveglio.
 3.  **Verdetto finale**:
     *   **Il polling automatico in background e' stato rimosso** per tutti gli agenti.
-    *   **La sveglia manuale e' stata rimossa** per tutti gli agenti, inclusa la route `/api/bacheca/sveglia` e il pulsante UI.
+    *   **La sveglia manuale backend e' stata rimossa** per tutti gli agenti, inclusa la route `/api/bacheca/sveglia`.
+    *   La dashboard puo' offrire solo un **risveglio assistito lato browser**: deep link dove supportato, copia del prompt negli appunti dove il provider apre l'IDE senza compilare la chat.
     *   L'architettura del progetto si affida agli **hook di sessione passivi** (`UserPromptSubmit` e `.agents/hooks.json`) e al fallback esplicito di copia comando. Gli hook leggono la bacheca solo *mentre* l'utente interagisce attivamente con l'agente nella sua chat principale.

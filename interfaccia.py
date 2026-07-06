@@ -504,6 +504,28 @@ def eventi_commit_progetto(progetto_id: str, hash: str):
     }
 
 
+def _trova_ultima_sessione_claude(percorso_progetto: Path) -> str | None:
+    """Cerca tra le sessioni di Claude memorizzate localmente in ~/.claude/sessions
+    quella associata a questo progetto (confrontando il cwd) e restituisce il sessionId
+    di quella avviata più di recente (startedAt maggiore)."""
+    dir_sessioni = Path.home() / ".claude" / "sessions"
+    if not dir_sessioni.exists():
+        return None
+    sessioni = []
+    for f in dir_sessioni.glob("*.json"):
+        try:
+            dati = json.loads(f.read_text(encoding="utf-8"))
+            cwd_sessione = Path(dati.get("cwd", ""))
+            if cwd_sessione.resolve() == percorso_progetto.resolve():
+                sessioni.append((dati.get("startedAt", 0), dati.get("sessionId")))
+        except Exception:
+            pass
+    if not sessioni:
+        return None
+    sessioni.sort(reverse=True)
+    return sessioni[0][1]
+
+
 @app.get("/api/bacheca")
 def bacheca_progetto(progetto_id: str = "orchestratore"):
     """Stato della bacheca multi-agente di un progetto: un riepilogo per thread
@@ -519,6 +541,7 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
             "thread": [],
             "occupati": {},
             "pending_per_agente": {agente: 0 for agente in AGENTI_BACHECA_DASHBOARD},
+            "claude_session_id": None,
         }
 
     thread_ids = sorted({m["thread_id"] for m in messaggi})
@@ -554,6 +577,7 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
         "thread": thread_riepilogo,
         "occupati": occupati,
         "pending_per_agente": pending_per_agente,
+        "claude_session_id": _trova_ultima_sessione_claude(Path(progetto["percorso"])),
     }
 
 

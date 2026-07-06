@@ -896,10 +896,28 @@
       border-radius: 6px;
       font-size: 0.74rem;
       cursor: pointer;
+      transition: all 0.2s ease;
     }
     .bacheca-copy-btn:hover {
       background: rgba(59, 130, 246, 0.22);
       border-color: rgba(96, 165, 250, 0.7);
+    }
+    .bacheca-risveglia-btn {
+      flex: 0 0 auto;
+      background: rgba(139, 92, 246, 0.12);
+      border: 1px solid rgba(139, 92, 246, 0.35);
+      color: #c4b5fd;
+      padding: 0.3rem 0.55rem;
+      border-radius: 6px;
+      font-size: 0.74rem;
+      cursor: pointer;
+      margin-right: 0.5rem;
+      transition: all 0.2s ease;
+    }
+    .bacheca-risveglia-btn:hover {
+      background: rgba(139, 92, 246, 0.22);
+      border-color: rgba(167, 139, 250, 0.7);
+      box-shadow: 0 0 8px rgba(139, 92, 246, 0.3);
     }
     /* Blinking cursor terminale verde Matrix */
     .terminal-cursor {
@@ -1888,7 +1906,38 @@
       }
     }
 
-    function renderizzaPendingBacheca(pendingPerAgente) {
+    function promptRisveglioAgente(agenteId) {
+      return `Leggi i messaggi pendenti in bacheca per ${agenteId} ed esegui quanto richiesto: python bacheca.py prossimo --agente ${agenteId}`;
+    }
+
+    function uriRisveglioAgente(agenteId, claudeSessionId) {
+      if (agenteId === "claude") {
+        const prompt = encodeURIComponent("python bacheca.py prossimo --agente claude");
+        const sessParam = claudeSessionId ? `&session=${encodeURIComponent(claudeSessionId)}` : "";
+        return `antigravity-ide://anthropic.claude-code/open?prompt=${prompt}${sessParam}`;
+      }
+      if (agenteId === "codex") {
+        return "antigravity-ide://openai.chatgpt/";
+      }
+      if (agenteId === "gemini") {
+        return "antigravity-ide://";
+      }
+      return "";
+    }
+
+    async function apriRisveglioAgente(uri, prompt, agenteId) {
+      try {
+        await copiaTestoNegliAppunti(prompt);
+        showFeedback(`Prompt per ${agenteId} copiato negli appunti. Se la chat si apre vuota, incolla e invia.`, "success");
+      } catch (err) {
+        showFeedback(`Apro ${agenteId}, ma non sono riuscito a copiare il prompt negli appunti.`, "error");
+      }
+      if (uri) {
+        window.location.href = uri;
+      }
+    }
+
+    function renderizzaPendingBacheca(pendingPerAgente, claudeSessionId) {
       const box = document.getElementById("bachecaPendingAgenti");
       if (!box) return;
       const pending = pendingPerAgente || {};
@@ -1898,6 +1947,12 @@
         const comando = `python bacheca.py prossimo --agente ${agente.id}`;
         const card = document.createElement("div");
         card.className = "bacheca-pending-card";
+        let risvegliaBtnHtml = "";
+        if (count > 0) {
+          const uri = uriRisveglioAgente(agente.id, claudeSessionId);
+          const prompt = promptRisveglioAgente(agente.id);
+          risvegliaBtnHtml = `<button type="button" class="bacheca-risveglia-btn" data-uri="${escapeHtml(uri)}" data-prompt="${escapeHtml(prompt)}" data-agente="${escapeHtml(agente.id)}" title="Apre l'agente e copia il prompt di risveglio">⚡ Risveglia</button>`;
+        }
         card.innerHTML = `
           <div class="bacheca-pending-main">
             <span class="bacheca-pending-count ${count > 0 ? "has-pending" : ""}">${count}</span>
@@ -1906,8 +1961,20 @@
               <div style="font-size:0.72rem; color:var(--text-muted); margin-top:0.15rem;">${escapeHtml(agente.modo)}</div>
             </div>
           </div>
-          <button type="button" class="bacheca-copy-btn" title="${escapeHtml(comando)}">Copia comando</button>
+          <div style="display: flex; align-items: center;">
+            ${risvegliaBtnHtml}
+            <button type="button" class="bacheca-copy-btn" title="${escapeHtml(comando)}">Copia comando</button>
+          </div>
         `;
+        if (count > 0) {
+          card.querySelector(".bacheca-risveglia-btn").addEventListener("click", (e) => {
+            const btn = e.currentTarget;
+            const uri = btn.getAttribute("data-uri");
+            const prompt = btn.getAttribute("data-prompt");
+            const agenteId = btn.getAttribute("data-agente");
+            apriRisveglioAgente(uri, prompt, agenteId);
+          });
+        }
         card.querySelector(".bacheca-copy-btn").addEventListener("click", async () => {
           try {
             await copiaTestoNegliAppunti(comando);
@@ -1935,11 +2002,11 @@
           corpo.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#f87171;">⚠ Bacheca non leggibile: ${escapeHtml(data.errore)}</td></tr>`;
           banner.innerHTML = "";
           occupatiBox.innerHTML = "Nessuno.";
-          renderizzaPendingBacheca(data.pending_per_agente);
+          renderizzaPendingBacheca(data.pending_per_agente, data.claude_session_id);
           return;
         }
 
-        renderizzaPendingBacheca(data.pending_per_agente);
+        renderizzaPendingBacheca(data.pending_per_agente, data.claude_session_id);
         const thread = data.thread || [];
         const conflitti = thread.filter(t => t.ultimo_tipo === "segnalazione_conflitto" && t.stato !== "chiuso" && t.stato !== "annullato");
         banner.innerHTML = conflitti.length > 0
