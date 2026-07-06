@@ -901,21 +901,6 @@
       background: rgba(59, 130, 246, 0.22);
       border-color: rgba(96, 165, 250, 0.7);
     }
-    .bacheca-sveglia-btn {
-      flex: 0 0 auto;
-      background: rgba(245, 158, 11, 0.12);
-      border: 1px solid rgba(245, 158, 11, 0.35);
-      color: #fbbf24;
-      padding: 0.3rem 0.55rem;
-      border-radius: 6px;
-      font-size: 0.74rem;
-      cursor: pointer;
-    }
-    .bacheca-sveglia-btn:hover {
-      background: rgba(245, 158, 11, 0.22);
-      border-color: rgba(251, 191, 36, 0.7);
-    }
-
     /* Blinking cursor terminale verde Matrix */
     .terminal-cursor {
       display: inline-block;
@@ -1921,10 +1906,7 @@
               <div style="font-size:0.72rem; color:var(--text-muted); margin-top:0.15rem;">${escapeHtml(agente.modo)}</div>
             </div>
           </div>
-          <div style="display: flex; gap: 0.35rem; flex: 0 0 auto;">
-            <button type="button" class="bacheca-copy-btn" title="${escapeHtml(comando)}">Copia</button>
-            <button type="button" class="bacheca-sveglia-btn" title="Sveglia agente nell'IDE/CLI">Sveglia</button>
-          </div>
+          <button type="button" class="bacheca-copy-btn" title="${escapeHtml(comando)}">Copia comando</button>
         `;
         card.querySelector(".bacheca-copy-btn").addEventListener("click", async () => {
           try {
@@ -1932,19 +1914,6 @@
             showFeedback(`Comando copiato: ${comando}`, "success");
           } catch (err) {
             showFeedback(`Impossibile copiare il comando: ${comando}`, "error");
-          }
-        });
-        card.querySelector(".bacheca-sveglia-btn").addEventListener("click", async () => {
-          try {
-            const resp = await fetch(`/api/bacheca/sveglia?agente=${encodeURIComponent(agente.id)}`, { method: "POST" });
-            if (resp.ok) {
-              showFeedback(`Sveglia inviata a ${agente.label}!`, "success");
-            } else {
-              const data = await resp.json();
-              showFeedback(`Errore sveglia: ${data.detail || 'errore'}`, "error");
-            }
-          } catch (err) {
-            showFeedback(`Errore di connessione.`, "error");
           }
         });
         box.appendChild(card);

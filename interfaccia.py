@@ -602,43 +602,6 @@ def _riavvia_dopo_risposta() -> None:
     os._exit(0)
 
 
-def _esegui_sveglia(agente: str) -> None:
-    prompt = f"python bacheca.py prossimo --agente {agente}"
-    cartella_log = Path(r"D:\Share\py\_ORCHESTRATORE_LLM\dati_locali")
-    cartella_log.mkdir(parents=True, exist_ok=True)
-    log_file = open(cartella_log / "sveglia.log", "a", encoding="utf-8")
-    log_file.write(f"\n--- Sveglia avviata per {agente} ---\n")
-    log_file.flush()
-    if agente == "gemini":
-        percorso_cmd = r"C:\Users\paolo_pavesi\AppData\Local\Programs\Antigravity IDE\bin\antigravity-ide.cmd"
-        if not os.path.exists(percorso_cmd):
-            percorso_cmd = "antigravity-ide.cmd"
-        subprocess.Popen([percorso_cmd, "chat", "--reuse-window", prompt], stdout=log_file, stderr=log_file)
-    elif agente == "claude":
-        subprocess.Popen(["npx.cmd", "@anthropic-ai/claude-code", prompt], stdout=log_file, stderr=log_file)
-    elif agente == "codex":
-        subprocess.Popen(["codex.cmd", prompt], stdout=log_file, stderr=log_file)
-
-
-
-
-@app.post("/api/bacheca/sveglia")
-def bacheca_sveglia(agente: str):
-    """
-    Invia un prompt fisso e sicuro all'IDE/CLI per 'svegliare' l'agente.
-    """
-    if agente not in ("gemini", "claude", "codex"):
-        raise HTTPException(status_code=400, detail="Agente non valido")
-    try:
-        _esegui_sveglia(agente)
-        return {"status": "sveglia_inviata", "agente": agente}
-    except Exception as errore:
-        raise HTTPException(status_code=500, detail=str(errore))
-
-
-
-
-
 @app.post("/api/sistema/riavvia")
 def riavvia_sistema():
     """Avvia un nuovo processo (che ricarica il codice corrente da disco) e pianifica

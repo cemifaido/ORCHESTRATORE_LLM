@@ -2,6 +2,8 @@
 
 Questo documento riporta l'analisi scientifica, le fasi sperimentali, gli intoppi tecnici e le conclusioni relative all'implementazione sperimentale di una "sveglia" (wake-up) automatica per stimolare gli agenti inattivi.
 
+**Stato attuale**: esperimento chiuso con esito negativo. Il codice operativo di sveglia e polling e' stato rimosso dalla dashboard: non esistono endpoint attivi `/api/bacheca/sveglia`, pulsanti "Sveglia" o poller automatici. La dashboard mantiene solo il badge dei messaggi pendenti e il pulsante per copiare il comando `python bacheca.py prossimo --agente <agente>`.
+
 ---
 
 ## 🎯 Obiettivi dell'Esperimento
@@ -13,9 +15,9 @@ Per ridurre la latenza di attivazione e superare i limiti di integrazione, abbia
 
 ---
 
-## 🏗️ Architettura e Comandi di Risveglio
+## 🏗️ Architettura Testata e Poi Rimossa
 
-Il backend del server locale (`interfaccia.py`) è stato dotato di endpoint dedicati per invocare i comandi nativi degli agenti in background:
+Durante l'esperimento il backend del server locale (`interfaccia.py`) e' stato dotato temporaneamente di endpoint dedicati per invocare i comandi nativi degli agenti in background. Questa architettura non e' piu' presente nel codice corrente.
 
 *   **Gemini (Antigravity IDE)**:
     ```powershell
@@ -37,12 +39,12 @@ Il backend del server locale (`interfaccia.py`) è stato dotato di endpoint dedi
 ### 1. Codex (CLI)
 *   **Bug di Configurazione Rilevato**: Durante l'attivazione iniziale, Codex falliva con un errore relativo all'invalidità del modello configurato (`The model "\" does not appear in the list...`). È stato diagnosticato che il file globale `~/.codex/config.json` era corrotto nel campo `"model": "\\"`. Abbiamo risolto impostando correttamente `"model": "o4-mini"`.
 *   **Risultato del Trigger**: Il comando si è avviato correttamente aprendo una nuova scheda di terminale Codex, ma si è bloccato a causa della mancanza di crediti/quota sull'account OpenAI del cliente (`⚠️ Insufficient quota`).
-*   **Verdetto**: Il trigger di per sé funziona ma l'agente non è operativo per motivi di fatturazione esterni.
+*   **Verdetto**: il trigger non e' stato mantenuto. Anche quando il processo parte, crea una sessione concorrente e non sveglia la chat interattiva corrente.
 
 ### 2. Claude (CLI)
 *   **Risultato del Trigger**: Il comando `npx @anthropic-ai/claude-code` si avvia correttamente e apre una scheda terminale concorrente.
 *   **Blocco di Autenticazione**: Trattandosi di un nuovo processo avviato in background dal server Uvicorn, esso non eredita la sessione autenticata o il token memorizzato nella cache del terminale interattivo principale dell'utente. Di conseguenza, Claude si arresta all'avvio chiedendo di eseguire nuovamente l'accesso via OAuth browser.
-*   **Verdetto**: La sveglia in background fallisce per barriere di autenticazione.
+*   **Verdetto**: la sveglia in background fallisce per barriere di autenticazione e crea processi concorrenti non desiderati.
 
 ### 3. Gemini (GUI/IDE)
 *   **Bug del Parsing degli Spazi su Windows**: Inizialmente il trigger falliva silenziosamente perché il percorso dell'eseguibile conteneva spazi (`.../Programs/Antigravity IDE/...`). La chiamata originaria via `cmd.exe /c` spezzava il percorso interpretando erroneamente la prima parte. Corretto lanciando lo script wrapper `.cmd` direttamente in `subprocess.Popen` (sfruttando il quoting nativo di Python).
@@ -57,6 +59,7 @@ L'esperimento ha dimostrato l'inutilizzabilità pratica della sveglia attiva asi
 
 1.  **Limiti strutturali dei CLI (Claude/Codex)**: Le interfacce a riga di comando non dispongono di un canale di comunicazione a caldo per iniettare testo in sessioni interattive già aperte. Qualsiasi trigger esterno crea nuovi processi orfani paralleli soggetti a barriere di autenticazione (Claude) o spreco di risorse.
 2.  **Limiti dell'IPC GUI (Gemini/IDE)**: La CLI nativa dell'IDE non recapita correttamente le istruzioni di chat alla finestra attiva, rendendo inefficace il risveglio.
-3.  **Verdetto Finale**: 
-    *   **Il polling automatico in background è stato disattivato** per tutti gli agenti (interruttore della Dashboard impostato permanentemente su `False` e modificato in `🧪 Polling Auto Gemini (15s)` come test isolato).
-    *   L'architettura del progetto si affida interamente agli **hook di sessione passivi** (`UserPromptSubmit` e `.agents/hooks.json`), che leggono la bacheca in background solo *mentre* l'utente interagisce attivamente con l'agente nella sua chat principale, garantendo efficacia a costo zero e senza interruzioni di flusso.
+3.  **Verdetto finale**:
+    *   **Il polling automatico in background e' stato rimosso** per tutti gli agenti.
+    *   **La sveglia manuale e' stata rimossa** per tutti gli agenti, inclusa la route `/api/bacheca/sveglia` e il pulsante UI.
+    *   L'architettura del progetto si affida agli **hook di sessione passivi** (`UserPromptSubmit` e `.agents/hooks.json`) e al fallback esplicito di copia comando. Gli hook leggono la bacheca solo *mentre* l'utente interagisce attivamente con l'agente nella sua chat principale.

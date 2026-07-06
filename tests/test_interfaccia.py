@@ -323,21 +323,5 @@ class BachecaApiTest(unittest.TestCase):
             self.assertEqual(risultato["pending_per_agente"], {"claude": 1, "codex": 0, "gemini": 1})
 
 
-class BachecaSvegliaApiTest(unittest.TestCase):
-
-    @patch("subprocess.Popen")
-    def test_sveglia_endpoint_gemini(self, mock_popen) -> None:
-        risultato = interfaccia.bacheca_sveglia(agente="gemini")
-        self.assertEqual(risultato, {"status": "sveglia_inviata", "agente": "gemini"})
-        mock_popen.assert_called_once()
-        args, kwargs = mock_popen.call_args
-        self.assertTrue(args[0][0].endswith("antigravity-ide.cmd") or "antigravity-ide" in args[0][0])
-
-    def test_sveglia_endpoint_agente_non_valido(self) -> None:
-        with self.assertRaises(interfaccia.HTTPException) as ctx:
-            interfaccia.bacheca_sveglia(agente="non_esiste")
-        self.assertEqual(ctx.exception.status_code, 400)
-
-
 if __name__ == "__main__":
     unittest.main()
