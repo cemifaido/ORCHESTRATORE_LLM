@@ -11,7 +11,8 @@ da quota al momento della verifica) — unico passo davvero ancora aperto sul la
 hook. **Aggiunto anche**: coordinamento cooperativo sui file (`occupati`/`prendi
 --file-modificati`), interruzione/ripresa (`checkpoint`/`ripresa`/`emergenza`),
 integrazione vera del modello locale (`sintetizza`), e un pannello "Bacheca" nella
-dashboard esistente (`interfaccia.py`/`.html`) con feed live e replay animato.
+dashboard esistente (`interfaccia.py`/`.html`) con feed live, replay animato e
+timestamp mostrati in ora italiana.
 
 **Da leggere insieme a**: [Indice](INDEX.md) ·
 [Guida semplice alla bacheca multi-agente](GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md)
@@ -706,6 +707,8 @@ piano, riflette cosa è stato costruito davvero, in ordine cronologico:
      clampato a 1..200 per evitare richieste accidentali troppo grandi o vuote),
      attivabile/disattivabile con un pulsante Avvia/Ferma — non parte da solo
      all'apertura della pagina, va richiesto esplicitamente;
+   - timestamp della bacheca formattati in ora italiana (`Europe/Rome`) nel feed
+     live, nel dettaglio thread e nel replay animato; il JSONL resta in UTC;
    - pulsante **"▶ Rivivi"** per riprodurre animatamente un thread nel pannello
      "Live Agent Handoff" esistente (stesso meccanismo già usato per il replay di
      un commit reale, `passoSuccessivo`/`simTimer`, intervallo fisso 1.8s) — con
@@ -717,11 +720,15 @@ piano, riflette cosa è stato costruito davvero, in ordine cronologico:
    `registro.leggi_eventi_progetto()`) perché una bacheca corrotta non deve far
    cadere l'intera dashboard. Suite a 131/131 test (backend/route coperti dai test;
    il frontend è verificato a vista).
-8. **Da fare**: revisione di questo documento e dello schema da parte di Gemini —
+8. **Fatto**: rimosso dalla dashboard il vecchio pannello/form/route **"Lancia
+   Compito Reale"**: le route `/api/compiti/*` e il lancio di `capoturno` via API
+   non sono più esposti dall'interfaccia. Rimane **"Replay di un Commit Reale"**,
+   solo visualizzazione su eventi già registrati.
+9. **Da fare**: revisione di questo documento e dello schema da parte di Gemini —
    non ancora avvenuta.
-9. **Da fare**: verifica empirica dell'hook Antigravity/Gemini (§4.3), rimandata a
+10. **Da fare**: verifica empirica dell'hook Antigravity/Gemini (§4.3), rimandata a
    quando Gemini non sarà più bloccato da quota.
 
-Punto 2 (hook Gemini/Antigravity) e punto 8 (revisione Gemini) restano gli unici
+Punto 2 (hook Gemini/Antigravity) e punto 9 (revisione Gemini) restano gli unici
 passi davvero aperti — tutto il resto in questa lista è stato costruito, testato e
 verificato (a mano, con mock, o entrambi) durante questa sessione di lavoro.

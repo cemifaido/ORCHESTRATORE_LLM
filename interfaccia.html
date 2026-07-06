@@ -988,54 +988,30 @@
       </div>
     </div>
 
-    <!-- Live Agent Handoff: esecuzione reale del capoturno su un progetto target -->
+    <!-- Replay di un commit reale: solo visualizzazione, nessuna chiamata API/costo -->
     <div class="widget">
-      <h2>🤝 Live Agent Handoff & Cooperazione</h2>
+      <h2>🎬 Replay di un Commit Reale</h2>
       <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1.5rem;">
-        Compila i campi e clicca "Avvia" per lanciare un compito reale sul progetto scelto: il capoturno delega il lavoro agli agenti, applica le modifiche sul filesystem e valida con la sentinella.
+        Scegli un progetto e un commit reale per rivedere, animata sul diagramma, la sequenza di eventi che lo hanno preceduto.
       </p>
 
       <div class="handoff-container">
         <!-- Pannello Controlli -->
         <div class="handoff-controls" style="flex-wrap: wrap;">
-          <div style="display: flex; gap: 0.8rem; align-items: center; width: 100%; margin-bottom: 0.5rem;">
-            <button id="startSimBtn" class="btn btn-primary">▶ Lancia Compito Reale</button>
-            <button id="stopSimBtn" class="btn" style="background: rgba(255,255,255,0.08); display: none;">Stop</button>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1rem;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="realProjSelect">Progetto</label>
+              <select id="realProjSelect" style="width:100%;"></select>
+            </div>
           </div>
 
-          <!-- Form Compito Reale -->
-          <div id="realFormContainer" style="width: 100%; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem; margin-top: 0.5rem;">
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1rem;">
-              <div class="form-group" style="margin-bottom:0;">
-                <label for="realProjSelect">Progetto Target</label>
-                <select id="realProjSelect" style="width:100%;"></select>
-              </div>
-              <div class="form-group" style="margin-bottom:0;">
-                <label for="realTaskType">Tipo Compito</label>
-                <select id="realTaskType" style="width:100%;">
-                  <option value="servizi">Backend/Servizi (Claude)</option>
-                  <option value="interfaccia">Frontend/UI (Gemini)</option>
-                  <option value="documentazione">Documentazione (Claude)</option>
-                  <option value="database">Database (Claude)</option>
-                </select>
-              </div>
-              <div class="form-group" style="margin-bottom:0;">
-                <label for="realFileTarget">File Target (Percorso relativo)</label>
-                <input type="text" id="realFileTarget" placeholder="es. esempi/test_codice.py" style="background:#0f172a; border:1px solid var(--card-border); color:var(--text-main); padding:0.4rem 0.8rem; border-radius:6px; font-size:0.85rem; width:100%;">
-              </div>
-              <div class="form-group" style="margin-bottom:0;">
-                <label for="realTaskRischio">Livello Rischio</label>
-                <select id="realTaskRischio" style="width:100%;">
-                  <option value="basso">Basso (Esecuzione Diretta)</option>
-                  <option value="medio">Medio</option>
-                  <option value="alto">Alto (Richiede Veto Umano)</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-group">
-              <label for="realPrompt">Descrizione Compito / Modifica Richiesta</label>
-              <textarea id="realPrompt" placeholder="es. Aggiungi una funzione moltiplica(a, b) con commenti tipizzati" style="background:#0f172a; border:1px solid var(--card-border); color:var(--text-main); padding:0.4rem 0.8rem; border-radius:6px; font-size:0.85rem; width:100%; height:60px; resize:vertical; font-family:inherit;"></textarea>
-            </div>
+          <!-- startSimBtn/stopSimBtn: non sono piu' un lancio di compito (rimosso), ma
+               restano nel DOM nascosti perche' fermaSimulazione()/avviaReplayCommit()/il
+               replay di un thread bacheca ne leggono ancora .style.display come segnale
+               "animazione in corso" - toglierli romperebbe quei tre flussi. -->
+          <div style="display:none;">
+            <button id="startSimBtn"></button>
+            <button id="stopSimBtn"></button>
           </div>
 
           <!-- Replay di un commit reale (dati storici, nessuna chiamata dal vivo) -->
@@ -1221,6 +1197,16 @@
         .replace(/'/g, "&#039;");
     }
 
+    // Timestamp della bacheca sono salvati in UTC ('Z'); qui si mostrano in ora
+    // italiana (Europe/Rome gestisce da solo il cambio legale/solare, a differenza
+    // di un offset fisso +1/+2 hardcoded).
+    function formattaOraIt(iso, soloOra = false) {
+      const opzioni = soloOra
+        ? { hour: "2-digit", minute: "2-digit", second: "2-digit" }
+        : { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" };
+      return new Date(iso).toLocaleString("it-IT", { timeZone: "Europe/Rome", ...opzioni });
+    }
+
     function initMatrixRain() {
       const canvas = document.getElementById("matrixCanvas");
       if (!canvas) return;
@@ -1278,10 +1264,6 @@
 
       // Listener per aggiornare la lista dei comandi quando cambia il progetto
       document.getElementById("sentinelProj").addEventListener("change", aggiornaComandiSelect);
-
-      // Listener per l'handoff dell'esecuzione reale
-      document.getElementById("startSimBtn").addEventListener("click", avviaCompitoReale);
-      document.getElementById("stopSimBtn").addEventListener("click", fermaSimulazione);
 
       // Replay di un commit reale
       caricaCommit();
@@ -1781,148 +1763,6 @@
 
     let simTimer = null;
 
-    async function avviaCompitoReale() {
-      const logBox = document.getElementById("handoffLogs");
-      const progetto_id = document.getElementById("realProjSelect").value;
-      const tipo_compito = document.getElementById("realTaskType").value;
-      const file_target = document.getElementById("realFileTarget").value.trim();
-      const rischio = document.getElementById("realTaskRischio").value;
-      const compito_prompt = document.getElementById("realPrompt").value.trim();
-      const id_compito = "reale-" + Math.random().toString(36).substring(2, 7);
-
-      if (!progetto_id || !file_target || !compito_prompt) {
-        showFeedback("Tutti i campi (Progetto, File Target e Prompt) sono richiesti per l'esecuzione reale.", "error");
-        return;
-      }
-
-      if (rischio === "alto") {
-        const confermato = confirm(
-          `Rischio ALTO dichiarato per questo compito su "${file_target}".\n\n` +
-          `${compito_prompt}\n\nConfermi di voler procedere comunque?`
-        );
-        if (!confermato) {
-          showFeedback("Esecuzione annullata (rischio alto non confermato).", "error");
-          return;
-        }
-      }
-
-      fermaSimulazione();
-
-      document.getElementById("startSimBtn").style.display = "none";
-      document.getElementById("stopSimBtn").style.display = "inline-block";
-
-      logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Avvio compito reale '${id_compito}'...</div>`;
-      logBox.scrollTop = logBox.scrollHeight;
-
-      try {
-        const startRes = await fetch("/api/compiti/avvia", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ progetto_id, id_compito, tipo_compito, compito_prompt, file_target, rischio })
-        });
-        if (!startRes.ok) {
-          const errData = await startRes.json();
-          throw new Error(errData.detail || "Errore durante l'avvio del compito");
-        }
-      } catch (err) {
-        logBox.innerHTML += `<div class="handoff-msg fail"><b>[Sistema] Errore:</b> ${escapeHtml(err.message)}</div>`;
-        fermaSimulazione();
-        return;
-      }
-
-      let passiMostrati = 0;
-
-      async function pollingStato() {
-        try {
-          const statusRes = await fetch("/api/compiti/stato");
-          if (!statusRes.ok) return;
-          const data = await statusRes.json();
-
-          if (data.passi && data.passi.length > passiMostrati) {
-            for (let i = passiMostrati; i < data.passi.length; i++) {
-              const passo = data.passi[i];
-
-              // Resetta le linee e i nodi attivi
-              document.querySelectorAll(".agent-node").forEach(node => {
-                node.setAttribute("class", "agent-node");
-              });
-              document.querySelectorAll(".handoff-line").forEach(line => {
-                line.setAttribute("class", "handoff-line");
-              });
-
-              // Illumina l'agente attivo
-              const activeNode = document.getElementById(`node_${passo.agente_attivo}`);
-              if (activeNode) {
-                activeNode.classList.add("active");
-                if (passo.esito === "fallito" || passo.esito === "ambiente_errore") {
-                  activeNode.classList.add("active-fail");
-                } else if (passo.esito === "successo") {
-                  activeNode.classList.add("active-success");
-                }
-              }
-
-              // Illumina la linea (passaggio palla) con il colore dell'agente trasmittente (da)
-              if (passo.da && passo.a) {
-                let line = document.getElementById(`path_${passo.da}_${passo.a}`);
-                if (!line) line = document.getElementById(`path_${passo.a}_${passo.da}`);
-                if (line) {
-                  line.classList.add(`active-${passo.da}`);
-                  if (passo.esito === "fallito" || passo.esito === "ambiente_errore") {
-                    line.classList.add("active-fail");
-                  }
-                }
-              }
-
-              // Scrive il messaggio in console
-              logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
-
-              const badgeAgente = `<span class="tag-agent ${escapeHtml(passo.agente_attivo || '')}">${escapeHtml(passo.agente_attivo.toUpperCase())}</span>`;
-              let msgClass = "handoff-msg";
-              if (passo.esito === "fallito" || passo.esito === "ambiente_errore") msgClass += " fail";
-              else if (passo.esito === "successo") msgClass += " success";
-
-              logBox.innerHTML += `<div class="${msgClass}"><b>${badgeAgente}</b>: ${escapeHtml(passo.messaggio)}</div>`;
-              logBox.innerHTML += `<span class="terminal-cursor"></span>`;
-              logBox.scrollTop = logBox.scrollHeight;
-            }
-            passiMostrati = data.passi.length;
-          }
-
-          if (data.finito) {
-            clearInterval(simTimer);
-            simTimer = null;
-
-            logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
-
-            if (data.successo) {
-              logBox.innerHTML += `
-<div class="handoff-msg success" style="font-family: monospace; white-space: pre-wrap; line-height: 1.4; margin-top: 0.8rem;">
-<b>📊 RILASCIO REALE COMPLETATO CON SUCCESSO!</b>
---------------------------------------------
-🛡️ I quality gate sono stati superati e le modifiche sono state scritte in <b>${escapeHtml(file_target)}</b>.
-⏳ Esecuzione registrata in eventi.jsonl.
---------------------------------------------
-</div>`;
-            } else {
-              logBox.innerHTML += `<div class="handoff-msg fail"><b>[Sistema]</b> Esecuzione reale del compito terminata con FALLIMENTO o bloccata per errore ambientale. Controlla i log o riprova.</div>`;
-            }
-            logBox.innerHTML += `<span class="terminal-cursor"></span>`;
-            logBox.scrollTop = logBox.scrollHeight;
-
-            // Invia reset
-            fetch("/api/compiti/reset", { method: "POST" });
-
-            fermaSimulazione();
-            aggiornaDati();
-          }
-        } catch (err) {
-          console.error("Errore durante il polling dello stato del compito", err);
-        }
-      }
-
-      simTimer = setInterval(pollingStato, 1000);
-    }
-
     function fermaSimulazione() {
       if (simTimer) {
         clearInterval(simTimer);
@@ -1977,7 +1817,7 @@
         const data = await res.json();
 
         if (data.errore) {
-          corpo.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#f87171;">⚠ Bacheca non leggibile: ${escapeHtml(data.errore)}</td></tr>`;
+          corpo.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#f87171;">⚠ Bacheca non leggibile: ${escapeHtml(data.errore)}</td></tr>`;
           banner.innerHTML = "";
           occupatiBox.innerHTML = "Nessuno.";
           return;
@@ -2027,7 +1867,7 @@
               return `<div>- <b>${escapeHtml(f)}</b>: <span class="tag-agent ${escapeHtml(info.agente)}">${escapeHtml(info.agente)}</span> (lease ${scadenza})</div>`;
             }).join("");
       } catch (err) {
-        corpo.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#f87171;">Errore nel caricamento della bacheca.</td></tr>`;
+        corpo.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#f87171;">Errore nel caricamento della bacheca.</td></tr>`;
       }
     }
 
@@ -2056,7 +1896,7 @@
           const classe = "handoff-msg" + (m.tipo === "segnalazione_conflitto" ? " fail" : m.tipo === "chiusura" ? " success" : " system");
           const riga = document.createElement("div");
           riga.className = classe;
-          riga.innerHTML = `<b>${badge} → ${destinatari}</b> [${escapeHtml(m.timestamp)}] (${escapeHtml(m.tipo)}): ${escapeHtml(m.testo)}`;
+          riga.innerHTML = `<b>${badge} → ${destinatari}</b> [${escapeHtml(formattaOraIt(m.timestamp))}] (${escapeHtml(m.tipo)}): ${escapeHtml(m.testo)}`;
           feed.appendChild(riga);
         });
         feed.scrollTop = feed.scrollHeight;
@@ -2074,7 +1914,7 @@
         const data = await res.json();
         const righe = (data.messaggi || []).map(m => `
           <div class="handoff-msg system">
-            <span style="color:var(--text-muted);">[${escapeHtml(m.timestamp)}]</span>
+            <span style="color:var(--text-muted);">[${escapeHtml(formattaOraIt(m.timestamp))}]</span>
             <span class="tag-agent ${escapeHtml(m.mittente)}">${escapeHtml(m.mittente)}</span>
             → ${escapeHtml((m.destinatari || []).join(", "))}
             (${escapeHtml(m.tipo)}): ${escapeHtml(m.testo)}
@@ -2282,7 +2122,7 @@
         const badgeMittente = `<span class="tag-agent ${escapeHtml(m.mittente)}">${escapeHtml(m.mittente.toUpperCase())}</span>`;
         const destinatari = (m.destinatari || []).map(d => escapeHtml(d)).join(", ");
         const msgClass = "handoff-msg" + (esito !== "neutro" ? ` ${esito}` : " system");
-        logBox.innerHTML += `<div class="${msgClass}"><b>${badgeMittente} → ${destinatari}</b> [${escapeHtml(m.timestamp.slice(11, 19))}] (${escapeHtml(m.tipo)}): ${escapeHtml(m.testo)}</div>`;
+        logBox.innerHTML += `<div class="${msgClass}"><b>${badgeMittente} → ${destinatari}</b> [${escapeHtml(formattaOraIt(m.timestamp, true))}] (${escapeHtml(m.tipo)}): ${escapeHtml(m.testo)}</div>`;
         logBox.innerHTML += `<span class="terminal-cursor"></span>`;
         logBox.scrollTop = logBox.scrollHeight;
 

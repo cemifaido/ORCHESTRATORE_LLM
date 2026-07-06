@@ -8,8 +8,7 @@ import threading
 import time
 from math import ceil
 from pathlib import Path
-from typing import Any
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 import uvicorn
@@ -31,7 +30,6 @@ PORTA_DASHBOARD = int(os.environ.get("ORCHESTRATORE_PORTA", "8095"))
 # Assicura caricamento moduli locali del framework
 sys.path.append(str(RADICE))
 import registro  # noqa: E402
-import capoturno  # noqa: E402
 import commit_replay  # noqa: E402
 import bacheca  # noqa: E402
 
@@ -457,111 +455,6 @@ def esegui_sentinella(input_data: SentinellaInput):
         raise HTTPException(status_code=500, detail=f"Errore durante l'esecuzione del comando: {e}")
 
 
-class CompitoInput(BaseModel):
-    progetto_id: str
-    id_compito: str
-    tipo_compito: str
-    compito_prompt: str
-    file_target: str
-    rischio: str = "basso"
-
-
-STATO_COMPITO_CORRENTE: dict[str, Any] = {
-    "attivo": False,
-    "passi": [],
-    "finito": False,
-    "successo": False,
-    "progetto_id": "",
-    "id_compito": ""
-}
-
-
-def esegui_capoturno_in_background(compito: CompitoInput, percorso_progetto: str, percorso_registro: str):
-    global STATO_COMPITO_CORRENTE
-    STATO_COMPITO_CORRENTE["attivo"] = True
-    STATO_COMPITO_CORRENTE["finito"] = False
-    STATO_COMPITO_CORRENTE["passi"] = []
-    STATO_COMPITO_CORRENTE["progetto_id"] = compito.progetto_id
-    STATO_COMPITO_CORRENTE["id_compito"] = compito.id_compito
-
-    def on_passo_callback(da: str, a: str, agente_attivo: str, messaggio: str, esito: str):
-        STATO_COMPITO_CORRENTE["passi"].append({
-            "da": da,
-            "a": a,
-            "agente_attivo": agente_attivo,
-            "messaggio": messaggio,
-            "esito": esito
-        })
-
-    c = capoturno.Capoturno(
-        progetto_id=compito.progetto_id,
-        progetto_percorso=percorso_progetto,
-        registro_percorso=percorso_registro,
-        on_passo=on_passo_callback
-    )
-
-    try:
-        successo = c.esegui_compito(
-            id_compito=compito.id_compito,
-            tipo_compito=compito.tipo_compito,
-            compito_prompt=compito.compito_prompt,
-            file_target=compito.file_target,
-            rischio=compito.rischio
-        )
-        STATO_COMPITO_CORRENTE["successo"] = successo
-    except Exception as err:
-        STATO_COMPITO_CORRENTE["successo"] = False
-        STATO_COMPITO_CORRENTE["passi"].append({
-            "da": "locale",
-            "a": "umano",
-            "agente_attivo": "umano",
-            "messaggio": f"Errore critico durante l'esecuzione del capoturno: {err}",
-            "esito": "fallito"
-        })
-    finally:
-        STATO_COMPITO_CORRENTE["finito"] = True
-
-
-@app.post("/api/compiti/avvia")
-def avvia_compito(compito: CompitoInput, background_tasks: BackgroundTasks):
-    global STATO_COMPITO_CORRENTE
-    if STATO_COMPITO_CORRENTE["attivo"] and not STATO_COMPITO_CORRENTE["finito"]:
-        raise HTTPException(status_code=400, detail="C'è già un compito reale in esecuzione.")
-
-    progetti = leggi_progetti()
-    progetto = next((p for p in progetti if p["id"] == compito.progetto_id), None)
-    if not progetto:
-        raise HTTPException(status_code=404, detail="Progetto non trovato")
-
-    p_percorso = progetto["percorso"]
-    p_registro = Path(p_percorso) / "dati_locali" / "orchestrazione" / "eventi.jsonl"
-
-    background_tasks.add_task(
-        esegui_capoturno_in_background,
-        compito,
-        p_percorso,
-        str(p_registro)
-    )
-    return {"status": "started", "detail": "Compito avviato in background."}
-
-
-@app.get("/api/compiti/stato")
-def get_stato_compito():
-    return STATO_COMPITO_CORRENTE
-
-
-@app.post("/api/compiti/reset")
-def reset_stato_compito():
-    global STATO_COMPITO_CORRENTE
-    STATO_COMPITO_CORRENTE = {
-        "attivo": False,
-        "passi": [],
-        "finito": False,
-        "successo": False,
-        "progetto_id": "",
-        "id_compito": ""
-    }
-    return {"status": "reset"}
 
 
 def _progetto_o_404(progetto_id: str) -> dict:

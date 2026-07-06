@@ -31,6 +31,34 @@ Prima della bacheca, il passaggio di contesto funzionava così:
 
 Questo funziona, ma è scomodo. L'umano diventa il postino fra gli agenti.
 
+## Chi digita davvero i comandi? (il punto che confonde di più)
+
+**La chat resta la chat.** Continui a parlare con Claude/Codex/Gemini esattamente
+come hai sempre fatto — chiedi di scrivere codice, di rivedere qualcosa, di
+spiegarti una cosa. Niente cambia lì, nessuna CLI in mezzo.
+
+`bacheca.py` non è un modo per "parlare" a un LLM — non chiama nessun modello, è
+solo un file condiviso (un bigliettino su una bacheca fisica, letteralmente). E
+**di solito non sei tu a eseguire i comandi**: è l'agente con cui stai parlando, su
+tua richiesta, perché ha già accesso al terminale.
+
+Flusso reale, giorno per giorno:
+
+1. Parli con Claude in chat, chiedi di fare X. Claude lo fa. Se non serve
+   coinvolgere altri, la bacheca non entra mai in gioco.
+2. Se il lavoro richiede attenzione di Codex (es. una review), lo chiedi a Claude
+   in chat: *"lascia una nota in bacheca per Codex"* — è **Claude** a eseguire
+   `bacheca.py chiedi --a codex ...`, tu non tocchi il terminale.
+3. Più tardi apri una chat con Codex. Se l'hook funziona, la nota compare da sola
+   nel suo contesto. Se no, gli dici tu *"controlla la bacheca"* e **Codex** esegue
+   lui stesso `bacheca.py prossimo --agente codex`.
+4. Codex risponde — di nuovo lo fa lui via CLI, tu resti in chat normale.
+
+L'unica volta in cui potresti digitare tu stesso un comando è per le cose "da
+umano": dare un obiettivo prima ancora di aprire una chat specifica (`chiedi`),
+controllare lo stato generale (`stato`), approvare (`approva`) — e anche lì, puoi
+benissimo chiedere all'agente aperto in quel momento di farlo per te.
+
 ## L'idea in una frase
 
 La bacheca è un registro locale di messaggi strutturati, dove umano e agenti possono
@@ -309,8 +337,17 @@ Due cose in più, pensate per non dover controllare a mano ogni volta:
 - **▶ Rivivi**: riproduce animatamente, un messaggio alla volta, la cronologia di un
   thread nel pannello "Live Agent Handoff" già esistente.
 
+Gli orari della bacheca sono salvati in UTC nel file JSONL, ma nella dashboard sono
+mostrati in ora italiana (`Europe/Rome`) nel feed live, nel dettaglio del thread e nel
+replay animato.
+
 Resta solo visualizzazione: da qui non si approva/chiude/assegna nulla, quello resta
 compito della CLI.
+
+Il vecchio pannello "Lancia Compito Reale" non c'è più: il lancio di `capoturno` via
+API è stato tolto dalla dashboard perché non era un flusso usato dall'utente. Rimane
+invece "Replay di un Commit Reale", che serve solo a rivedere eventi già registrati e
+non lancia nuovi compiti.
 
 ## Cosa è già stato fatto
 
