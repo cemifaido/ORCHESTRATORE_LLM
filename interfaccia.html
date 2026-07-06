@@ -846,6 +846,61 @@
       font-weight: 600;
     }
     .bacheca-riga-thread { cursor: pointer; }
+    .bacheca-pending-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .bacheca-pending-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 0.65rem 0.75rem;
+      min-height: 42px;
+    }
+    .bacheca-pending-main {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      min-width: 0;
+    }
+    .bacheca-pending-count {
+      min-width: 1.7rem;
+      height: 1.7rem;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.82rem;
+      font-weight: 700;
+      background: rgba(148, 163, 184, 0.14);
+      color: #94a3b8;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+    .bacheca-pending-count.has-pending {
+      background: rgba(245, 158, 11, 0.18);
+      color: #fbbf24;
+      border-color: rgba(245, 158, 11, 0.45);
+    }
+    .bacheca-copy-btn {
+      flex: 0 0 auto;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      color: #93c5fd;
+      padding: 0.3rem 0.55rem;
+      border-radius: 6px;
+      font-size: 0.74rem;
+      cursor: pointer;
+    }
+    .bacheca-copy-btn:hover {
+      background: rgba(59, 130, 246, 0.22);
+      border-color: rgba(96, 165, 250, 0.7);
+    }
 
     /* Blinking cursor terminale verde Matrix */
     .terminal-cursor {
@@ -1112,6 +1167,10 @@
         <label for="bachecaProjSelect">Progetto</label>
         <select id="bachecaProjSelect" style="width:100%;"></select>
       </div>
+      <h3 style="font-size:0.95rem; color:var(--text-muted); margin:0 0 0.6rem;">Messaggi pendenti per agente</h3>
+      <div id="bachecaPendingAgenti" class="bacheca-pending-grid">
+        <div style="color:var(--text-muted); font-size:0.85rem;">Caricamento...</div>
+      </div>
       <div id="bachecaBanner"></div>
       <div style="display:flex; align-items:center; gap:0.8rem; margin-bottom:0.6rem;">
         <h3 style="font-size:0.95rem; color:var(--text-muted); margin:0;">Attività live</h3>
@@ -1186,6 +1245,11 @@
     let paginaTimelineCorrente = 1;
     let bachecaFeedAttivo = false;
     let bachecaFeedIdsMostrati = new Set();
+    const AGENTI_BACHECA_DASHBOARD = [
+      { id: "claude", label: "Claude", modo: "hook attivo" },
+      { id: "codex", label: "Codex", modo: "hook attivo" },
+      { id: "gemini", label: "Gemini", modo: "pull manuale" }
+    ];
 
     function escapeHtml(str) {
       if (str == null) return '';
@@ -1205,6 +1269,22 @@
         ? { hour: "2-digit", minute: "2-digit", second: "2-digit" }
         : { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" };
       return new Date(iso).toLocaleString("it-IT", { timeZone: "Europe/Rome", ...opzioni });
+    }
+
+    async function copiaTestoNegliAppunti(testo) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(testo);
+        return;
+      }
+      const area = document.createElement("textarea");
+      area.value = testo;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      document.body.removeChild(area);
     }
 
     function initMatrixRain() {
@@ -1805,6 +1885,38 @@
       }
     }
 
+    function renderizzaPendingBacheca(pendingPerAgente) {
+      const box = document.getElementById("bachecaPendingAgenti");
+      if (!box) return;
+      const pending = pendingPerAgente || {};
+      box.innerHTML = "";
+      AGENTI_BACHECA_DASHBOARD.forEach(agente => {
+        const count = Number(pending[agente.id] || 0);
+        const comando = `python bacheca.py prossimo --agente ${agente.id}`;
+        const card = document.createElement("div");
+        card.className = "bacheca-pending-card";
+        card.innerHTML = `
+          <div class="bacheca-pending-main">
+            <span class="bacheca-pending-count ${count > 0 ? "has-pending" : ""}">${count}</span>
+            <div>
+              <div><span class="tag-agent ${escapeHtml(agente.id)}">${escapeHtml(agente.label)}</span></div>
+              <div style="font-size:0.72rem; color:var(--text-muted); margin-top:0.15rem;">${escapeHtml(agente.modo)}</div>
+            </div>
+          </div>
+          <button type="button" class="bacheca-copy-btn" title="${escapeHtml(comando)}">Copia comando</button>
+        `;
+        card.querySelector(".bacheca-copy-btn").addEventListener("click", async () => {
+          try {
+            await copiaTestoNegliAppunti(comando);
+            showFeedback(`Comando copiato: ${comando}`, "success");
+          } catch (err) {
+            showFeedback(`Impossibile copiare il comando: ${comando}`, "error");
+          }
+        });
+        box.appendChild(card);
+      });
+    }
+
     async function caricaBacheca() {
       const select = document.getElementById("bachecaProjSelect");
       const progetto_id = (select && select.value) || "orchestratore";
@@ -1820,9 +1932,11 @@
           corpo.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#f87171;">⚠ Bacheca non leggibile: ${escapeHtml(data.errore)}</td></tr>`;
           banner.innerHTML = "";
           occupatiBox.innerHTML = "Nessuno.";
+          renderizzaPendingBacheca(data.pending_per_agente);
           return;
         }
 
+        renderizzaPendingBacheca(data.pending_per_agente);
         const thread = data.thread || [];
         const conflitti = thread.filter(t => t.ultimo_tipo === "segnalazione_conflitto" && t.stato !== "chiuso" && t.stato !== "annullato");
         banner.innerHTML = conflitti.length > 0
@@ -1868,6 +1982,7 @@
             }).join("");
       } catch (err) {
         corpo.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#f87171;">Errore nel caricamento della bacheca.</td></tr>`;
+        renderizzaPendingBacheca({});
       }
     }
 

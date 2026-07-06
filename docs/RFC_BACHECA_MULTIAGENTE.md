@@ -1,18 +1,26 @@
 # RFC — Bacheca multi-agente senza API a pagamento
 
 **Stato**: MVP implementato e testato (`bacheca.py` + `tests/test_bacheca.py`,
-suite 131/131 test). Hook **verificati empiricamente e confermati funzionanti** per Claude
+suite 132/132 test). Hook **verificati empiricamente e confermati funzionanti** per Claude
 Code e Codex (sessioni fresche reali, non solo configurazione — vedi §9): l'iniezione
 automatica del contesto dalla bacheca funziona senza intervento umano su entrambi.
 Per Codex serve un'autorizzazione esplicita una tantum nell'IDE (Antigravity/Codex
 extension chiede di approvare gli hook trovati la prima volta — un gate di sicurezza
-atteso, non un difetto). Gemini/Antigravity non ancora verificato (Gemini bloccato
-da quota al momento della verifica) — unico passo davvero ancora aperto sul lato
-hook. **Aggiunto anche**: coordinamento cooperativo sui file (`occupati`/`prendi
+atteso, non un difetto). **Gemini/Antigravity verificato e confermato non
+funzionante**: l'hook di test (`TEST_HOOK_BACHECA_OK` in `.gemini/settings.json`)
+non compare nel contesto di una sessione fresca — Gemini stesso lo ha controllato
+esplicitamente e non l'ha trovato. Per Gemini resta quindi **solo il fallback
+manuale** (istruzione in `GEMINI.md` di leggere `bacheca.py prossimo --agente
+gemini`), non un problema: era già il piano B previsto per questo caso in §4.3, e
+il fallback stesso funziona (Gemini ha letto e risposto ai thread a lui indirizzati
+senza intervento umano oltre all'apertura della sessione). Con questo si chiude
+l'ultimo punto davvero aperto sul lato hook per tutti e tre gli strumenti.
+**Aggiunto anche**: coordinamento cooperativo sui file (`occupati`/`prendi
 --file-modificati`), interruzione/ripresa (`checkpoint`/`ripresa`/`emergenza`),
 integrazione vera del modello locale (`sintetizza`), e un pannello "Bacheca" nella
 dashboard esistente (`interfaccia.py`/`.html`) con feed live, replay animato e
-timestamp mostrati in ora italiana.
+timestamp mostrati in ora italiana, più contatori dei messaggi pendenti per agente
+con comando di pull copiabile.
 
 **Da leggere insieme a**: [Indice](INDEX.md) ·
 [Guida semplice alla bacheca multi-agente](GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md)
@@ -145,7 +153,7 @@ destinatari. Se un thread è indirizzato a `claude` e `codex` e risponde solo Cl
 Mirror strutturale di `registro.py` (stesso stile: `carica_schema_*`, `valida_*`,
 `aggiungi_*`, `leggi_*`, riusando `_validatore_per_schema`/`_messaggio_errore`/
 `adesso_utc`/`lista_csv` già presenti in `registro.py` invece di duplicarli). Comandi
-CLI implementati (`tests/test_bacheca.py`, 49 test; suite complessiva 131 test, più diversi giri manuali end-to-end):
+CLI implementati (`tests/test_bacheca.py`, 49 test; suite complessiva 132 test, più diversi giri manuali end-to-end):
 
 ```
 python bacheca.py aggiungi --mittente claude --destinatari codex --tipo richiesta --testo "..."
@@ -460,29 +468,52 @@ più, un array di gruppi-per-matcher ciascuno con un proprio array `hooks` inter
 Stessa forma (matcher + hooks annidati) su Claude Code. Da verificare quando si scrive
 davvero la configurazione, non assumere la forma più semplice.
 
-### 4.3 Limite noto e non ancora chiuso: Antigravity IDE vs Gemini CLI open-source
+### 4.3 Chiuso: Antigravity IDE non rispetta l'hook `BeforeAgent` — resta il fallback manuale
 
-Tutto quanto sopra per Gemini è documentato per **Gemini CLI**, il progetto
-open-source. Antigravity (l'IDE) ne è basato, ma non è garantito che l'IDE esponga o
-rispetti la stessa configurazione `.gemini/settings.json` — potrebbe avere una
-superficie di configurazione diversa, sandbox più stringenti (build commerciali spesso
-bloccano l'esecuzione di comandi locali arbitrari per sicurezza), o canali diversi
-(variabili d'ambiente, estensioni interne). Verifica pratica ancora da fare sulla
-macchina reale, sensori concreti da cercare:
+Tutto quanto sopra per Gemini era documentato solo per **Gemini CLI**, il progetto
+open-source; Antigravity (l'IDE) ne è basato ma non era garantito che rispettasse la
+stessa configurazione `.gemini/settings.json`. **Verificato con un test reale**: in
+una sessione fresca di Antigravity, la stringa fissa `TEST_HOOK_BACHECA_OK`
+dichiarata nell'hook `BeforeAgent` di `.gemini/settings.json` **non compare** nel
+contesto — Gemini stesso ha controllato esplicitamente e confermato l'assenza.
+L'hook non scatta. **Ipotesi non verificata** (fornita da Gemini stesso, non
+confermata con log reali né documentazione ufficiale di Antigravity — nessuno dei
+"sensori" concreti previsti sopra, es. un blocco di sicurezza visibile nella
+console sviluppatori, è stato effettivamente controllato): Antigravity IDE, pur
+condividendo il core con Gemini CLI open-source, applicherebbe un sandbox più
+restrittivo che blocca o ignora silenziosamente l'esecuzione di comandi locali
+arbitrari (`type: "command"`) all'avvio o all'invio di un prompt, per evitare
+esecuzione di codice non controllato. Plausibile, coerente con l'ipotesi già
+scritta sopra prima della verifica — ma resta un'ipotesi, non un fatto accertato;
+per gli scopi di questo progetto il risultato pratico non cambia comunque.
 
-1. Presenza di una cartella `.gemini/` generata automaticamente o riconoscimento di
-   `GEMINI.md` a livello di workspace.
-2. Comportamento del sistema al salvataggio di un `.gemini/settings.json` con il
-   nesting corretto del `matcher`.
-3. Log di errore/blocco di sicurezza nella console sviluppatori dell'IDE quando
-   l'agente tenta di invocare un comando esterno (`type: "command"`).
+**Secondo tentativo, stesso esito**: ricerca ulteriore di Gemini ha trovato un
+evento diverso, documentato per l'Antigravity CLI più recente — `PreInvocation`
+(percorso `.agents/hooks.json`, formato di iniezione `{"injectSteps":
+[{"ephemeralMessage": "..."}]}` invece di `hookSpecificOutput.additionalContext`).
+Verificato indipendentemente da Claude prima di procedere (due fonti confermano
+percorso file ed esistenza dell'evento; una terza fonte descrive però
+`PreInvocation` solo come gate di sicurezza allow/deny/ask, non come meccanismo di
+iniezione contesto — la questione restava genuinamente ambigua). **Su
+raccomandazione esplicita di non modificare `bacheca.py` prima di un test
+isolato**, Gemini ha configurato solo l'hook di prova a stringa fissa
+(`TEST_HOOK_ANTIGRAVITY_OK` in `.agents/hooks.json`) senza toccare il formato di
+output reale — e anche questo **non compare** nel contesto di una sessione fresca.
+Con due meccanismi diversi (`BeforeAgent`/`additionalContext` e
+`PreInvocation`/`injectSteps`) entrambi testati e falliti, l'indizio di un blocco a
+livello di sandbox/IDE (non un evento sbagliato indovinato male) è più solido.
+Resta comunque un'ipotesi sulla causa, non un fatto confermato da log ufficiali —
+il risultato pratico (fallback manuale necessario) è però ormai definitivo.
 
-**Per v1, questo va trattato come ipotesi, non come fondazione del disegno** (rafforzato
-in revisione, Codex): il requisito minimo per Gemini resta `GEMINI.md` +
-`bacheca.py prossimo --agente gemini` letto manualmente a inizio sessione — l'hook
-`BeforeAgent` è un "best effort", da aggiungere se e quando verificato sulla macchina
-reale, mai un presupposto per far funzionare il resto del disegno. Claude Code e
-Codex, con gli hook già verificati (§4.2), non hanno bisogno di questo fallback.
+**Non è un problema bloccante**: era già il piano B esplicitamente previsto per
+questo caso. Il fallback — istruzione in `GEMINI.md` di eseguire
+`bacheca.py prossimo --agente gemini` a inizio sessione — **funziona**: verificato
+con lo stesso test reale, Gemini ha letto autonomamente i thread a lui indirizzati
+e ha risposto in bacheca senza bisogno che l'umano incollasse nulla a mano. Claude
+Code e Codex restano gli unici due con iniezione automatica via hook (§4.2); Gemini
+resta in pull-mode manuale, unica differenza pratica: l'umano deve ricordare di
+dire "controlla la bacheca" invece che l'iniezione avvenga da sola — un'attrito
+in più, non un'assenza di funzionalità.
 
 ## 5. Cosa NON fare: automazione diretta delle UI proprietarie
 
@@ -609,12 +640,10 @@ il modello.
   avvisato", non a una decisione sbagliata presa in autonomia dal sistema.
 - **Bug di encoding UTF-8** (§6.4): causa non confermata; ricetta di indagine
   annotata, non ancora eseguita.
-- **Verifica empirica hook su Antigravity IDE** (§4.3): non ancora fatta sulla
-  macchina reale. Test minimo proposto, **eseguibile fin da subito senza aspettare
-  `bacheca.py`**: un hook `BeforeAgent` in `.gemini/settings.json` che stampa una
-  stringa fissa e innocua (non serve chiamare `bacheca.py prossimo` per verificare se
-  il meccanismo di iniezione funziona affatto). Solo dopo, se funziona, si collega
-  davvero a `bacheca.py prossimo --agente gemini --formato hook`.
+- ~~**Verifica empirica hook su Antigravity IDE**~~ — **chiusa** (§4.3): provati
+  `BeforeAgent` in `.gemini/settings.json` e `PreInvocation` in `.agents/hooks.json`,
+  entrambi senza iniezione nel contesto. Resta il fallback manuale assistito dalla
+  dashboard.
 - **Revisione dello schema da parte di Gemini**: non ancora fatta. Questo documento e
   `schema/messaggio.v1.json` sono pensati per essere un punto di partenza concreto da
   criticare, non una versione finale.
@@ -670,9 +699,9 @@ piano, riflette cosa è stato costruito davvero, in ordine cronologico:
    sessioni fresche reali: Claude Code inietta il contesto da solo; Codex lo stesso,
    dopo un'autorizzazione umana esplicita una tantum richiesta dall'IDE per gli
    hook trovati in un repository (gate di sicurezza atteso, non un difetto).
-   `.gemini/settings.json` ha solo l'hook di test a stringa fissa (§4.3), **ancora
-   da verificare** (Gemini bloccato da quota al momento del test) e non ancora
-   collegato a `bacheca.py` — unico passo davvero bloccante rimasto sul lato hook.
+   Gemini/Antigravity è stato verificato con due test a stringa fissa: `BeforeAgent`
+   in `.gemini/settings.json` e `PreInvocation` in `.agents/hooks.json`; entrambi
+   non arrivano nel contesto dell'IDE (§4.3). Resta quindi pull manuale.
 3. **Fatto**: `CLAUDE.md`/`AGENTS.md`/`GEMINI.md` aggiornati con l'istruzione
    esplicita di controllare la bacheca, fallback quando gli hook non scattano.
 4. **Fatto**: coordinamento cooperativo sui file — `file_occupati()` (claim attivi
@@ -697,6 +726,10 @@ piano, riflette cosa è stato costruito davvero, in ordine cronologico:
 7. **Fatto**: pannello **"🗂️ Bacheca Multi-Agente"** nella dashboard esistente
    (`interfaccia.py`/`interfaccia.html`, non una dashboard separata — riusa
    selettore multi-progetto, tema, framework già presenti). Contiene:
+   - riepilogo **messaggi pendenti per agente** (`claude`, `codex`, `gemini`),
+     derivato dalla stessa vista per destinatario usata da `bacheca.py prossimo`,
+     con comando di pull copiabile per ciascun agente; per Gemini è il fallback
+     manuale principale, per Claude/Codex è osservabilità e debug degli hook;
    - tabella thread (stato, ultimo mittente, chi aspetta, verdetto umano) con badge
      colorati e riga evidenziata per i conflitti segnalati, più banner in cima se
      ce ne sono di attivi;
@@ -718,7 +751,7 @@ piano, riflette cosa è stato costruito davvero, in ordine cronologico:
      testuale con mittente/destinatari/tipo/testo.
    Nuovo helper difensivo `bacheca.leggi_messaggi_progetto()` (mirror di
    `registro.leggi_eventi_progetto()`) perché una bacheca corrotta non deve far
-   cadere l'intera dashboard. Suite a 131/131 test (backend/route coperti dai test;
+   cadere l'intera dashboard. Suite a 132/132 test (backend/route coperti dai test;
    il frontend è verificato a vista).
 8. **Fatto**: rimosso dalla dashboard il vecchio pannello/form/route **"Lancia
    Compito Reale"**: le route `/api/compiti/*` e il lancio di `capoturno` via API
@@ -726,9 +759,10 @@ piano, riflette cosa è stato costruito davvero, in ordine cronologico:
    solo visualizzazione su eventi già registrati.
 9. **Da fare**: revisione di questo documento e dello schema da parte di Gemini —
    non ancora avvenuta.
-10. **Da fare**: verifica empirica dell'hook Antigravity/Gemini (§4.3), rimandata a
-   quando Gemini non sarà più bloccato da quota.
+10. **Fatto**: verifica empirica dell'hook Antigravity/Gemini (§4.3) chiusa con
+   esito negativo per gli hook, ma positivo per il fallback manuale; la dashboard
+   ora rende visibili i pending per Gemini e copia il comando di pull.
 
-Punto 2 (hook Gemini/Antigravity) e punto 9 (revisione Gemini) restano gli unici
-passi davvero aperti — tutto il resto in questa lista è stato costruito, testato e
-verificato (a mano, con mock, o entrambi) durante questa sessione di lavoro.
+Il punto 9 (revisione Gemini di documento/schema) resta l'unico passo aperto in
+questa lista — tutto il resto è stato costruito, testato e verificato (a mano, con
+mock, o entrambi) durante le sessioni di lavoro.

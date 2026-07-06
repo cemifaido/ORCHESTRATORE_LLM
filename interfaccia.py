@@ -33,6 +33,8 @@ import registro  # noqa: E402
 import commit_replay  # noqa: E402
 import bacheca  # noqa: E402
 
+AGENTI_BACHECA_DASHBOARD = ("claude", "codex", "gemini")
+
 class ProgettoInput(BaseModel):
     nome: str
     percorso: str
@@ -510,19 +512,30 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
     progetto = _progetto_o_404(progetto_id)
     messaggi, errore = bacheca.leggi_messaggi_progetto(Path(progetto["percorso"]))
     if errore:
-        return {"progetto_id": progetto_id, "errore": errore, "thread": [], "occupati": {}}
+        return {
+            "progetto_id": progetto_id,
+            "errore": errore,
+            "thread": [],
+            "occupati": {},
+            "pending_per_agente": {agente: 0 for agente in AGENTI_BACHECA_DASHBOARD},
+        }
 
     thread_ids = sorted({m["thread_id"] for m in messaggi})
     thread_riepilogo = []
+    pending_per_agente = {agente: 0 for agente in AGENTI_BACHECA_DASHBOARD}
     for tid in thread_ids:
         ultimo = bacheca._messaggi_del_thread(messaggi, tid)[-1]
+        aspetta = bacheca.destinatari_pendenti(messaggi, tid)
+        for agente in AGENTI_BACHECA_DASHBOARD:
+            if agente in aspetta:
+                pending_per_agente[agente] += 1
         thread_riepilogo.append({
             "thread_id": tid,
             "stato": bacheca.stato_thread(messaggi, tid),
             "ultimo_mittente": ultimo["mittente"],
             "ultimo_tipo": ultimo["tipo"],
             "ultimo_testo": ultimo["testo"][:200],
-            "aspetta": bacheca.destinatari_pendenti(messaggi, tid),
+            "aspetta": aspetta,
             "verdetto_umano": bacheca.verdetto_umano_corrente(messaggi, tid),
             "file_modificati": ultimo["file_modificati"],
         })
@@ -535,7 +548,12 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
         }
         for f, info in bacheca.file_occupati(messaggi).items()
     }
-    return {"progetto_id": progetto_id, "thread": thread_riepilogo, "occupati": occupati}
+    return {
+        "progetto_id": progetto_id,
+        "thread": thread_riepilogo,
+        "occupati": occupati,
+        "pending_per_agente": pending_per_agente,
+    }
 
 
 @app.get("/api/bacheca/feed")

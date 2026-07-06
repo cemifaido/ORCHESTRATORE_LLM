@@ -287,5 +287,41 @@ class BachecaFeedApiTest(unittest.TestCase):
             self.assertEqual(risultato["messaggi"][0]["testo"], "messaggio 50")
 
 
+class BachecaApiTest(unittest.TestCase):
+    def test_bacheca_riporta_pending_per_agente_operativo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            percorso_messaggi = p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+            richiesta_multi = bacheca.costruisci_messaggio(
+                mittente="umano",
+                destinatari=["codex", "gemini"],
+                tipo="richiesta",
+                testo="rivedete questa modifica",
+            )
+            bacheca.aggiungi_messaggio(percorso_messaggi, richiesta_multi)
+            risposta_codex = bacheca.costruisci_messaggio(
+                mittente="codex",
+                destinatari=["umano"],
+                tipo="risposta",
+                testo="review completata",
+                thread_id=richiesta_multi["thread_id"],
+                correla_a=richiesta_multi["id_messaggio"],
+            )
+            bacheca.aggiungi_messaggio(percorso_messaggi, risposta_codex)
+            domanda_claude = bacheca.costruisci_messaggio(
+                mittente="umano",
+                destinatari=["claude"],
+                tipo="domanda",
+                testo="serve una proposta",
+            )
+            bacheca.aggiungi_messaggio(percorso_messaggi, domanda_claude)
+
+            progetti = [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                risultato = interfaccia.bacheca_progetto(progetto_id="test_proj")
+
+            self.assertEqual(risultato["pending_per_agente"], {"claude": 1, "codex": 0, "gemini": 1})
+
+
 if __name__ == "__main__":
     unittest.main()

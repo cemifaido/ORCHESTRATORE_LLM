@@ -328,8 +328,13 @@ c'è un pannello "🗂️ Bacheca Multi-Agente": tabella dei thread con stato e 
 aspetta, banner se c'è un conflitto segnalato, elenco dei file in carico, e cliccando
 su un thread la sua cronologia completa.
 
-Due cose in più, pensate per non dover controllare a mano ogni volta:
+Tre cose in più, pensate per non dover controllare a mano ogni volta:
 
+- **Messaggi pendenti per agente**: tre badge (`Claude`, `Codex`, `Gemini`) mostrano
+  quanti thread aspettano ancora ciascun agente. Ogni badge ha un pulsante per copiare
+  il comando `python bacheca.py prossimo --agente ...`. Per Gemini è il fallback
+  operativo principale; per Claude e Codex è soprattutto un controllo visivo/debug
+  degli hook automatici.
 - **Attività live**: un box che si aggiorna da solo ogni 5 secondi mostrando solo i
   messaggi nuovi, come un log che si allunga — parte solo premendo "▶ Avvia" (non è
   mai attivo di default). Il feed usa comunque un limite interno, così non carica
@@ -358,14 +363,16 @@ Al momento sono stati aggiunti:
 - `tests/test_bacheca.py`: test del comportamento principale;
 - `.claude/settings.json`: hook Claude;
 - `.codex/hooks.json`: hook Codex;
-- `.gemini/settings.json`: hook di test per Antigravity/Gemini;
+- `.gemini/settings.json` e `.agents/hooks.json`: hook di test per
+  Antigravity/Gemini, entrambi verificati come non efficaci nell'IDE;
 - `docs/RFC_BACHECA_MULTIAGENTE.md`: disegno tecnico completo;
 - `docs/CONFORMITA_TOS_BACHECA.md`: guardrail rispetto ai termini di servizio.
 
 Gli hook di Claude Code e Codex sono configurati e verificati empiricamente in
-sessioni fresche. Gemini/Antigravity ha ancora solo un hook di test: quando Gemini
-torna disponibile va verificato che Antigravity inietti `TEST_HOOK_BACHECA_OK`, poi
-si potrà collegare davvero a `bacheca.py prossimo --agente gemini --formato hook`.
+sessioni fresche. Gemini/Antigravity è stato verificato con due meccanismi diversi
+(`BeforeAgent` e `PreInvocation`), ma nessuno dei due inietta contesto nell'IDE: per
+Gemini resta quindi il pull manuale con `python bacheca.py prossimo --agente gemini`,
+assistito dal badge nella dashboard.
 
 ## Cosa non è
 
