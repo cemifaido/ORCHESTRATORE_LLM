@@ -663,8 +663,16 @@ def _esegui_risveglio_os(
             check=True,
         )
 
-        # 2. Lancia l'URI per focalizzare l'IDE
-        os.startfile(uri)
+        # 2. Lancia l'URI per focalizzare l'IDE. os.startfile(uri) passerebbe dal
+        # comando registrato in Windows per "antigravity-ide://", che su questa
+        # installazione include un separatore "--" rifiutato dall'exe ("bad option:
+        # --open-url") e fallisce in silenzio senza mai raggiungere l'app (verificato
+        # con log Electron). Invochiamo l'exe direttamente con la sintassi che
+        # funziona davvero (stesso flag, senza separatore).
+        antigravity_cmd = os.path.expandvars(
+            r"%LOCALAPPDATA%\Programs\Antigravity IDE\bin\antigravity-ide.cmd"
+        )
+        subprocess.Popen([antigravity_cmd, "--open-url", uri])
         print(f"[RISVEGLIO OS] Eseguito risveglio automatico per {agente}")
         return {"status": "eseguito", "prompt": prompt, "uri": uri}
     except Exception as e:

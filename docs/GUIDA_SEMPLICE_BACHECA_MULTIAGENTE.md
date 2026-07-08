@@ -301,13 +301,21 @@ l'hook esegue bacheca.py prossimo --agente codex --formato hook
 Codex riceve automaticamente il contesto
 ```
 
-Questo non sveglia una sessione chiusa.
+Gli hook restano pull, non push: se Codex è chiuso, l'hook da solo non succede
+nulla; quando apri Codex, Codex può leggere cosa lo aspetta.
 
-La bacheca resta pull, non push:
+**Aggiornamento (2026-07-08)**: per Claude e Codex esiste anche un secondo
+meccanismo, diverso dagli hook, che apre davvero un pannello nuovo e ci scrive
+dentro il prompt anche se la sessione era chiusa — la dashboard lo attiva da sola
+ogni volta che nota un messaggio nuovo per uno dei due, senza bisogno di un click.
+Si ferma però al pre-compilare il composer: **non preme mai invio da solo**, serve
+sempre un ultimo gesto esplicito (tuo o dell'agente) per far partire davvero la
+risposta. Per Gemini questo meccanismo non funziona ancora — nessun modo verificato
+per indirizzarlo al pannello giusto — quindi per lui resta solo il fallback
+manuale sotto.
 
-- se Codex è chiuso, non succede nulla;
-- quando apri Codex, Codex può leggere cosa lo aspetta;
-- se un provider non supporta hook, si usa il fallback manuale.
+Se un provider non supporta né hook né questo risveglio, si usa il fallback
+manuale.
 
 ## Il modello locale può sintetizzare un thread
 
@@ -376,10 +384,14 @@ assistito dal badge nella dashboard.
 
 ## Cosa non è
 
+Il file `messaggi.jsonl` in sé resta solo un bigliettino condiviso, non fa nulla da
+solo. È la dashboard (non la bacheca) ad avere, per Claude e Codex, il meccanismo
+di risveglio descritto sopra — vedi la nota "Aggiornamento (2026-07-08)" più in alto
+per il dettaglio esatto di cosa fa e cosa non fa.
+
 La bacheca non è:
 
 - una chat in tempo reale;
-- un modo per far lavorare agenti chiusi;
 - un sostituto delle API ufficiali;
 - un sistema per consumare abbonamenti flat in automatico;
 - un decisore autonomo;

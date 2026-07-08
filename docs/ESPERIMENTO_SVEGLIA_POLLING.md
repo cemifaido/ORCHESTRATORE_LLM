@@ -2,13 +2,22 @@
 
 Questo documento riporta l'analisi scientifica, le fasi sperimentali, gli intoppi tecnici e le conclusioni relative all'implementazione sperimentale di una "sveglia" (wake-up) automatica per stimolare gli agenti inattivi.
 
-**Stato attuale**: esperimento chiuso con esito negativo per la sveglia automatica
-in background. Non esistono endpoint attivi `/api/bacheca/sveglia` o poller
-automatici. La dashboard mantiene il badge dei messaggi pendenti, il pulsante per
-copiare `python bacheca.py prossimo --agente <agente>` e un risveglio assistito:
-Claude riceve il prompt tramite deep link; Codex/Gemini vengono aperti nell'IDE e il
-prompt operativo viene copiato negli appunti, perche' i rispettivi handler non
-espongono un canale verificato di iniezione testo nel composer.
+**Stato attuale (aggiornato 2026-07-08)**: l'esperimento originale (sezioni sotto)
+resta chiuso con esito negativo per la sveglia in background via CLI interattiva.
+Il giorno stesso, però, è stato costruito un meccanismo diverso — `POST
+/api/bacheca/risvegli` in `interfaccia.py`, che copia il prompt negli appunti e apre
+un deep link `antigravity-ide://...` — inizialmente shippato senza verifica reale
+(stesso errore di metodo che questo documento raccomandava di evitare). Verificato
+l'08/07/2026 con log Electron reali: il deep link non raggiungeva l'app per un bug
+di sintassi nel comando registrato da Windows (separatore `--` rifiutato
+dall'eseguibile, `os.startfile` andava quindi sempre a vuoto in silenzio). Corretto
+invocando l'eseguibile direttamente senza quel separatore — vedi
+`docs/RFC_BACHECA_MULTIAGENTE.md` §4.4 per i dettagli tecnici e l'esito verificato
+per Claude/Codex/Gemini. Separatamente, verificata anche la modalità CLI headless
+ufficiale dei tre provider (`claude -p`, `codex -q`, `agy -p`): funzionante e pulita
+per Claude e Codex, bloccata da un bug reale di `agy` 1.x su Windows (richiede un
+terminale interattivo vero, va in stallo se lanciato da uno script/subprocesso) —
+dettagli nello stesso §4.4 della RFC.
 
 ---
 

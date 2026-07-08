@@ -58,7 +58,15 @@ manda prompt e raccoglie output senza intervento umano.
 ## Cosa non fare
 
 - Non simulare tasti, click o input in UI proprietarie con script, `expect`, macro,
-  RPA o keystroke injection.
+  RPA o keystroke injection. **Nota di chiarimento (2026-07-08)**: invocare un
+  protocollo URI registrato ufficialmente dal sistema operativo per l'applicazione
+  (es. `antigravity-ide://`, stesso meccanismo di `vscode://`) non rientra in questa
+  categoria — è l'equivalente programmatico di un doppio click su un link, non
+  simulazione di input. Il confine resta netto: aprire/focalizzare una vista e
+  precompilarne un campo tramite un'API di deep-link ufficiale è ammesso; simulare
+  la pressione di un tasto (incluso un "invio" per far partire l'azione) resta
+  vietato, va sempre lasciato a un gesto umano o dell'agente stesso. Vedi la sezione
+  "Capability verificate per provider" più sotto per il dettaglio.
 - Non avviare sessioni automatiche in loop per "spremere" gli abbonamenti flat.
 - Non usare le app flat come API non ufficiali.
 - Non fare scraping o raccolta massiva di output.
@@ -121,7 +129,8 @@ Implicazione per il progetto:
 - Antigravity/Gemini va verificato prima con un hook innocuo a stringa fissa;
 - se l'IDE non supporta hook locali, si resta al fallback manuale via `GEMINI.md`;
 - non si devono bypassare conferme umane o protezioni dell'IDE;
-- non si devono inviare segreti o dati sensibili a servizi non pagati/non protetti.
+- non si devono inviare segreti o dati sensibili a servizi non pagati/non protetti;
+- l'uso di Antigravity CLI (`agy`) in modalità headless/non interattiva da processi di background dell'IDE su Windows è escluso per via di un bug del binario in assenza di TTY (causa blocco indefinito); per l'automazione di background si ricorre a chiamate API dirette (via `litellm`), mentre l'uso di `agy` è riservato all'interazione dell'utente all'interno di un terminale reale.
 
 Fonti:
 [Google Terms of Service](https://policies.google.com/terms),
@@ -173,3 +182,54 @@ Per mantenere il progetto difendibile:
 Questa scelta riduce l'automazione massima possibile, ma abbassa il rischio di
 violazione dei ToS e rende chiaro che l'obiettivo non e aggirare le API a consumo:
 l'obiettivo e ridurre il copia-incolla umano fra strumenti usati legittimamente.
+
+## Eccezione verificata e autorizzata (2026-07-08): risveglio via URI per Claude/Codex
+
+La regola "niente push verso agenti chiusi o dormienti" sopra non è più assoluta per
+Claude e Codex: la dashboard (`interfaccia.py`, `POST /api/bacheca/risvegli`) apre
+in automatico, senza click umano, un pannello dell'agente giusto — anche se era
+chiuso — e vi precompila il prompt generato dal modello locale, tramite il
+protocollo URI registrato dall'IDE (vedi chiarimento sopra: non è simulazione di
+input). **Non invia mai da solo**: il "send" resta sempre un gesto esplicito
+successivo, umano o dell'agente.
+
+Questa non è una deroga silenziosa: è una decisione esplicita presa dall'utente del
+progetto il 2026-07-08, a fatti tecnici completi sul tavolo — inclusa l'asimmetria
+con VS Code (che per lo stesso meccanismo chiede conferma per estensione la prima
+volta, mentre Antigravity non lo fa affatto) e il precedente dello stesso giorno in
+cui un meccanismo simile era stato costruito, testato e smontato con esito negativo
+(`docs/ESPERIMENTO_SVEGLIA_POLLING.md`). Motivazione per cui resta dentro i confini
+di questo documento: il vincolo che conta di più — mai un'azione irreversibile senza
+gesto umano — resta intatto, perché "apri pannello e scrivi nel composer" non è
+un'azione irreversibile, l'invio sì. Dettaglio tecnico completo in
+`docs/RFC_BACHECA_MULTIAGENTE.md` §4.4.
+
+## Capability verificate per provider (2026-07-08)
+
+Modello proposto da Codex, popolato con verifiche reali (non descrizioni) fatte lo
+stesso giorno. Tre livelli: `official_headless` (CLI standalone documentata, provata
+funzionante con un test reale), `official_hook_pull` (hook/URI ufficiale, verificato
+con log o osservazione reale), `manual_only` (nessuna prova, resta il fallback
+manuale — mai colmato per analogia con un altro provider).
+
+| Provider | Risveglio via URI (apre pannello + precompila, non invia) | CLI headless |
+|---|---|---|
+| Claude | `official_hook_pull` — verificato, affidabile | `official_headless` — verificato (`claude -p`), pulito |
+| Codex | `official_hook_pull` — verificato, solo se il pannello non è già aperto | `official_headless` (a consumo) — richiede `OPENAI_API_KEY` e crediti a pagamento OpenAI API Platform (non coperto dall'abbonamento flat dell'IDE) |
+| Gemini/Antigravity | `manual_only` — nessun path noto verso cui indirizzare l'URI | `manual_only` — `agy -p` esiste ed è documentato, ma un bug reale lo blocca senza un TTY interattivo vero: non usabile da script/subprocessi su Windows |
+
+Per Gemini, finché non emerge una prova diversa, restano validi il pull manuale
+(§4.3 della RFC) e, per compiti automatici in background, le chiamate dirette via
+`litellm`/`capoturno.py` invece di `agy` — indicazione di Gemini stesso. 
+
+Per Codex, si conferma che la CLI headless non condivide la quota dell'abbonamento flat dell'IDE ma attinge a crediti a consumo (OpenAI API Platform): per l'automazione a costo zero in background è necessario ricadere sul canale interattivo/hook/pull (§4.3 della RFC).
+
+## Limiti della sperimentazione ed esclusione del Jitter (2026-07-08)
+
+Durante la progettazione dell'automazione di background, è stata valutata l'introduzione di ritardi artificiali randomizzati (Jitter) e simulazioni di digitazione tasto per tasto per emulare il comportamento umano ed evitare i controlli anti-bot dei provider.
+
+Questa possibilità è stata **esplicitamente scartata e vietata** per ragioni etiche e contrattuali:
+- L'uso di CLI headless ufficiali per compiti programmati in background è ammissibile solo quando il canale è dichiarato e correttamente fatturato: `claude -p` rientra nel canale verificato per Claude, mentre `codex -q` qui è un canale OpenAI API Platform a consumo e richiede crediti `OPENAI_API_KEY`, non l'abbonamento flat dell'IDE.
+- Al contrario, l'uso di tecniche di camuffamento o di emulazione antropomorfa (Jitter) rappresenta un tentativo deliberato di elusione e aggiramento dei sistemi di rilevamento dei provider. Se rilevato, tale comportamento configura un dolo contrattuale e porta inevitabilmente a un ban permanente dell'account (invece di semplici avvisi o rate-limit temporanei).
+
+Pertanto, le regole di conformità per l'automazione escludono qualsiasi tecnica di offuscamento. Le invocazioni programmatiche avvengono in modo diretto, alla massima velocità di esecuzione della macchina. L'uso di pseudo-console (ConPTY o tmux su WSL) per superare i bug di TTY di `agy` è ammesso solo come puro workaround di sistema operativo per consentire l'I/O standard del processo, senza alcun intento di mascheramento.

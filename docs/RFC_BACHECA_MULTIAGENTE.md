@@ -515,6 +515,80 @@ resta in pull-mode manuale, unica differenza pratica: l'umano deve ricordare di
 dire "controlla la bacheca" invece che l'iniezione avvenga da sola — un'attrito
 in più, non un'assenza di funzionalità.
 
+### 4.4 Aggiornamento 2026-07-08: risveglio via URI registrato + CLI headless, entrambi verificati per davvero
+
+Due meccanismi diversi da §4.1-4.3, scoperti ed esplorati in una sessione di
+verifica empirica dedicata, entrambi distinti dall'"automazione UI" scartata al §5:
+non simulano tasti o click, usano superfici ufficiali del sistema operativo o del
+prodotto.
+
+**Meccanismo A — deep link via protocollo URI registrato**. Windows registra un
+handler per `antigravity-ide://` (stesso meccanismo di `vscode://`, usato da VS Code
+per i propri deep link ufficiali) che punta a `Antigravity IDE.exe --open-url --
+"%1"`. `interfaccia.py` (`_esegui_risveglio_os`, introdotto in `608e7a2`) lo usa per
+aprire/focalizzare il pannello giusto e, solo per Claude, passare il prompt come
+query string (`?prompt=...`). Verificato con log Electron reali (non solo
+osservazione a schermo) che la prima versione shippata non funzionava per nessuno
+dei tre agenti: il comando registrato da Windows include un separatore `--` che
+l'eseguibile rifiuta (`bad option: --open-url`), quindi `os.startfile()` falliva in
+silenzio ogni volta, senza mai raggiungere il processo Electron in esecuzione.
+Corretto invocando l'eseguibile direttamente, senza quel separatore
+(`subprocess.Popen([antigravity_cmd, "--open-url", uri])` invece di
+`os.startfile(uri)`). Risultato verificato dopo il fix, per ciascun agente:
+
+- **Claude**: funziona in modo affidabile. Apre un pannello Claude Code (nuovo o
+  riusa quello esistente) e precompila il composer con il prompt generato
+  dinamicamente — **non lo invia**, serve comunque un invio esplicito.
+- **Codex**: funziona, ma solo se non c'è già un pannello Codex aperto — l'azione
+  "open" sembra idempotente quando la vista di quel tipo esiste già, quindi un
+  secondo risveglio sullo stesso pannello non produce alcun effetto visibile finché
+  non lo si richiude. Stesso comportamento di "precompila, non invia".
+- **Gemini**: non funziona. A differenza di Claude (`anthropic.claude-code/open?...`)
+  e Codex (`openai.chatgpt/`), non esiste un path noto verso cui indirizzare l'URI:
+  il modulo `google.antigravity` che gestisce Gemini è integrato nel core dell'IDE,
+  non un'estensione con un proprio handler ispezionabile, e nessun log ne conferma
+  la ricezione. Resta il fallback esistente (focus generico + clipboard, senza
+  garanzie).
+
+**Rilevante per §5**: importante non fermarsi al "precompila ma non invia" come se
+fosse solo un limite tecnico fortuito — è coerente con il vincolo già posto in
+questo RFC (mai auto-inviare senza un gesto umano nel mezzo). Il fatto che l'URI si
+fermi da solo al pre-fill toglie la necessità di costruire quel gate a mano.
+Trigger automatico (nessun click umano richiesto per l'apertura/pre-fill in sé,
+solo per il "send" finale): decisione esplicita dell'utente del progetto, presa a
+fatti noti (inclusa l'asimmetria con VS Code, che invece chiede conferma per
+estensione la prima volta — vedi discussione in bacheca, thread `7bc0c17b`).
+
+**Meccanismo B — CLI headless ufficiale per provider**. Verificato con `--help`/test
+reali che tutti e tre i provider hanno oggi una CLI standalone con modalità non
+interattiva documentata:
+
+| Provider | Binario | Flag headless | Esito test reale |
+|---|---|---|---|
+| Claude | `claude` (installato via `irm https://claude.ai/install.ps1 \| iex`) | `-p`/`--print` | ✅ risposta pulita, nessun processo orfano |
+| Codex | `codex` (`@openai/codex`, npm) | `-q`/`--quiet` | ✅ risposta JSON strutturata pulita, bloccata solo dal credito residuo — **importante**: questo pacchetto npm autentica via `OPENAI_API_KEY` (OpenAI API Platform, billing a consumo separato), non via l'abbonamento flat ChatGPT/Codex; la sessione interattiva Codex/ChatGPT nell'IDE resta un canale indipendente con i propri limiti, non c'è modo di far transitare quel flat dentro questa CLI. Da verificare se la CLI Codex ufficiale più recente (Rust, developers.openai.com/codex, diversa da questo pacchetto npm più vecchio) supporti login diretto con l'account ChatGPT invece che solo API key |
+| Gemini/Antigravity | `agy` (installato via `irm https://antigravity.google/cli/install.ps1 \| iex`, sostituisce Gemini CLI dismesso il 18/06/2026) | `-p`/`--print` | ❌ **bug confermato**: va in stallo a CPU quasi zero se lanciato senza un vero TTY interattivo (funziona se un umano lo lancia a mano nel proprio terminale, si blocca indefinitamente se invocato da uno script/subprocesso/estensione IDE) — confermato da Gemini stesso con test comparativo diretto |
+
+Conseguenza pratica per il piano di capability (proposto da Codex in bacheca,
+`official_headless`/`official_hook_pull`/`manual_only`): Claude qualifica per
+`official_headless` flat con prova reale, non solo documentazione. Codex qualifica
+solo come `official_headless` **a consumo API** in questa installazione npm: è
+tecnicamente headless, ma non soddisfa il requisito "senza API a pagamento" perché
+usa `OPENAI_API_KEY` e crediti OpenAI API Platform. Gemini **non** qualifica per
+`official_headless` nonostante il flag esista e sia documentato — il bug lo rende
+inutilizzabile per invocazioni programmatiche su Windows, quindi resta `manual_only`
+per questo canale specifico. Per compiti automatici in background lato Gemini,
+l'indicazione (Gemini stesso, in bacheca) è di passare da API dirette via
+`litellm`/`capoturno.py` solo per debug o contesti non sensibili, non da `agy`.
+
+L'estensione `google.gemini-cli-vscode-ide-companion` (installata in Antigravity)
+espone comunque un meccanismo diverso, non testato in questa sessione: un server
+locale (Express + MCP) con variabili d'ambiente `GEMINI_CLI_IDE_SERVER_PORT`/
+`GEMINI_CLI_IDE_AUTH_TOKEN`/`GEMINI_CLI_IDE_WORKSPACE_PATH`, pensato per dare a un
+`agy` lanciato in un terminale reale visibilità sul workspace aperto nell'IDE. Non
+risolve il bug non-TTY, è un arricchimento di contesto per l'uso interattivo, non
+un canale headless.
+
 ## 5. Cosa NON fare: automazione diretta delle UI proprietarie
 
 Discusso e scartato esplicitamente. Pilotare le sessioni interattive di Claude
@@ -762,6 +836,29 @@ piano, riflette cosa è stato costruito davvero, in ordine cronologico:
 10. **Fatto**: verifica empirica dell'hook Antigravity/Gemini (§4.3) chiusa con
    esito negativo per gli hook, ma positivo per il fallback manuale; la dashboard
    ora rende visibili i pending per Gemini e copia il comando di pull.
+11. **Fatto**: dispatcher di risveglio via URI registrato (§4.4) — shippato inizialmente
+   senza verifica empirica reale (commit `608e7a2`), poi verificato con log Electron
+   e corretto lo stesso giorno (bug del separatore `--` nel comando registrato da
+   Windows). Esito verificato: funziona per Claude e Codex (precompila, non invia),
+   non funziona per Gemini (nessun path noto). Verificata anche la CLI headless
+   ufficiale dei tre provider: `claude -p`/`codex -q` funzionanti e puliti, `agy -p`
+   bloccato da un bug reale non-TTY su Windows, non usabile per invocazioni
+   programmatiche.
+12. **Fatto**: `orchestratore_brainstorming.py` (script a sé, non un comando di
+   `bacheca.py` — quest'ultimo resta puro CRUD di messaggi per design) implementa
+   le fasi 1 e 1.5 di `docs/PIANO_SPERIMENTAZIONE_HEADLESS.md`: invoca Claude
+   headless (`claude -p`), sintetizza con il modello locale (riusa
+   `bacheca.sintetizza_thread` esistente, non duplicato), indirizza il risultato a
+   Gemini in bacheca. 10 test (`tests/test_orchestratore_brainstorming.py`, mock su
+   subprocess/modello locale) più una verifica end-to-end reale (`claude -p` vero).
+   La fase Gemini resta manuale per design, nessun codice da scrivere lì — pull
+   via `bacheca.py prossimo --agente gemini`, sintesi/triage finale via
+   `bacheca.py sintetizza` già esistente. Prima di questo lavoro, un'esperimento
+   isolato di Gemini (fuori repo) aveva rischiato di validare per errore un loop
+   "Claude<->Gemini" in cui il turno "Gemini" era in realtà il modello locale
+   mascherato — corretto nei documenti (`docs/STORICO_ESPERIMENTO_BRAINSTORMING.md`,
+   `docs/WALKTHROUGH_ESPERIMENTO_HEADLESS.md`) prima che diventasse un dato
+   fuorviante per il futuro.
 
 Il punto 9 (revisione Gemini di documento/schema) resta l'unico passo aperto in
 questa lista — tutto il resto è stato costruito, testato e verificato (a mano, con
