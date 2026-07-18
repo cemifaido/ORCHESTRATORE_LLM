@@ -504,10 +504,51 @@ def eventi_commit_progetto(progetto_id: str, hash: str):
     }
 
 
+def _pid_vivo(pid) -> bool:
+    """True se esiste un processo vivo con questo pid.
+
+    Su Windows NON si può usare os.kill(pid, 0): qualunque segnale diverso da
+    CTRL_C_EVENT/CTRL_BREAK_EVENT viene tradotto in TerminateProcess e ucciderebbe
+    davvero il processo. Si passa da OpenProcess + GetExitCodeProcess.
+    """
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            codice = ctypes.c_ulong(0)
+            ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(codice))
+            return bool(ok) and codice.value == STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
 def _trova_ultima_sessione_claude(percorso_progetto: Path) -> str | None:
     """Cerca tra le sessioni di Claude memorizzate localmente in ~/.claude/sessions
     quella associata a questo progetto (confrontando il cwd) e restituisce il sessionId
-    di quella avviata più di recente (startedAt maggiore)."""
+    di quella avviata più di recente (startedAt maggiore) **il cui processo è ancora
+    vivo**: i file di sessione possono sopravvivere al processo, e un id morto farebbe
+    aprire una chat nuova invece di agganciare quella attiva.
+
+    Nota multiutente: la ricerca parte da Path.home(), quindi vede solo le chat
+    dell'utente che esegue la dashboard. Se la dashboard diventerà un servizio
+    condiviso multiutente, questo è il punto da parametrizzare: ogni utente ha le
+    proprie sessioni attive nella propria home, e il risveglio dovrà risolvere le
+    sessioni dell'utente destinatario, non quelle del processo che serve l'API.
+    """
     dir_sessioni = Path.home() / ".claude" / "sessions"
     if not dir_sessioni.exists():
         return None
@@ -516,8 +557,11 @@ def _trova_ultima_sessione_claude(percorso_progetto: Path) -> str | None:
         try:
             dati = json.loads(f.read_text(encoding="utf-8"))
             cwd_sessione = Path(dati.get("cwd", ""))
-            if cwd_sessione.resolve() == percorso_progetto.resolve():
-                sessioni.append((dati.get("startedAt", 0), dati.get("sessionId")))
+            if cwd_sessione.resolve() != percorso_progetto.resolve():
+                continue
+            if not _pid_vivo(dati.get("pid")):
+                continue
+            sessioni.append((dati.get("startedAt", 0), dati.get("sessionId")))
         except Exception:
             pass
     if not sessioni:
@@ -631,11 +675,24 @@ def _esegui_risveglio_os(
     prompt = _genera_prompt_risveglio_con_llm(agente, cronologia_thread)
 
     # Costruisci l'URI di focalizzazione dell'IDE
+    modalita = "focus_ide"
     if agente == "claude":
-        import urllib.parse
-        prompt_enc = urllib.parse.quote(prompt)
-        sess_param = f"&session={claude_session_id}" if claude_session_id else ""
-        uri = f"antigravity-ide://anthropic.claude-code/open?prompt={prompt_enc}{sess_param}"
+        if claude_session_id:
+            # C'è già una chat Claude viva su questo progetto: non aprirne un'altra.
+            # Verificato su extension.js 2.1.214: l'handler /open non inietta mai un
+            # prompt in una sessione già aperta ("Your prompt was not applied"), e se
+            # il pannello non è nella finestra che riceve l'URI crea una chat nuova —
+            # è così che i risvegli hanno prodotto chat parallele duplicate. L'unico
+            # effetto sicuro è portare l'IDE in primo piano: il contenuto arriva
+            # nella chat attiva tramite gli hook SessionStart/UserPromptSubmit al
+            # prossimo invio, e il prompt resta comunque negli appunti.
+            uri = "antigravity-ide://"
+            modalita = "focus_sessione_attiva"
+        else:
+            import urllib.parse
+            prompt_enc = urllib.parse.quote(prompt)
+            uri = f"antigravity-ide://anthropic.claude-code/open?prompt={prompt_enc}"
+            modalita = "nuova_chat"
     elif agente == "codex":
         uri = "antigravity-ide://openai.chatgpt/"
     elif agente == "gemini":
@@ -652,7 +709,7 @@ def _esegui_risveglio_os(
 
     if in_test:
         print(f"[RISVEGLIO OS] [TEST MODE] Sveglierei {agente} con prompt: {prompt}")
-        return {"status": "test", "prompt": prompt, "uri": uri}
+        return {"status": "test", "prompt": prompt, "uri": uri, "modalita": modalita}
 
     try:
         # 1. Copia il prompt negli appunti di Windows usando PowerShell.
@@ -673,12 +730,12 @@ def _esegui_risveglio_os(
             r"%LOCALAPPDATA%\Programs\Antigravity IDE\bin\antigravity-ide.cmd"
         )
         subprocess.Popen([antigravity_cmd, "--open-url", uri])
-        print(f"[RISVEGLIO OS] Eseguito risveglio automatico per {agente}")
-        return {"status": "eseguito", "prompt": prompt, "uri": uri}
+        print(f"[RISVEGLIO OS] Eseguito risveglio automatico per {agente} ({modalita})")
+        return {"status": "eseguito", "prompt": prompt, "uri": uri, "modalita": modalita}
     except Exception as e:
         # Se fallisce (es. se non siamo su Windows o permessi), stampiamo sui log ma non blocchiamo la risposta dell'API
         print(f"[RISVEGLIO OS] Errore risveglio per {agente}: {e}")
-        return {"status": "errore", "prompt": prompt, "uri": uri, "errore": str(e)}
+        return {"status": "errore", "prompt": prompt, "uri": uri, "modalita": modalita, "errore": str(e)}
 
 
 @app.get("/api/bacheca")
@@ -780,6 +837,7 @@ def esegui_risvegli_bacheca(progetto_id: str = "orchestratore"):
             "thread_id": candidato["thread_id"],
             "id_messaggio": candidato["id_messaggio"],
             "status": esito.get("status"),
+            "modalita": esito.get("modalita"),
         })
 
     if stato_modificato:

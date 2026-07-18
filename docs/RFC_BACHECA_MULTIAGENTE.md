@@ -539,6 +539,8 @@ Corretto invocando l'eseguibile direttamente, senza quel separatore
 - **Claude**: funziona in modo affidabile. Apre un pannello Claude Code (nuovo o
   riusa quello esistente) e precompila il composer con il prompt generato
   dinamicamente — **non lo invia**, serve comunque un invio esplicito.
+  **Smentito parzialmente il 18/07: il riuso del pannello esistente non è
+  affidabile — vedi §4.5.**
 - **Codex**: funziona, ma solo se non c'è già un pannello Codex aperto — l'azione
   "open" sembra idempotente quando la vista di quel tipo esiste già, quindi un
   secondo risveglio sullo stesso pannello non produce alcun effetto visibile finché
@@ -588,6 +590,65 @@ locale (Express + MCP) con variabili d'ambiente `GEMINI_CLI_IDE_SERVER_PORT`/
 `agy` lanciato in un terminale reale visibilità sul workspace aperto nell'IDE. Non
 risolve il bug non-TTY, è un arricchimento di contesto per l'uso interattivo, non
 un canale headless.
+
+### 4.5 Aggiornamento 2026-07-18: il risveglio Claude apriva chat duplicate — corretto con focus-only su sessione viva
+
+Bug osservato dall'utente e riprodotto sul campo: quando un altro agente rispondeva
+in bacheca, il risveglio apriva una **chat Claude nuova** invece di consegnare nella
+chat attiva. In una mattina si sono accumulate 4 chat spurie sullo stesso progetto,
+due delle quali hanno lavorato lo **stesso thread in parallelo** (lavoro duplicato,
+verificato nel registro).
+
+Causa, verificata leggendo il codice dell'estensione installata (`extension.js`
+2.1.214, handler `registerUriHandler` → `case "/open"` → `createPanel`):
+
+1. L'handler URI `/open` supporta `session` e `prompt`, ma se la sessione indicata è
+   già aperta come pannello **nella finestra che riceve l'URI**, fa solo `reveal()` e
+   **scarta il prompt di proposito** ("Session is already open. Your prompt was not
+   applied — enter it manually"). Iniettare un prompt in una chat esistente via URI è
+   quindi impossibile per design dell'estensione, non un nostro bug.
+2. In tutti gli altri casi (chat nella sidebar, URI gestito da un'altra finestra
+   IDE, session id assente o morto) `createPanel` crea un pannello nuovo → chat
+   nuova con un nuovo sessionId.
+3. Aggravante nostra: `_trova_ultima_sessione_claude` sceglieva la sessione avviata
+   più di recente senza controllare che il processo fosse vivo, e ogni chat spuria
+   creata da un risveglio diventava la "più recente" — circolo vizioso. Inoltre lo
+   stato dei risvegli traccia i singoli id messaggio, quindi due risposte a pochi
+   secondi di distanza (Gemini 11:17, Codex 11:18) hanno prodotto due risvegli e due
+   chat parallele sullo stesso thread.
+
+Correzione applicata in `interfaccia.py` (18/07):
+
+- `_pid_vivo()`: nuova verifica che il processo della sessione sia vivo (su Windows
+  via `OpenProcess`/`GetExitCodeProcess` — **mai** `os.kill(pid, 0)`, che su Windows
+  termina davvero il processo).
+- `_trova_ultima_sessione_claude()` considera solo sessioni con processo vivo.
+- `_esegui_risveglio_os()` per Claude ha ora due modalità esplicite:
+  - **`focus_sessione_attiva`**: se esiste una chat viva sul progetto, l'URI è il
+    semplice `antigravity-ide://` (porta l'IDE in primo piano, garantito senza
+    effetti collaterali); il contenuto arriva nella chat attiva tramite gli hook
+    `SessionStart`/`UserPromptSubmit` al prossimo invio, e il prompt resta negli
+    appunti per incollarlo subito. Ripetibile senza danni: niente più chat duplicate,
+    il che disinnesca anche il problema dei risvegli multipli ravvicinati.
+  - **`nuova_chat`**: solo se nessuna sessione viva esiste, si apre una chat nuova
+    con il prompt precompilato via `/open?prompt=...` (il parametro `session` è
+    stato rimosso: puntava a sessioni vive non agganciabili e produceva duplicati).
+
+Coerente con §4.1-4.3: la consegna del contenuto nella chat attiva passa dagli hook
+(pull), il risveglio OS serve solo a richiamare l'attenzione dell'umano (push del
+focus, non del contenuto).
+
+**Nota multiutente** (vincolo posto dall'utente): la ricerca delle sessioni vive
+parte da `Path.home()`, quindi è già per-utente. Se la dashboard diventerà un
+servizio condiviso, ogni utente avrà le proprie chat attive: il punto da
+parametrizzare è documentato nella docstring di `_trova_ultima_sessione_claude`
+(risolvere le sessioni dell'utente destinatario del risveglio, non dell'utente che
+esegue il processo della dashboard).
+
+**Punti aperti (si prosegue lunedì 20/07)**: chiusura/riciclo delle 4 chat spurie
+già aperte; valutare se il focus ripetuto dell'IDE a ogni nuovo messaggio sia troppo
+invasivo (eventuale cooldown per agente); estendere lo stesso controllo "sessione
+viva" a codex/gemini quando avranno un canale equivalente.
 
 ## 5. Cosa NON fare: automazione diretta delle UI proprietarie
 

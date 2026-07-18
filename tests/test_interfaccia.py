@@ -384,7 +384,24 @@ class BachecaApiTest(unittest.TestCase):
             self.assertEqual(primo["risvegli"][0]["status"], "test")
             self.assertEqual(secondo["risvegli"], [])
 
-    def test_risveglio_claude_usa_prompt_dinamico_nell_uri(self) -> None:
+    def test_risveglio_claude_senza_sessione_viva_apre_nuova_chat_con_prompt(self) -> None:
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="umano",
+            destinatari=["claude"],
+            tipo="richiesta",
+            testo="esegui i test",
+        )
+        with patch.object(interfaccia, "_genera_prompt_risveglio_con_llm", return_value="Prompt dinamico per Claude"):
+            risultato = interfaccia._esegui_risveglio_os("claude", [richiesta], claude_session_id=None)
+
+        self.assertEqual(risultato["status"], "test")
+        self.assertEqual(risultato["modalita"], "nuova_chat")
+        self.assertIn("Prompt%20dinamico%20per%20Claude", risultato["uri"])
+
+    def test_risveglio_claude_con_sessione_viva_non_apre_nuova_chat(self) -> None:
+        # L'estensione non inietta mai un prompt in una sessione già aperta e un
+        # /open fuori finestra creerebbe una chat parallela: con una sessione viva
+        # il risveglio deve limitarsi a portare l'IDE in primo piano.
         richiesta = bacheca.costruisci_messaggio(
             mittente="umano",
             destinatari=["claude"],
@@ -395,8 +412,41 @@ class BachecaApiTest(unittest.TestCase):
             risultato = interfaccia._esegui_risveglio_os("claude", [richiesta], claude_session_id="sessione123")
 
         self.assertEqual(risultato["status"], "test")
-        self.assertIn("Prompt%20dinamico%20per%20Claude", risultato["uri"])
-        self.assertIn("session=sessione123", risultato["uri"])
+        self.assertEqual(risultato["modalita"], "focus_sessione_attiva")
+        self.assertEqual(risultato["uri"], "antigravity-ide://")
+        self.assertNotIn("prompt=", risultato["uri"])
+        self.assertNotIn("session=", risultato["uri"])
+
+    def test_trova_ultima_sessione_claude_ignora_processi_morti(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            progetto = home / "progetto"
+            progetto.mkdir()
+            dir_sessioni = home / ".claude" / "sessions"
+            dir_sessioni.mkdir(parents=True)
+            # Sessione più recente ma con processo morto: non va scelta.
+            (dir_sessioni / "morta.json").write_text(json.dumps({
+                "pid": 111, "sessionId": "sessione-morta",
+                "cwd": str(progetto), "startedAt": 2000,
+            }), encoding="utf-8")
+            (dir_sessioni / "viva.json").write_text(json.dumps({
+                "pid": 222, "sessionId": "sessione-viva",
+                "cwd": str(progetto), "startedAt": 1000,
+            }), encoding="utf-8")
+
+            with patch.object(interfaccia.Path, "home", return_value=home), \
+                 patch.object(interfaccia, "_pid_vivo", side_effect=lambda pid: pid == 222):
+                trovata = interfaccia._trova_ultima_sessione_claude(progetto)
+
+            self.assertEqual(trovata, "sessione-viva")
+
+    def test_pid_vivo_su_pid_non_valido(self) -> None:
+        self.assertFalse(interfaccia._pid_vivo(None))
+        self.assertFalse(interfaccia._pid_vivo(0))
+        self.assertFalse(interfaccia._pid_vivo(-5))
+
+    def test_pid_vivo_riconosce_processo_corrente(self) -> None:
+        self.assertTrue(interfaccia._pid_vivo(os.getpid()))
 
 
 if __name__ == "__main__":
