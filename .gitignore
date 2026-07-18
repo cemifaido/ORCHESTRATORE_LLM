@@ -29,3 +29,9 @@ venv/
 Thumbs.db
 .idea/
 .vscode/
+# Solo lo stato UI volatile di Obsidian: i plugin in .obsidian/plugins restano nel repo
+.obsidian/workspace.json
+*.lnk
+
+# Bozze di lavoro non ancora condivise nel repository
+docs/PIANO_INDUSTRIALIZZAZIONE.md
