@@ -919,6 +919,93 @@
       border-color: rgba(167, 139, 250, 0.7);
       box-shadow: 0 0 8px rgba(139, 92, 246, 0.3);
     }
+
+    /* Workflow Stepper & Pratiche Sospese (Lotto 2 Weft) */
+    .pratiche-sospese-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .pratica-card {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 10px;
+      padding: 1rem;
+      position: relative;
+    }
+    .pratica-badge-attende {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      background: rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+    }
+    .pratica-azioni {
+      margin-top: 0.5rem;
+      font-size: 0.8rem;
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .pratica-azione-item {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.3rem;
+      line-height: 1.3;
+    }
+    .pratica-azione-esito {
+      font-weight: 600;
+      min-width: 95px;
+      font-size: 0.75rem;
+      border-radius: 3px;
+      padding: 0.1rem 0.3rem;
+      text-align: center;
+    }
+    .esito-approvato { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .esito-respinto { background: rgba(244, 63, 94, 0.2); color: #f87171; }
+    .esito-modifiche { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+
+    .workflow-stepper {
+      display: flex;
+      align-items: center;
+      gap: 0.2rem;
+      flex-wrap: wrap;
+      margin: 0.2rem 0;
+    }
+    .stepper-step {
+      display: flex;
+      align-items: center;
+      gap: 0.2rem;
+      font-size: 0.7rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-muted);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .stepper-step.active {
+      background: rgba(59, 130, 246, 0.25);
+      color: #93c5fd;
+      border-color: rgba(59, 130, 246, 0.6);
+      font-weight: 600;
+      box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
+    }
+    .stepper-step.completed {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border-color: rgba(16, 185, 129, 0.3);
+    }
+    .stepper-arrow {
+      color: var(--text-muted);
+      font-size: 0.65rem;
+      opacity: 0.5;
+    }
     /* Blinking cursor terminale verde Matrix */
     .terminal-cursor {
       display: inline-block;
@@ -1191,6 +1278,15 @@
         <div style="color:var(--text-muted); font-size:0.85rem;">Caricamento...</div>
       </div>
       <div id="bachecaBanner"></div>
+
+      <!-- Widget Pratiche Sospese & Checkpoint v2 -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1.2rem; margin-bottom:0.6rem;">
+        <h3 style="font-size:0.95rem; color:var(--text-muted); margin:0;">⏸️ Pratiche Sospese &amp; Checkpoint v2 (Weft)</h3>
+      </div>
+      <div id="bachecaPraticheSospese" class="pratiche-sospese-grid">
+        <div style="color:var(--text-muted); font-size:0.85rem;">Nessuna pratica sospesa in attesa.</div>
+      </div>
+
       <div style="display:flex; align-items:center; gap:0.8rem; margin-bottom:0.6rem;">
         <h3 style="font-size:0.95rem; color:var(--text-muted); margin:0;">Attività live</h3>
         <button id="bachecaFeedToggle" class="btn" style="background: rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#34d399; padding:0.3rem 0.7rem; font-size:0.78rem;">▶ Avvia</button>
@@ -1206,6 +1302,7 @@
             <tr>
               <th>Thread</th>
               <th>Stato</th>
+              <th>Fase Workflow (compito_standard)</th>
               <th>Ultimo mittente</th>
               <th>Tipo</th>
               <th>Aspetta</th>
@@ -1214,7 +1311,7 @@
             </tr>
           </thead>
           <tbody id="bachecaBody">
-            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Caricamento bacheca...</td></tr>
+            <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Caricamento bacheca...</td></tr>
           </tbody>
         </table>
       </div>
@@ -2004,6 +2101,103 @@
       });
     }
 
+    function renderizzaPraticheSospese(pratiche) {
+      const box = document.getElementById("bachecaPraticheSospese");
+      if (!box) return;
+      if (!pratiche || pratiche.length === 0) {
+        box.innerHTML = `<div style="color:var(--text-muted); font-size:0.85rem; padding:0.5rem 0;">Nessuna pratica sospesa in attesa.</div>`;
+        return;
+      }
+      box.innerHTML = "";
+      pratiche.forEach(p => {
+        const card = document.createElement("div");
+        card.className = "pratica-card";
+
+        let azioniHtml = "";
+        if (p.azioni_per_esito && Object.keys(p.azioni_per_esito).length > 0) {
+          azioniHtml = `<div class="pratica-azioni">
+            <div style="font-size:0.73rem; color:var(--text-muted); margin-bottom:0.3rem; font-weight:600; text-transform:uppercase;">Azioni previste per esito:</div>`;
+          for (const [esito, azione] of Object.entries(p.azioni_per_esito)) {
+            let cls = "esito-modifiche";
+            if (esito === "approvato") cls = "esito-approvato";
+            if (esito === "respinto") cls = "esito-respinto";
+            azioniHtml += `<div class="pratica-azione-item">
+              <span class="pratica-azione-esito ${cls}">${escapeHtml(esito)}</span>
+              <span>${escapeHtml(azione)}</span>
+            </div>`;
+          }
+          azioniHtml += `</div>`;
+        }
+
+        let contestoHtml = "";
+        if (p.contesto_minimo && p.contesto_minimo.comandi_consentiti && p.contesto_minimo.comandi_consentiti.length > 0) {
+          contestoHtml = `<div style="margin-top:0.4rem; font-size:0.75rem; color:var(--text-muted);">
+            <b>Comandi:</b> <code>${escapeHtml(p.contesto_minimo.comandi_consentiti.join(", "))}</code>
+          </div>`;
+        }
+
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.4rem;">
+            <div>
+              <span style="font-family:monospace; font-size:0.82rem; color:#93c5fd; font-weight:600;">[Thread ${escapeHtml(p.thread_id.slice(0,8))}]</span>
+              <span class="tag-agent ${escapeHtml(p.mittente)}" style="margin-left:0.4rem;">${escapeHtml(p.mittente)}</span>
+            </div>
+            <span class="pratica-badge-attende">Attende: ${escapeHtml(p.attende || 'umano')}</span>
+          </div>
+          <div style="font-weight:600; font-size:0.88rem; color:var(--text-main); margin-bottom:0.4rem;">
+            🎯 ${escapeHtml(p.oggetto_atteso || 'Verdetto sul checkpoint')}
+          </div>
+          ${azioniHtml}
+          ${contestoHtml}
+          <div style="margin-top:0.5rem; font-size:0.75rem; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
+            <span>Verdetto Umano: <b>${escapeHtml(p.verdetto_umano || 'non_revisionato')}</b></span>
+            <span>${p.timestamp ? new Date(p.timestamp).toLocaleTimeString() : ''}</span>
+          </div>
+        `;
+        box.appendChild(card);
+      });
+    }
+
+    function renderizzaWorkflowStepper(faseCorrente, flussoDichiarato) {
+      let passi = [];
+      if (flussoDichiarato && Array.isArray(flussoDichiarato.passi) && flussoDichiarato.passi.length > 0) {
+        passi = flussoDichiarato.passi.map((p, idx) => {
+          let label = p.id;
+          if (p.id === "approvazione_umana") label = "Umano";
+          else if (p.id === "azione_irreversibile") label = "Azione";
+          else label = p.id.charAt(0).toUpperCase() + p.id.slice(1);
+          return {
+            id: p.id,
+            label: `${idx + 1}. ${label}`
+          };
+        });
+      } else {
+        // Fallback esplicito se config/flussi/*.json non disponibile
+        passi = [
+          { id: "compito", label: "1. Compito" },
+          { id: "gate", label: "2. Gate" },
+          { id: "triage", label: "3. Triage" },
+          { id: "registrazione", label: "4. Registro" },
+          { id: "approvazione_umana", label: "5. Umano" },
+          { id: "azione_irreversibile", label: "6. Azione" },
+          { id: "chiusura", label: "7. Chiusura" }
+        ];
+      }
+
+      let trovataAttiva = false;
+      return `<div class="workflow-stepper">` + passi.map((p, idx) => {
+        let cls = "";
+        if (p.id === faseCorrente) {
+          cls = "active";
+          trovataAttiva = true;
+        } else if (!trovataAttiva && faseCorrente !== "compito") {
+          cls = "completed";
+        }
+        const arrow = idx < passi.length - 1 ? `<span class="stepper-arrow">›</span>` : "";
+        return `<span class="stepper-step ${cls}" title="${escapeHtml(p.id)}">${escapeHtml(p.label)}</span>${arrow}`;
+      }).join("") + `</div>`;
+    }
+
     async function caricaBacheca() {
       const select = document.getElementById("bachecaProjSelect");
       const progetto_id = (select && select.value) || "orchestratore";
@@ -2016,23 +2210,28 @@
         const data = await res.json();
 
         if (data.errore) {
-          corpo.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#f87171;">⚠ Bacheca non leggibile: ${escapeHtml(data.errore)}</td></tr>`;
+          corpo.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#f87171;">⚠ Bacheca non leggibile: ${escapeHtml(data.errore)}</td></tr>`;
           banner.innerHTML = "";
           occupatiBox.innerHTML = "Nessuno.";
           renderizzaPendingBacheca(data.pending_per_agente, data.claude_session_id);
+          renderizzaPraticheSospese([]);
           return;
         }
 
         renderizzaPendingBacheca(data.pending_per_agente, data.claude_session_id);
+        renderizzaPraticheSospese(data.pratiche_sospese);
         await eseguiRisvegliBacheca(progetto_id);
         const thread = data.thread || [];
+        const flussi = data.flussi || {};
+        const flussoStandard = flussi.compito_standard || null;
+
         const conflitti = thread.filter(t => t.ultimo_tipo === "segnalazione_conflitto" && t.stato !== "chiuso" && t.stato !== "annullato");
         banner.innerHTML = conflitti.length > 0
           ? `<div class="bacheca-banner-conflitto">⚠ ${conflitti.length} conflitto${conflitti.length > 1 ? "i" : ""} segnalat${conflitti.length > 1 ? "i" : "o"}, ancora da revisionare</div>`
           : "";
 
         if (thread.length === 0) {
-          corpo.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--text-muted);">Nessun thread in bacheca per questo progetto.</td></tr>`;
+          corpo.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">Nessun thread in bacheca per questo progetto.</td></tr>`;
         } else {
           corpo.innerHTML = "";
           thread.forEach(t => {
@@ -2041,9 +2240,11 @@
             const aspetta = (t.aspetta && t.aspetta.length > 0)
               ? t.aspetta.map(a => `<span class="tag-agent ${escapeHtml(a)}">${escapeHtml(a)}</span>`).join(" ")
               : '<span style="color:var(--text-muted);">(nessuno)</span>';
+            const stepperHtml = renderizzaWorkflowStepper(t.fase_flusso || "compito", flussoStandard);
             tr.innerHTML = `
               <td title="${escapeHtml(t.thread_id)}">${escapeHtml(t.thread_id.slice(0, 8))}</td>
               <td><span class="status-badge ${escapeHtml(t.stato)}">${escapeHtml(t.stato)}</span></td>
+              <td>${stepperHtml}</td>
               <td><span class="tag-agent ${escapeHtml(t.ultimo_mittente)}">${escapeHtml(t.ultimo_mittente)}</span></td>
               <td>${escapeHtml(t.ultimo_tipo)}</td>
               <td>${aspetta}</td>
@@ -2069,8 +2270,9 @@
               return `<div>- <b>${escapeHtml(f)}</b>: <span class="tag-agent ${escapeHtml(info.agente)}">${escapeHtml(info.agente)}</span> (lease ${scadenza})</div>`;
             }).join("");
       } catch (err) {
-        corpo.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#f87171;">Errore nel caricamento della bacheca.</td></tr>`;
+        corpo.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#f87171;">Errore nel caricamento della bacheca.</td></tr>`;
         renderizzaPendingBacheca({});
+        renderizzaPraticheSospese([]);
       }
     }
 
@@ -2086,9 +2288,6 @@
         const nuovi = (data.messaggi || []).filter(m => !bachecaFeedIdsMostrati.has(m.id_messaggio));
         if (nuovi.length === 0) return;
 
-        // Al primo giro dopo l'avvio mostra tutta la storia recente senza distinguerla
-        // come "nuova"; dai giri successivi in poi solo i messaggi arrivati davvero
-        // dopo l'ultimo controllo hanno lo stesso effetto "ticker" di un log live.
         const primoGiro = bachecaFeedIdsMostrati.size === 0;
         if (primoGiro) feed.innerHTML = "";
 
@@ -2104,7 +2303,7 @@
         });
         feed.scrollTop = feed.scrollHeight;
       } catch (err) {
-        // silenzioso: non vogliamo che un feed opzionale interrompa il resto della dashboard
+        // silenzioso
       }
     }
 
@@ -2128,10 +2327,6 @@
         box.innerHTML = `<div class="handoff-console"><div class="handoff-msg fail">Impossibile caricare la cronologia del thread.</div></div>`;
       }
     }
-
-    async function avviaReplayCommit() {
-      const progetto_id = document.getElementById("realProjSelect").value || "orchestratore";
-      const hash = document.getElementById("commitSelect").value;
       const logBox = document.getElementById("handoffLogs");
 
       if (!hash) {

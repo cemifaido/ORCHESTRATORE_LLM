@@ -68,6 +68,63 @@ def salva_progetti(progetti: list[dict]):
     PERCORSO_PROGETTI.write_text(json.dumps({"progetti": progetti}, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+PERCORSO_FLUSSI = RADICE / "config" / "flussi"
+
+def leggi_flussi_dichiarati() -> dict[str, dict]:
+    """Carica i flussi dichiarati presenti in config/flussi/*.json."""
+    flussi = {}
+    if PERCORSO_FLUSSI.exists():
+        for p in PERCORSO_FLUSSI.glob("*.json"):
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                flusso_id = data.get("id_flusso", p.stem)
+                flussi[flusso_id] = data
+            except Exception:
+                pass
+    return flussi
+
+
+def _calcola_fase_flusso(messaggi: list[dict], thread_id: str) -> str:
+    """Calcola la fase corrente del workflow (da compito_standard) per un thread."""
+    st = bacheca.stato_thread(messaggi, thread_id)
+    if st in ("chiuso", "annullato"):
+        return "chiusura"
+
+    chk = bacheca.checkpoint_ripristinabile_attivo(messaggi, thread_id)
+    verdetto = bacheca.verdetto_umano_corrente(messaggi, thread_id)
+
+    if chk and chk.get("ripresa"):
+        rip = chk["ripresa"]
+        att = rip.get("attende")
+        if att == "umano":
+            if verdetto == "non_revisionato":
+                return "approvazione_umana"
+            elif verdetto == "approvato":
+                return "azione_irreversibile"
+            else:
+                return "compito"
+        elif att == "gate":
+            return "gate"
+        elif att == "agente":
+            return "compito"
+
+    msgs_thread = bacheca._messaggi_del_thread(messaggi, thread_id)
+    if msgs_thread:
+        ultimo = msgs_thread[-1]
+        t = ultimo.get("tipo")
+        if t == "checkpoint":
+            return "registrazione"
+        elif t == "domanda":
+            return "triage"
+        elif t == "presa_in_carico":
+            return "compito"
+        elif t == "sintesi":
+            return "registrazione"
+
+    return "compito"
+
+
+
 # Sincronizzazione multi-agente (vedi docs/REGOLE_GENERALI_PROGRAMMAZIONE_...MD,
 # sezione "Sincronizzazione multi-agente (tassativo)"): ogni progetto integrato riceve
 # le istruzioni per Claude Code, Gemini e Codex, cosi' anche loro leggono/registrano
@@ -738,6 +795,12 @@ def _esegui_risveglio_os(
         return {"status": "errore", "prompt": prompt, "uri": uri, "modalita": modalita, "errore": str(e)}
 
 
+@app.get("/api/flussi")
+def flussi_dichiarati():
+    """Restituisce i flussi dichiarati definiti in config/flussi/*.json."""
+    return {"flussi": leggi_flussi_dichiarati()}
+
+
 @app.get("/api/bacheca")
 def bacheca_progetto(progetto_id: str = "orchestratore"):
     """Stato della bacheca multi-agente di un progetto: un riepilogo per thread
@@ -753,18 +816,25 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
             "thread": [],
             "occupati": {},
             "pending_per_agente": {agente: 0 for agente in AGENTI_BACHECA_DASHBOARD},
+            "pratiche_sospese": [],
+            "flussi": leggi_flussi_dichiarati(),
             "claude_session_id": None,
         }
 
     thread_ids = sorted({m["thread_id"] for m in messaggi})
     thread_riepilogo = []
+    pratiche_sospese = []
     pending_per_agente = {agente: 0 for agente in AGENTI_BACHECA_DASHBOARD}
+
     for tid in thread_ids:
         ultimo = bacheca._messaggi_del_thread(messaggi, tid)[-1]
         aspetta = bacheca.destinatari_pendenti(messaggi, tid)
         for agente in AGENTI_BACHECA_DASHBOARD:
             if agente in aspetta:
                 pending_per_agente[agente] += 1
+
+        fase_flusso = _calcola_fase_flusso(messaggi, tid)
+
         thread_riepilogo.append({
             "thread_id": tid,
             "stato": bacheca.stato_thread(messaggi, tid),
@@ -774,7 +844,24 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
             "aspetta": aspetta,
             "verdetto_umano": bacheca.verdetto_umano_corrente(messaggi, tid),
             "file_modificati": ultimo["file_modificati"],
+            "fase_flusso": fase_flusso,
         })
+
+        chk = bacheca.checkpoint_ripristinabile_attivo(messaggi, tid)
+        if chk and chk.get("ripresa"):
+            rip = chk["ripresa"]
+            pratiche_sospese.append({
+                "thread_id": tid,
+                "id_messaggio": chk.get("id_messaggio"),
+                "mittente": chk.get("mittente"),
+                "timestamp": chk.get("timestamp"),
+                "oggetto_atteso": rip.get("oggetto_atteso"),
+                "attende": rip.get("attende"),
+                "azioni_per_esito": rip.get("azioni_per_esito", {}),
+                "contesto_minimo": rip.get("contesto_minimo", {}),
+                "verdetto_umano": bacheca.verdetto_umano_corrente(messaggi, tid),
+                "testo": chk.get("testo", "")[:200],
+            })
 
     occupati = {
         f: {
@@ -790,8 +877,11 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
         "thread": thread_riepilogo,
         "occupati": occupati,
         "pending_per_agente": pending_per_agente,
+        "pratiche_sospese": pratiche_sospese,
+        "flussi": leggi_flussi_dichiarati(),
         "claude_session_id": _trova_ultima_sessione_claude(Path(progetto["percorso"])),
     }
+
 
 
 @app.post("/api/bacheca/risvegli")

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orchestratore.locale/schema/flusso.v1.json",
+  "title": "Flusso dichiarato dell'orchestratore v1",
+  "description": "Descrive e rende validabile un workflow; non ne esegue i passi.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["versione_schema", "id_flusso", "descrizione", "passi"],
+  "properties": {
+    "versione_schema": { "const": 1 },
+    "id_flusso": { "type": "string", "minLength": 1 },
+    "descrizione": { "type": "string", "minLength": 1 },
+    "passi": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/passo" }
+    }
+  },
+  "$defs": {
+    "passo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "esecutore", "descrizione", "richiede", "produce", "irreversibile", "iniziale"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "pattern": "^[a-z][a-z0-9_]*$" },
+        "esecutore": { "type": "string", "minLength": 1 },
+        "descrizione": { "type": "string", "minLength": 1 },
+        "richiede": { "$ref": "#/$defs/artefatti" },
+        "richiede_opzionali": {
+          "$ref": "#/$defs/artefatti",
+          "description": "Artefatti utili ma non necessari: devono essere prodotti da un passo opzionale e non rendono il passo corrente dipendente dalla loro esecuzione."
+        },
+        "produce": { "$ref": "#/$defs/artefatti" },
+        "irreversibile": { "type": "boolean" },
+        "iniziale": { "type": "boolean" },
+        "approvazione_umana": { "type": "boolean", "default": false },
+        "opzionale": { "type": "boolean", "default": false }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "approvazione_umana": { "const": true } }, "required": ["approvazione_umana"] },
+          "then": {
+            "properties": {
+              "esecutore": { "const": "umano" },
+              "produce": { "contains": { "const": "verdetto_umano" } }
+            }
+          }
+        }
+      ]
+    },
+    "artefatti": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "pattern": "^[a-z][a-z0-9_]*$" },
+      "uniqueItems": true
+    }
+  }
+}

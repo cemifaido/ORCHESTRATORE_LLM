@@ -1,0 +1,75 @@
+{
+  "versione_schema": 1,
+  "id_flusso": "compito_standard",
+  "descrizione": "Il flusso oggi descritto in prosa in CLAUDE.md/GEMINI.md/AGENTS.md: un compito reale passa dal gate, dal triage se l'esito e' ambiguo, viene registrato, e se tocca un'azione irreversibile aspetta il verdetto umano prima della chiusura.",
+  "passi": [
+    {
+      "id": "compito",
+      "esecutore": "agente_llm",
+      "descrizione": "Modifica di codice o documento richiesta dall'utente, eseguita dall'agente in sessione interattiva o headless",
+      "richiede": [],
+      "produce": ["file_modificati"],
+      "iniziale": true,
+      "irreversibile": false
+    },
+    {
+      "id": "gate",
+      "esecutore": "sentinella",
+      "descrizione": "Quality gate deterministico: test/lint/type-check (python sentinella.py <suite> oppure unittest+ruff+mypy diretti)",
+      "richiede": ["file_modificati"],
+      "produce": ["esito_gate"],
+      "iniziale": false,
+      "irreversibile": false
+    },
+    {
+      "id": "triage",
+      "esecutore": "locale",
+      "descrizione": "Solo se l'output del gate e' ambiguo/non strutturato: triage_locale.py classifica routine/escalation. Per output a formato fisso basta il pattern deterministico (CLAUDE.md, sezione guardia)",
+      "richiede": ["esito_gate"],
+      "produce": ["classificazione_triage"],
+      "iniziale": false,
+      "opzionale": true,
+      "irreversibile": false
+    },
+    {
+      "id": "registrazione",
+      "esecutore": "agente_llm",
+      "descrizione": "Evento append-only in eventi.jsonl (registro.py aggiungi) con richiesta ed esito nelle note",
+      "richiede": ["esito_gate"],
+      "richiede_opzionali": ["classificazione_triage"],
+      "produce": ["evento_registro"],
+      "iniziale": false,
+      "irreversibile": false
+    },
+    {
+      "id": "approvazione_umana",
+      "esecutore": "umano",
+      "descrizione": "Verdetto esplicito dell'umano (bacheca approva/respingi + evento agente=umano nel registro), richiesto prima di ogni azione irreversibile",
+      "richiede": ["evento_registro"],
+      "produce": ["verdetto_umano"],
+      "iniziale": false,
+      "approvazione_umana": true,
+      "irreversibile": false
+    },
+    {
+      "id": "azione_irreversibile",
+      "esecutore": "agente_llm",
+      "descrizione": "Commit/push/cancellazione o altra azione con effetto reale, eseguita solo dopo il verdetto umano",
+      "richiede": ["verdetto_umano"],
+      "produce": ["commit"],
+      "iniziale": false,
+      "opzionale": true,
+      "irreversibile": true
+    },
+    {
+      "id": "chiusura",
+      "esecutore": "agente_llm",
+      "descrizione": "Chiusura del thread in bacheca e presa d'atto di eventuali riprese",
+      "richiede": ["evento_registro"],
+      "richiede_opzionali": ["commit"],
+      "produce": [],
+      "iniziale": false,
+      "irreversibile": false
+    }
+  ]
+}

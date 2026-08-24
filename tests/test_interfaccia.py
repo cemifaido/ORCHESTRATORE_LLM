@@ -449,5 +449,47 @@ class BachecaApiTest(unittest.TestCase):
         self.assertTrue(interfaccia._pid_vivo(os.getpid()))
 
 
+class FlussiDichiaratiApiTest(unittest.TestCase):
+    def test_leggi_flussi_dichiarati_carica_flussi_json(self) -> None:
+        flussi = interfaccia.leggi_flussi_dichiarati()
+        self.assertIn("compito_standard", flussi)
+        self.assertEqual(flussi["compito_standard"]["id_flusso"], "compito_standard")
+
+    def test_bacheca_riporta_pratiche_sospese_e_fase_flusso(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            percorso_messaggi = p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+            chk = bacheca.costruisci_messaggio(
+                mittente="claude",
+                destinatari=["gemini", "codex", "umano"],
+                tipo="checkpoint",
+                testo="test checkpoint",
+                thread_id="t1",
+                ripresa={
+                    "attende": "umano",
+                    "oggetto_atteso": "verdetto commit",
+                    "azioni_per_esito": {"approvato": "commit", "respinto": "restore", "modifiche_richieste": "fix"},
+                    "contesto_minimo": {"thread_id": "t1", "riferimenti": [], "comandi_consentiti": ["git status"]}
+                }
+            )
+            bacheca.aggiungi_messaggio(percorso_messaggi, chk)
+
+            progetti = [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                risultato = interfaccia.bacheca_progetto(progetto_id="test_proj")
+
+            self.assertEqual(len(risultato["pratiche_sospese"]), 1)
+            self.assertEqual(risultato["pratiche_sospese"][0]["oggetto_atteso"], "verdetto commit")
+            self.assertEqual(risultato["thread"][0]["fase_flusso"], "approvazione_umana")
+
+    def test_bacheca_espone_flussi_dichiarati_e_passi_coerenti(self) -> None:
+        flussi = interfaccia.leggi_flussi_dichiarati()
+        self.assertIn("compito_standard", flussi)
+        passi_ids = [p["id"] for p in flussi["compito_standard"].get("passi", [])]
+        self.assertIn("compito", passi_ids)
+        self.assertIn("approvazione_umana", passi_ids)
+        self.assertIn("chiusura", passi_ids)
+
+
 if __name__ == "__main__":
     unittest.main()
