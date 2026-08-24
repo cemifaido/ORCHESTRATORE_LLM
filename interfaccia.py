@@ -7,6 +7,7 @@ import subprocess
 import threading
 import time
 from math import ceil
+import asyncio
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
@@ -32,6 +33,7 @@ sys.path.append(str(RADICE))
 import registro  # noqa: E402
 import commit_replay  # noqa: E402
 import bacheca  # noqa: E402
+import postino  # noqa: E402
 
 AGENTI_BACHECA_DASHBOARD = ("claude", "codex", "gemini")
 
@@ -43,6 +45,38 @@ class ProgettoInput(BaseModel):
 class SentinellaInput(BaseModel):
     progetto_id: str
     comando: str
+
+class PostinoToggleInput(BaseModel):
+    progetto_id: str
+    attivo: bool
+
+
+def postino_attivo(percorso_progetto: Path) -> bool:
+    """Restituisce True se il postino automatico e' ATTIVO per il progetto.
+    Richiede la presenza esplicita del file dati_locali/orchestrazione/POSTINO_ATTIVO.
+    Default alla prima consegna o cartella nuova: SPENTO (False, fail-closed).
+    """
+    pa = percorso_progetto / "dati_locali" / "orchestrazione" / "POSTINO_ATTIVO"
+    return pa.exists()
+
+
+def imposta_postino(percorso_progetto: Path, attivo: bool) -> bool:
+    """Attiva o disattiva il postino automatico creando o rimuovendo il file POSTINO_ATTIVO."""
+    pa = percorso_progetto / "dati_locali" / "orchestrazione" / "POSTINO_ATTIVO"
+    pa.parent.mkdir(parents=True, exist_ok=True)
+    if attivo:
+        if not pa.exists():
+            try:
+                pa.write_text("POSTINO_ATTIVO=1\n", encoding="utf-8")
+            except Exception:
+                pass
+    else:
+        if pa.exists():
+            try:
+                pa.unlink()
+            except Exception:
+                pass
+    return postino_attivo(percorso_progetto)
 
 def leggi_progetti() -> list[dict]:
     if not PERCORSO_PROGETTI.exists():
@@ -808,7 +842,8 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
     in carico. Solo visualizzazione (docs/RFC_BACHECA_MULTIAGENTE.md §9.5): nessuna
     azione da qui, quelle restano CLI (bacheca.py chiedi/approva/prendi/...)."""
     progetto = _progetto_o_404(progetto_id)
-    messaggi, errore = bacheca.leggi_messaggi_progetto(Path(progetto["percorso"]))
+    p_path = Path(progetto["percorso"])
+    messaggi, errore = bacheca.leggi_messaggi_progetto(p_path)
     if errore:
         return {
             "progetto_id": progetto_id,
@@ -819,6 +854,7 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
             "pratiche_sospese": [],
             "flussi": leggi_flussi_dichiarati(),
             "claude_session_id": None,
+            "postino_attivo": postino_attivo(p_path),
         }
 
     thread_ids = sorted({m["thread_id"] for m in messaggi})
@@ -879,7 +915,8 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
         "pending_per_agente": pending_per_agente,
         "pratiche_sospese": pratiche_sospese,
         "flussi": leggi_flussi_dichiarati(),
-        "claude_session_id": _trova_ultima_sessione_claude(Path(progetto["percorso"])),
+        "claude_session_id": _trova_ultima_sessione_claude(p_path),
+        "postino_attivo": postino_attivo(p_path),
     }
 
 
@@ -918,7 +955,14 @@ def esegui_risvegli_bacheca(progetto_id: str = "orchestratore"):
         if candidato is None:
             continue
 
+        if postino_attivo(percorso_progetto):
+            policy = postino.autorizza(percorso_progetto, agente, candidato["thread_id"])
+            if policy["esito"] != "autorizzato":
+                risvegli.append({"agente": agente, "thread_id": candidato["thread_id"], "status": "bloccato", **policy})
+                continue
         esito = _esegui_risveglio_os(agente, candidato["cronologia"], claude_session_id)
+        if postino_attivo(percorso_progetto) and esito.get("status") == "eseguito":
+            postino.registra_canale(percorso_progetto, agente, candidato["thread_id"], "deep_link")
         gia_notificati.add(candidato["id_messaggio"])
         notificati[agente] = sorted(gia_notificati)
         stato_modificato = True
@@ -988,6 +1032,65 @@ def riavvia_sistema():
     (vedi __main__), quindi non serve sincronizzare a mano lo spegnimento del vecchio."""
     threading.Thread(target=_riavvia_dopo_risposta, daemon=True).start()
     return {"status": "riavvio_in_corso"}
+
+
+@app.post("/api/bacheca/postino/toggle")
+def toggle_postino(payload: PostinoToggleInput):
+    """Attiva o disattiva il postino automatico (kill switch POSTINO_SPENTO) per un progetto."""
+    progetto = _progetto_o_404(payload.progetto_id)
+    stato = imposta_postino(Path(progetto["percorso"]), payload.attivo)
+    return {"progetto_id": payload.progetto_id, "postino_attivo": stato}
+
+
+_last_mtimes: dict[str, float] = {}
+
+async def _watcher_postino_loop():
+    """Watcher di background su messaggi.jsonl per i progetti registrati.
+    Se postino_attivo e' True e l'mtime del file cambia, invoca esegui_risvegli_bacheca.
+    """
+    while True:
+        try:
+            await asyncio.sleep(2.5)
+            progetti = leggi_progetti()
+            for proj in progetti:
+                pid = proj.get("id")
+                p_path_str = proj.get("percorso")
+                if not pid or not p_path_str:
+                    continue
+                p_path = Path(p_path_str)
+                if not p_path.exists() or not postino_attivo(p_path):
+                    continue
+                f_msg = p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+                if not f_msg.exists():
+                    continue
+                try:
+                    mtime = f_msg.stat().st_mtime
+                except Exception:
+                    continue
+                last_mtime = _last_mtimes.get(pid)
+                if last_mtime is not None and mtime > last_mtime:
+                    _last_mtimes[pid] = mtime
+                    try:
+                        esegui_risvegli_bacheca(progetto_id=pid)
+                    except Exception as ex:
+                        print(f"[WATCHER POSTINO] Errore risveglio per {pid}: {ex}")
+                else:
+                    _last_mtimes[pid] = mtime
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[WATCHER POSTINO] Errore nel ciclo del watcher: {e}")
+
+
+@app.on_event("startup")
+async def _avvia_watcher_postino():
+    in_test = (
+        "unittest" in sys.modules
+        or any("unittest" in arg or "pytest" in arg for arg in sys.argv)
+        or os.environ.get("TESTING") == "true"
+    )
+    if not in_test:
+        asyncio.create_task(_watcher_postino_loop())
 
 
 if __name__ == "__main__":

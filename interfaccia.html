@@ -1267,9 +1267,17 @@
     <!-- Bacheca Multi-Agente (solo visualizzazione - docs/RFC_BACHECA_MULTIAGENTE.md §9.5) -->
     <div class="widget">
       <h2>🗂️ Bacheca Multi-Agente</h2>
-      <div class="form-group" style="max-width:320px;">
-        <label for="bachecaProjSelect">Progetto</label>
-        <select id="bachecaProjSelect" style="width:100%;"></select>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.8rem; margin-bottom:1rem;">
+        <div class="form-group" style="max-width:320px; margin:0;">
+          <label for="bachecaProjSelect">Progetto</label>
+          <select id="bachecaProjSelect" style="width:100%;"></select>
+        </div>
+        <div id="bachecaPostinoControl" style="display:flex; align-items:center; gap:0.6rem;">
+          <span style="font-size:0.85rem; color:var(--text-muted); font-weight:600;">📬 Postino Automatico:</span>
+          <button type="button" id="bachecaPostinoBtn" class="btn" style="padding:0.35rem 0.8rem; font-size:0.8rem; font-weight:600; border-radius:6px; transition:all 0.2s ease;">
+            🔴 DISATTIVATO
+          </button>
+        </div>
       </div>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem; flex-wrap:wrap; gap:0.5rem;">
         <h3 style="font-size:0.95rem; color:var(--text-muted); margin:0;">Messaggi pendenti per agente</h3>
@@ -1492,6 +1500,7 @@
           btn.style.color = "#34d399";
         }
       });
+      document.getElementById("bachecaPostinoBtn")?.addEventListener("click", togglePostinoAutomatico);
 
       // Paginazione della timeline eventi (50 record per pagina)
       document.getElementById("timelinePrevBtn").addEventListener("click", () => {
@@ -2034,6 +2043,46 @@
       }
     }
 
+    let bachecaPostinoAttivo = false;
+
+    function renderizzaPostinoState(attivo) {
+      bachecaPostinoAttivo = !!attivo;
+      const btn = document.getElementById("bachecaPostinoBtn");
+      if (!btn) return;
+      if (bachecaPostinoAttivo) {
+        btn.textContent = "🟢 ATTIVO";
+        btn.style.background = "rgba(16,185,129,0.18)";
+        btn.style.border = "1px solid rgba(16,185,129,0.5)";
+        btn.style.color = "#34d399";
+        btn.title = "Postino Automatico attivo (risveglio automatico su nuovi messaggi). Clicca per disattivare.";
+      } else {
+        btn.textContent = "🔴 DISATTIVATO";
+        btn.style.background = "rgba(244,63,94,0.18)";
+        btn.style.border = "1px solid rgba(244,63,94,0.5)";
+        btn.style.color = "#fb7185";
+        btn.title = "Postino Automatico disattivato (file POSTINO_ATTIVO assente). Clicca per attivare.";
+      }
+    }
+
+    async function togglePostinoAutomatico() {
+      const select = document.getElementById("bachecaProjSelect");
+      const progetto_id = (select && select.value) || "orchestratore";
+      const nuovoStato = !bachecaPostinoAttivo;
+      try {
+        const res = await fetch("/api/bacheca/postino/toggle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ progetto_id: progetto_id, attivo: nuovoStato })
+        });
+        if (!res.ok) throw new Error("risposta non valida");
+        const data = await res.json();
+        renderizzaPostinoState(data.postino_attivo);
+        showFeedback(data.postino_attivo ? "Postino Automatico ATTIVATO" : "Postino Automatico DISATTIVATO", "info");
+      } catch (err) {
+        showFeedback("Impossibile modificare lo stato del Postino Automatico.", "error");
+      }
+    }
+
     async function eseguiRisvegliBacheca(progettoId) {
       try {
         const res = await fetch(`/api/bacheca/risvegli?progetto_id=${encodeURIComponent(progettoId)}`, {
@@ -2220,6 +2269,7 @@
 
         renderizzaPendingBacheca(data.pending_per_agente, data.claude_session_id);
         renderizzaPraticheSospese(data.pratiche_sospese);
+        renderizzaPostinoState(data.postino_attivo);
         await eseguiRisvegliBacheca(progetto_id);
         const thread = data.thread || [];
         const flussi = data.flussi || {};
@@ -2327,6 +2377,10 @@
         box.innerHTML = `<div class="handoff-console"><div class="handoff-msg fail">Impossibile caricare la cronologia del thread.</div></div>`;
       }
     }
+
+    async function avviaReplayCommit() {
+      const progetto_id = document.getElementById("realProjSelect").value || "orchestratore";
+      const hash = document.getElementById("commitSelect").value;
       const logBox = document.getElementById("handoffLogs");
 
       if (!hash) {

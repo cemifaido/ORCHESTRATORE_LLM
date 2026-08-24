@@ -491,5 +491,36 @@ class FlussiDichiaratiApiTest(unittest.TestCase):
         self.assertIn("chiusura", passi_ids)
 
 
+class PostinoAutomaticoTest(unittest.TestCase):
+    def test_postino_attivo_e_imposta_postino(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            # Default alla prima consegna o cartella nuova: SPENTO (False, fail-closed)
+            self.assertFalse(interfaccia.postino_attivo(p_path))
+
+            # Imposta attivo -> crea POSTINO_ATTIVO
+            stato = interfaccia.imposta_postino(p_path, attivo=True)
+            self.assertTrue(stato)
+            self.assertTrue(interfaccia.postino_attivo(p_path))
+
+            # Imposta disattivo -> rimuove POSTINO_ATTIVO
+            stato = interfaccia.imposta_postino(p_path, attivo=False)
+            self.assertFalse(stato)
+            self.assertFalse(interfaccia.postino_attivo(p_path))
+
+    def test_bacheca_riporta_postino_attivo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            progetti = [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                risultato = interfaccia.bacheca_progetto(progetto_id="test_proj")
+                self.assertIn("postino_attivo", risultato)
+                self.assertFalse(risultato["postino_attivo"])
+
+                interfaccia.imposta_postino(p_path, attivo=True)
+                risultato = interfaccia.bacheca_progetto(progetto_id="test_proj")
+                self.assertTrue(risultato["postino_attivo"])
+
+
 if __name__ == "__main__":
     unittest.main()

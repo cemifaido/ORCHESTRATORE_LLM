@@ -224,6 +224,53 @@ Per Gemini, finché non emerge una prova diversa, restano validi il pull manuale
 
 Per Codex, si conferma che la CLI headless non condivide la quota dell'abbonamento flat dell'IDE ma attinge a crediti a consumo (OpenAI API Platform): per l'automazione a costo zero in background è necessario ricadere sul canale interattivo/hook/pull (§4.3 della RFC).
 
+## Aggiornamento 2026-08-24: automazione headless con canali ufficiali documentati
+
+**Decisione dell'umano** (esplicita, in sessione con Claude, per il piano
+`docs/PIANO_RISVEGLI_AUTOMATICI.md`): usare le modalità headless ufficiali dei
+provider per il dispatcher automatico ("postino"), ora che i provider stessi le
+documentano per questo preciso uso. Verifica alle fonti fatta lo stesso giorno:
+
+- **Claude Code**: la pagina ufficiale "Run Claude Code programmatically"
+  (code.claude.com/docs/en/headless, raggiunta via redirect da
+  docs.claude.com) documenta `claude -p` come Agent SDK via CLI "for scripts
+  and CI/CD", inclusi esempi di pipeline e job schedulati; l'uso col login ad
+  abbonamento è la modalità di default documentata, `--bare` + `ANTHROPIC_API_KEY`
+  è la variante raccomandata (non obbligatoria) per la CI riproducibile.
+- **Codex**: la documentazione ufficiale della modalità non interattiva
+  (developers.openai.com/codex → learn.chatgpt.com/docs/non-interactive-mode)
+  descrive `codex exec` come funzione supportata per "pipelines (CI, pre-merge
+  checks, scheduled jobs)" con **due** vie di autenticazione documentate:
+  `CODEX_API_KEY` (consigliata per l'automazione) e account ChatGPT
+  ("only if you specifically need to run as your Codex account" — via avanzata
+  ma legittima e documentata).
+
+Cosa cambia rispetto alla postura del 2026-07-08 (che resta valida come
+snapshot storico qui sotto): il vincolo "nessun loop automatico su abbonamento
+flat" era una prudenza in assenza di documentazione; oggi la documentazione
+c'è, quindi l'invocazione programmatica **diretta e dichiarata** delle CLI
+headless è ammessa per il dispatcher, alle condizioni seguenti (non opzionali):
+
+1. **Preferenza per il canale consigliato dal provider**: per Codex,
+   `CODEX_API_KEY` se disponibile, account ChatGPT altrimenti (entrambi
+   documentati); per Claude, login di default o `--bare`+API key a scelta
+   della configurazione.
+2. **Tetti prudenziali** (proposti da Codex, adottati): max 3 turni automatici
+   per thread senza tocco umano, max 10 invii headless/giorno, debounce 5
+   minuti per coppia thread+destinatario, contatori persistenti, fail-closed.
+3. **Tracciabilità**: ogni dispatch è un evento nel registro (motivo,
+   capability, contatore, hash del prompt — mai il testo completo).
+4. **Kill switch** che ferma anche le code già pronte; default: spento.
+5. **Invariati tutti i divieti dell'esperimento Jitter** (sezione sotto):
+   nessun camuffamento, nessuna emulazione antropomorfa, nessun bypass di
+   rate limit o protezioni; se un provider cambia i termini in senso
+   restrittivo, questa sezione va aggiornata e il dispatcher spento.
+6. **Ri-verifica pratica prima dell'uso**: la capability resta "provata, non
+   descritta" — il Lotto B deve rifare il test reale con `codex exec` (la
+   verifica del 2026-07-08 usava `codex -q`) e riverificare `claude -p`
+   nell'invocazione esatta del dispatcher. Gemini resta `manual_only` finché
+   il bug TTY di `agy` non è risolto: per lui solo deep link/pull.
+
 ## Limiti della sperimentazione ed esclusione del Jitter (2026-07-08)
 
 Durante la progettazione dell'automazione di background, è stata valutata l'introduzione di ritardi artificiali randomizzati (Jitter) e simulazioni di digitazione tasto per tasto per emulare il comportamento umano ed evitare i controlli anti-bot dei provider.
