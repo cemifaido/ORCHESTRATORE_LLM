@@ -4,7 +4,7 @@ import argparse
 import io
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -654,6 +654,401 @@ class BachecaTest(unittest.TestCase):
             self.assertEqual(messaggi, [])
             assert errore is not None
             self.assertIn("corrotta", errore)
+
+
+class RipresaV2Test(unittest.TestCase):
+    """Checkpoint ripristinabile, schema messaggio.v2 (docs/RFC_MESSAGGIO_V2_RIPRESA.md)."""
+
+    def ripresa_valida(self, **override) -> dict:
+        base = {
+            "attende": "umano",
+            "oggetto_atteso": "verdetto umano sul commit di bacheca.py",
+            "azioni_per_esito": {
+                "approvato": "eseguire il commit e registrare l'evento",
+                "respinto": "scartare le modifiche e riaprire il thread",
+                "modifiche_richieste": "applicare le modifiche chieste e richiedere verdetto",
+            },
+            "contesto_minimo": {
+                "thread_id": "da-sovrascrivere",
+                "riferimenti": [],
+                "comandi_consentiti": ["git commit", "python registro.py aggiungi"],
+            },
+        }
+        base.update(override)
+        return base
+
+    def checkpoint_v2(self, thread_id: str, mittente: str = "claude", **override_ripresa) -> dict:
+        ripresa = self.ripresa_valida(**override_ripresa)
+        ripresa["contesto_minimo"] = dict(ripresa["contesto_minimo"], thread_id=thread_id)
+        return bacheca.costruisci_messaggio(
+            mittente=mittente, destinatari=["umano"], tipo="checkpoint",
+            testo="CHECKPOINT sospeso in attesa di verdetto", thread_id=thread_id,
+            ripresa=ripresa,
+        )
+
+    # -- costruzione e validazione per versione ------------------------------
+
+    def test_costruisci_con_ripresa_produce_versione_2(self) -> None:
+        m = self.checkpoint_v2("t-1")
+        self.assertEqual(m["versione_schema"], 2)
+        self.assertEqual(bacheca.valida_messaggio(m), [])
+
+    def test_costruisci_senza_ripresa_resta_versione_1_senza_chiave(self) -> None:
+        m = bacheca.costruisci_messaggio(
+            mittente="claude", destinatari=["codex"], tipo="richiesta", testo="Rivedi X",
+        )
+        self.assertEqual(m["versione_schema"], 1)
+        self.assertNotIn("ripresa", m)
+        self.assertEqual(bacheca.valida_messaggio(m), [])
+
+    def test_valida_rifiuta_versione_sconosciuta(self) -> None:
+        m = self.checkpoint_v2("t-1")
+        m["versione_schema"] = 3
+        errori = bacheca.valida_messaggio(m)
+        self.assertTrue(any("versione_schema non supportata" in e for e in errori))
+
+    def test_valida_v1_rifiuta_chiave_ripresa(self) -> None:
+        m = bacheca.costruisci_messaggio(
+            mittente="claude", destinatari=["umano"], tipo="checkpoint", testo="cp",
+        )
+        m["ripresa"] = self.ripresa_valida()
+        self.assertTrue(bacheca.valida_messaggio(m), "un v1 con 'ripresa' deve fallire, la v1 e' congelata")
+
+    def test_valida_v2_rifiuta_ripresa_su_tipo_non_checkpoint(self) -> None:
+        m = self.checkpoint_v2("t-1")
+        m["tipo"] = "richiesta"
+        self.assertTrue(bacheca.valida_messaggio(m))
+
+    def test_valida_v2_rifiuta_attende_umano_senza_tutti_gli_esiti(self) -> None:
+        m = self.checkpoint_v2(
+            "t-1",
+            azioni_per_esito={"approvato": "commit", "respinto": "scarta"},  # manca modifiche_richieste
+        )
+        self.assertTrue(bacheca.valida_messaggio(m))
+
+    def test_valida_v2_rifiuta_ripresa_senza_contesto_minimo(self) -> None:
+        m = self.checkpoint_v2("t-1")
+        del m["ripresa"]["contesto_minimo"]
+        self.assertTrue(bacheca.valida_messaggio(m))
+
+    def test_valida_v2_accetta_attende_gate_con_esiti_liberi(self) -> None:
+        m = self.checkpoint_v2(
+            "t-1", attende="gate",
+            oggetto_atteso="esito di sentinella.py test_servizi",
+            azioni_per_esito={"superato": "procedi col commit", "fallito": "leggi l'output del gate"},
+        )
+        self.assertEqual(bacheca.valida_messaggio(m), [])
+
+    def test_leggi_messaggi_misti_v1_e_v2(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["claude"], tipo="richiesta", testo="Fai X",
+            )
+            bacheca.aggiungi_messaggio(percorso, richiesta)
+            bacheca.aggiungi_messaggio(percorso, self.checkpoint_v2(richiesta["thread_id"]))
+            messaggi = bacheca.leggi_messaggi(percorso)
+            self.assertEqual([m["versione_schema"] for m in messaggi], [1, 2])
+
+    # -- checkpoint attivo: risolto/sostituito -------------------------------
+
+    def test_checkpoint_attivo_e_ultimo_non_risolto(self) -> None:
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="umano", destinatari=["claude"], tipo="richiesta", testo="Fai X",
+        )
+        tid = richiesta["thread_id"]
+        primo = self.checkpoint_v2(tid)
+        secondo = self.checkpoint_v2(tid, oggetto_atteso="verdetto sul secondo lotto")
+        messaggi = [richiesta, primo, secondo]
+        attivo = bacheca.checkpoint_ripristinabile_attivo(messaggi, tid)
+        assert attivo is not None
+        self.assertEqual(attivo["id_messaggio"], secondo["id_messaggio"], "il piu' recente sostituisce il precedente")
+
+    def test_checkpoint_attivo_risolto_da_chiusura(self) -> None:
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="umano", destinatari=["claude"], tipo="richiesta", testo="Fai X",
+        )
+        tid = richiesta["thread_id"]
+        chiusura = bacheca.costruisci_messaggio(
+            mittente="umano", destinatari=["claude"], tipo="chiusura", testo="ok",
+            thread_id=tid, verdetto_umano="approvato",
+        )
+        messaggi = [richiesta, self.checkpoint_v2(tid), chiusura]
+        self.assertIsNone(bacheca.checkpoint_ripristinabile_attivo(messaggi, tid))
+
+    # -- approva/respingi espongono il prossimo passo ------------------------
+
+    def test_approva_stampa_prossimo_passo_dell_ultimo_checkpoint_attivo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="claude", destinatari=["umano"], tipo="richiesta", testo="Posso committare?",
+            )
+            bacheca.aggiungi_messaggio(percorso, richiesta)
+            bacheca.aggiungi_messaggio(percorso, self.checkpoint_v2(richiesta["thread_id"]))
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                esito = bacheca.main([
+                    "--bacheca", str(percorso), "approva",
+                    "--thread-id", richiesta["thread_id"], "--testo", "vai",
+                ])
+            self.assertEqual(esito, 0)
+            uscita = buf.getvalue()
+            self.assertIn("eseguire il commit e registrare l'evento", uscita)
+            self.assertIn("NON fidato", uscita)
+            self.assertNotIn("scartare le modifiche", uscita, "deve esporre solo l'azione dell'esito ricevuto")
+
+    def test_respingi_espone_azione_del_proprio_esito(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="claude", destinatari=["umano"], tipo="richiesta", testo="Posso committare?",
+            )
+            bacheca.aggiungi_messaggio(percorso, richiesta)
+            bacheca.aggiungi_messaggio(percorso, self.checkpoint_v2(richiesta["thread_id"]))
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                bacheca.main([
+                    "--bacheca", str(percorso), "respingi",
+                    "--thread-id", richiesta["thread_id"], "--testo", "no",
+                ])
+            self.assertIn("scartare le modifiche e riaprire il thread", buf.getvalue())
+
+    def test_approva_senza_checkpoint_ripristinabile_non_stampa_ripresa(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="claude", destinatari=["umano"], tipo="richiesta", testo="Posso committare?",
+            )
+            bacheca.aggiungi_messaggio(percorso, richiesta)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                bacheca.main([
+                    "--bacheca", str(percorso), "approva",
+                    "--thread-id", richiesta["thread_id"], "--testo", "vai",
+                ])
+            self.assertNotIn("RIPRESA", buf.getvalue())
+
+    # -- riprese pronte: verdetto arrivato, agente non ancora attivo ---------
+
+    def test_riprese_pronte_dopo_verdetto_poi_sparisce_quando_l_agente_scrive(self) -> None:
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="claude", destinatari=["umano"], tipo="richiesta", testo="Posso committare?",
+        )
+        tid = richiesta["thread_id"]
+        checkpoint = self.checkpoint_v2(tid)
+        chiusura = bacheca.costruisci_messaggio(
+            mittente="umano", destinatari=["claude"], tipo="chiusura", testo="vai",
+            thread_id=tid, verdetto_umano="approvato",
+        )
+        messaggi = [richiesta, checkpoint, chiusura]
+        pronte = bacheca.riprese_pronte(messaggi, "claude")
+        self.assertEqual(len(pronte), 1)
+        self.assertEqual(pronte[0]["verdetto"], "approvato")
+        self.assertEqual(pronte[0]["azione"], "eseguire il commit e registrare l'evento")
+        self.assertEqual(bacheca.riprese_pronte(messaggi, "codex"), [], "solo chi ha sospeso riprende")
+
+        presa_atto = bacheca.costruisci_messaggio(
+            mittente="claude", destinatari=["umano"], tipo="risposta",
+            testo="commit eseguito", thread_id=tid,
+        )
+        self.assertEqual(bacheca.riprese_pronte(messaggi + [presa_atto], "claude"), [])
+
+    def test_riprese_pronte_ignora_attende_gate_anche_con_verdetto_umano(self) -> None:
+        """Rilievo Codex (seconda revisione): un verdetto umano non risolve
+        un'attesa di gate/agente - per quelle il checkpoint resta descrittivo."""
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="claude", destinatari=["umano"], tipo="richiesta", testo="Fai X",
+        )
+        tid = richiesta["thread_id"]
+        checkpoint_gate = self.checkpoint_v2(
+            tid, attende="gate",
+            oggetto_atteso="esito di sentinella.py test_servizi",
+            azioni_per_esito={"superato": "procedi", "fallito": "leggi l'output"},
+        )
+        chiusura = bacheca.costruisci_messaggio(
+            mittente="umano", destinatari=["claude"], tipo="chiusura", testo="vai",
+            thread_id=tid, verdetto_umano="approvato",
+        )
+        messaggi = [richiesta, checkpoint_gate, chiusura]
+        self.assertEqual(bacheca.riprese_pronte(messaggi, "claude"), [])
+
+    def test_riprese_pronte_ignora_attende_agente_anche_con_verdetto_umano(self) -> None:
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="claude", destinatari=["umano"], tipo="richiesta", testo="Fai X",
+        )
+        tid = richiesta["thread_id"]
+        checkpoint_agente = self.checkpoint_v2(
+            tid, attende="agente",
+            oggetto_atteso="risposta di codex sulla revisione",
+            azioni_per_esito={"risposto": "integra la revisione"},
+        )
+        chiusura = bacheca.costruisci_messaggio(
+            mittente="umano", destinatari=["claude"], tipo="chiusura", testo="vai",
+            thread_id=tid, verdetto_umano="approvato",
+        )
+        self.assertEqual(bacheca.riprese_pronte([richiesta, checkpoint_agente, chiusura], "claude"), [])
+
+    def test_approva_non_stampa_ripresa_per_attende_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="claude", destinatari=["umano"], tipo="richiesta", testo="Fai X",
+            )
+            bacheca.aggiungi_messaggio(percorso, richiesta)
+            checkpoint_gate = self.checkpoint_v2(
+                richiesta["thread_id"], attende="gate",
+                oggetto_atteso="esito di sentinella.py test_servizi",
+                azioni_per_esito={"superato": "procedi", "fallito": "leggi l'output"},
+            )
+            bacheca.aggiungi_messaggio(percorso, checkpoint_gate)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                esito = bacheca.main([
+                    "--bacheca", str(percorso), "approva",
+                    "--thread-id", richiesta["thread_id"], "--testo", "vai",
+                ])
+            self.assertEqual(esito, 0)
+            self.assertNotIn("RIPRESA", buf.getvalue())
+
+    def test_riprese_pronte_ignora_chiusura_senza_verdetto(self) -> None:
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="claude", destinatari=["umano"], tipo="richiesta", testo="Posso committare?",
+        )
+        tid = richiesta["thread_id"]
+        chiusura = bacheca.costruisci_messaggio(
+            mittente="umano", destinatari=["claude"], tipo="chiusura", testo="chiudo e basta",
+            thread_id=tid,
+        )
+        messaggi = [richiesta, self.checkpoint_v2(tid), chiusura]
+        self.assertEqual(bacheca.riprese_pronte(messaggi, "claude"), [])
+
+    def test_formato_hook_include_riprese_pronte(self) -> None:
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="claude", destinatari=["umano"], tipo="richiesta", testo="Posso committare?",
+        )
+        tid = richiesta["thread_id"]
+        chiusura = bacheca.costruisci_messaggio(
+            mittente="umano", destinatari=["claude"], tipo="chiusura", testo="vai",
+            thread_id=tid, verdetto_umano="approvato",
+        )
+        messaggi = [richiesta, self.checkpoint_v2(tid), chiusura]
+        testo = bacheca._formatta_per_hook([], bacheca.riprese_pronte(messaggi, "claude"))
+        self.assertIn("Riprese pronte", testo)
+        self.assertIn("eseguire il commit e registrare l'evento", testo)
+        self.assertIn("mai eseguire in automatico", testo)
+
+    def test_comando_ripresa_elenca_riprese_anche_senza_thread_aperti(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="claude", destinatari=["umano"], tipo="richiesta", testo="Posso committare?",
+            )
+            bacheca.aggiungi_messaggio(percorso, richiesta)
+            bacheca.aggiungi_messaggio(percorso, self.checkpoint_v2(richiesta["thread_id"]))
+            chiusura = bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["claude"], tipo="chiusura", testo="vai",
+                thread_id=richiesta["thread_id"], verdetto_umano="approvato",
+            )
+            bacheca.aggiungi_messaggio(percorso, chiusura)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                esito = bacheca.comando_ripresa(argparse.Namespace(bacheca=str(percorso)))
+            self.assertEqual(esito, 0)
+            self.assertIn("Riprese pronte", buf.getvalue())
+
+    # -- comando checkpoint con flag di ripresa ------------------------------
+
+    def test_comando_checkpoint_con_attende_scrive_v2(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["claude"], tipo="richiesta", testo="Fai X",
+            )
+            bacheca.aggiungi_messaggio(percorso, richiesta)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                esito = bacheca.main([
+                    "--bacheca", str(percorso), "checkpoint",
+                    "--thread-id", richiesta["thread_id"], "--agente", "claude",
+                    "--obiettivo", "Fai X", "--attende", "umano",
+                    "--oggetto-atteso", "verdetto sul lavoro X",
+                    "--se-approvato", "committa",
+                    "--se-respinto", "scarta",
+                    "--se-modifiche-richieste", "correggi e richiedi",
+                ])
+            self.assertEqual(esito, 0)
+            ultimo = bacheca.leggi_messaggi(percorso)[-1]
+            self.assertEqual(ultimo["versione_schema"], 2)
+            self.assertEqual(ultimo["ripresa"]["attende"], "umano")
+            self.assertEqual(ultimo["ripresa"]["contesto_minimo"]["thread_id"], richiesta["thread_id"])
+
+    def test_comando_checkpoint_attende_umano_senza_tutti_gli_esiti_fallisce(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["claude"], tipo="richiesta", testo="Fai X",
+            )
+            bacheca.aggiungi_messaggio(percorso, richiesta)
+            buf_err = io.StringIO()
+            with redirect_stdout(io.StringIO()), redirect_stderr(buf_err):
+                esito = bacheca.main([
+                    "--bacheca", str(percorso), "checkpoint",
+                    "--thread-id", richiesta["thread_id"], "--agente", "claude",
+                    "--attende", "umano", "--oggetto-atteso", "verdetto",
+                    "--se-approvato", "committa",
+                ])
+            self.assertEqual(esito, 2)
+            self.assertEqual(len(bacheca.leggi_messaggi(percorso)), 1, "niente append se lo schema rifiuta")
+
+    # -- valida: controlli cross-record --------------------------------------
+
+    def test_valida_cross_record_thread_incoerente(self) -> None:
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="umano", destinatari=["claude"], tipo="richiesta", testo="Fai X",
+        )
+        checkpoint = self.checkpoint_v2(richiesta["thread_id"])
+        checkpoint["ripresa"]["contesto_minimo"]["thread_id"] = "un-altro-thread"
+        errori = bacheca.errori_cross_record([richiesta, checkpoint], Path("."))
+        self.assertTrue(any("thread" in e for e in errori))
+
+    def test_valida_cross_record_riferimento_inesistente(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["claude"], tipo="richiesta", testo="Fai X",
+            )
+            checkpoint = self.checkpoint_v2(richiesta["thread_id"])
+            checkpoint["ripresa"]["contesto_minimo"]["riferimenti"] = ["file_che_non_esiste.md"]
+            errori = bacheca.errori_cross_record([richiesta, checkpoint], Path(tmp))
+            self.assertTrue(any("file_che_non_esiste.md" in e for e in errori))
+
+    def test_valida_cross_record_accetta_file_url_e_id_bacheca(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "doc.md").write_text("x", encoding="utf-8")
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["claude"], tipo="richiesta", testo="Fai X",
+            )
+            checkpoint = self.checkpoint_v2(richiesta["thread_id"])
+            checkpoint["ripresa"]["contesto_minimo"]["riferimenti"] = [
+                "doc.md", "https://esempio.invalid/pagina", richiesta["id_messaggio"],
+            ]
+            self.assertEqual(bacheca.errori_cross_record([richiesta, checkpoint], Path(tmp)), [])
+
+    def test_comando_valida_fallisce_su_cross_record(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["claude"], tipo="richiesta", testo="Fai X",
+            )
+            bacheca.aggiungi_messaggio(percorso, richiesta)
+            checkpoint = self.checkpoint_v2(richiesta["thread_id"])
+            checkpoint["ripresa"]["contesto_minimo"]["riferimenti"] = ["file_che_non_esiste.md"]
+            bacheca.aggiungi_messaggio(percorso, checkpoint)
+            buf_err = io.StringIO()
+            with redirect_stdout(io.StringIO()), redirect_stderr(buf_err):
+                esito = bacheca.main(["--bacheca", str(percorso), "valida"])
+            self.assertEqual(esito, 1)
+            self.assertIn("cross-record", buf_err.getvalue())
 
 
 if __name__ == "__main__":

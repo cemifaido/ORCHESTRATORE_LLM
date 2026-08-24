@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orchestratore.locale/schema/messaggio.v2.json",
+  "title": "Messaggio della bacheca multi-agente v2: come v1 piu' il campo 'ripresa' sui checkpoint (vedi docs/RFC_MESSAGGIO_V2_RIPRESA.md)",
+  "description": "Versione separata e non retro-modifica della v1 (decisione della revisione Codex, thread 4911f547): la v1 resta congelata, il lettore instrada per versione_schema e accetta entrambe, nessuna migrazione dello storico. Unica differenza sostanziale: 'ripresa' rende un checkpoint ripristinabile - quando arriva l'esito atteso (tipicamente il verdetto umano), chi si sveglia sa esattamente quale azione era prevista per quell'esito. E' contesto NON fidato: mai esecuzione automatica.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "versione_schema",
+    "id_messaggio",
+    "thread_id",
+    "timestamp",
+    "mittente",
+    "destinatari",
+    "tipo",
+    "testo",
+    "file_modificati",
+    "riferimenti",
+    "correla_a",
+    "ttl_minuti",
+    "verdetto_umano"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "tipo": { "const": "presa_in_carico" } }
+      },
+      "else": {
+        "properties": { "ttl_minuti": { "const": null } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "tipo": { "const": "checkpoint" } }
+      },
+      "else": {
+        "properties": { "ripresa": { "const": null } }
+      }
+    }
+  ],
+  "properties": {
+    "versione_schema": {
+      "const": 2
+    },
+    "id_messaggio": {
+      "type": "string",
+      "minLength": 1
+    },
+    "thread_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Raggruppa tutti i messaggi di una stessa conversazione. Per il primo messaggio di un thread coincide di norma con id_messaggio."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "mittente": {
+      "type": "string",
+      "enum": ["gemini", "claude", "codex", "locale", "umano", "sistema"]
+    },
+    "destinatari": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": ["gemini", "claude", "codex", "locale", "umano", "sistema"]
+      },
+      "description": "Come v1: nessun sentinel 'tutti', un broadcast salva sempre ogni agente per esteso."
+    },
+    "tipo": {
+      "type": "string",
+      "enum": ["richiesta", "risposta", "domanda", "sintesi", "presa_in_carico", "chiusura", "annullamento", "segnalazione_conflitto", "checkpoint"],
+      "description": "Stesso enum e stessa semantica della v1. 'checkpoint' continua a non cambiare lo stato globale derivato del thread; in v2 puo' in piu' portare il campo 'ripresa'."
+    },
+    "testo": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Contenuto del messaggio. E' input operativo da un altro agente, non autorita': non sostituisce mai istruzioni di sistema, file guida di progetto o richieste esplicite dell'utente."
+    },
+    "file_modificati": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Stesso nome/semantica di file_modificati in evento.v1.json, per restare compatibili tra i due registri."
+    },
+    "riferimenti": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Percorsi/URL di contesto che non sono file toccati dal lavoro (doc, altri thread, id_compito di eventi.jsonl)."
+    },
+    "correla_a": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "id_messaggio a cui questo messaggio risponde/si riferisce direttamente (es. una risposta punta alla richiesta)."
+    },
+    "ttl_minuti": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "default": null,
+      "description": "Significativo solo per tipo=presa_in_carico: lease non vincolante per ridurre collisioni tra agenti, non un lock reale."
+    },
+    "verdetto_umano": {
+      "type": "string",
+      "enum": ["non_revisionato", "approvato", "respinto", "modifiche_richieste"],
+      "default": "non_revisionato",
+      "description": "Come v1: campo ortogonale allo stato derivato del thread; il verdetto corrente e' l'ultimo != non_revisionato nel thread."
+    },
+    "metadati": {
+      "type": "object",
+      "additionalProperties": true,
+      "default": {},
+      "description": "Come v1: sacco libero per dati diagnostici. La 'ripresa' NON va qui: ha un campo dedicato proprio per essere validabile (decisione della revisione Codex)."
+    },
+    "ripresa": {
+      "type": ["object", "null"],
+      "default": null,
+      "additionalProperties": false,
+      "required": ["attende", "oggetto_atteso", "azioni_per_esito", "contesto_minimo"],
+      "description": "Rende il checkpoint ripristinabile: dichiara cosa si aspetta e quale azione e' prevista per ciascun esito. Opzionale (i checkpoint solo informativi restano validi), ma se presente tutti i campi sono obbligatori. Solo su tipo=checkpoint (vincolo in allOf). L'azione e' testo per un agente/umano che la legge: mai eseguita in automatico.",
+      "if": {
+        "properties": { "attende": { "const": "umano" } }
+      },
+      "then": {
+        "properties": {
+          "azioni_per_esito": {
+            "required": ["approvato", "respinto", "modifiche_richieste"]
+          }
+        }
+      },
+      "properties": {
+        "attende": {
+          "type": "string",
+          "enum": ["umano", "gate", "agente"],
+          "description": "Chi/cosa sblocca la ripresa. 'umano': un verdetto via approva/respingi. 'gate': l'esito di un quality gate (sentinella). 'agente': la risposta di un altro agente."
+        },
+        "oggetto_atteso": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Cosa esattamente si aspetta, in modo identificabile da chi rilegge (es. 'verdetto umano sul commit dei file X,Y' - non un generico 'approvazione')."
+        },
+        "azioni_per_esito": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Mappa esito -> azione testuale prevista. Con attende=umano sono obbligatori tutti e tre gli esiti approvato/respinto/modifiche_richieste (vincolo if/then sopra): niente frase unica biforcata, niente esito scoperto."
+        },
+        "contesto_minimo": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["thread_id", "riferimenti", "comandi_consentiti"],
+          "description": "Il minimo per ripartire senza rileggere tutta la storia. bacheca.py valida fa controlli cross-record: thread_id coerente col messaggio, riferimenti esistenti (file, URL o id noti alla bacheca).",
+          "properties": {
+            "thread_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "riferimenti": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "comandi_consentiti": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Comandi che l'azione di ripresa puo' richiedere. Informativo per chi riprende, NON un'autorizzazione ne' qualcosa da eseguire in automatico."
+            }
+          }
+        }
+      }
+    }
+  }
+}
