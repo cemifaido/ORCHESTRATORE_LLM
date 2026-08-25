@@ -50,7 +50,48 @@ Squadra è pensata per funzionare con **qualsiasi combinazione di assistenti**: 
 
 ---
 
-### 3. Procedura Passo-Passo per Partire
+### 3. Setup del Modello Locale (Llama.cpp & Hugging Face) — Opzionale
+
+Il modello locale permette all'orchestratore di eseguire **triage automatico** e **sintesi delle note di rilascio** a costo zero senza spendere token cloud.
+
+#### A. Installare Llama.cpp (`llama-server`)
+1. Vai sulle [Release ufficiali di llama.cpp su GitHub](https://github.com/ggerganov/llama.cpp/releases).
+2. Scarica lo zip precompilato per il tuo sistema:
+   - Se hai una scheda video **Nvidia**: `llama-bXXXX-bin-win-cuda-cu12.x-x64.zip`
+   - Se usi solo **CPU**: `llama-bXXXX-bin-win-avx2-x64.zip`
+3. Estrai lo zip in una cartella a piacere (es. `C:\llama.cpp` o all'interno della cartella del progetto).
+
+#### B. Scaricare il Modello Leggero da Hugging Face
+Consigliamo **Qwen 2.5 3B Instruct** in formato GGUF quantizzato a 4 bit (`Q4_K_M`, circa 1.9 GB), leggerissimo ed estremamente reattivo:
+
+Puoi scaricarlo direttamente da PowerShell lanciando:
+```powershell
+# Crea la cartella dei modelli
+New-Item -ItemType Directory -Force -Path "$HOME\ollama-models\qwen2.5-3b-instruct"
+
+# Download del modello da Hugging Face
+Invoke-WebRequest `
+  -Uri "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf" `
+  -OutFile "$HOME\ollama-models\qwen2.5-3b-instruct\qwen2.5-3b-instruct-q4_k_m.gguf"
+```
+
+#### C. Avviare Llama-server
+Avvia il server di inferenza locale sulla porta `8090`:
+```powershell
+# Esempio su Windows con accelerazione GPU (99 layer offload):
+.\llama-server.exe `
+  -m "$HOME\ollama-models\qwen2.5-3b-instruct\qwen2.5-3b-instruct-q4_k_m.gguf" `
+  --port 8090 `
+  -ngl 99 `
+  -c 4096
+```
+*(Se usi solo CPU, imposta `-ngl 0`).*
+
+Quando avvii il Setup Wizard (`.\setup.ps1`), il sistema rileverà automaticamente `llama-server` attivo su `http://localhost:8090` e lo collegherà all'orchestratore.
+
+---
+
+### 4. Procedura Passo-Passo per Partire
 
 #### Passo 1: Copiare o Clonare il Progetto
 Scarica o clona il repository nella cartella desiderata:
