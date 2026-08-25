@@ -522,5 +522,162 @@ class PostinoAutomaticoTest(unittest.TestCase):
                 self.assertTrue(risultato["postino_attivo"])
 
 
+class PostinoHeadlessTest(unittest.TestCase):
+    """Sotto-interruttore del dispatch headless (claude -p / codex exec reali):
+    opt-in separato dal postino di base, sempre inerte se il postino di base e'
+    spento, mai chiamate reali ai provider - postino.dispatch va sempre mockato."""
+
+    def _progetto_con_richiesta(self, tmp: str, agente: str = "codex") -> tuple[list[dict], dict]:
+        p_path = Path(tmp)
+        percorso_messaggi = p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="umano", destinatari=[agente], tipo="richiesta", testo="rispondi",
+        )
+        bacheca.aggiungi_messaggio(percorso_messaggi, richiesta)
+        return [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}], richiesta
+
+    def test_postino_headless_attivo_e_imposta_postino_headless(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            self.assertFalse(interfaccia.postino_headless_attivo(p_path))
+
+            stato = interfaccia.imposta_postino_headless(p_path, attivo=True)
+            self.assertTrue(stato)
+            self.assertTrue(interfaccia.postino_headless_attivo(p_path))
+
+            stato = interfaccia.imposta_postino_headless(p_path, attivo=False)
+            self.assertFalse(stato)
+            self.assertFalse(interfaccia.postino_headless_attivo(p_path))
+
+    def test_headless_indipendente_dal_flag_postino_di_base_su_disco(self) -> None:
+        """I due flag sono due file distinti: accendere l'uno non tocca l'altro."""
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            interfaccia.imposta_postino_headless(p_path, attivo=True)
+            self.assertFalse(interfaccia.postino_attivo(p_path))
+            self.assertTrue(interfaccia.postino_headless_attivo(p_path))
+
+    def test_bacheca_riporta_postino_headless_attivo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            progetti = [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                risultato = interfaccia.bacheca_progetto(progetto_id="test_proj")
+                self.assertIn("postino_headless_attivo", risultato)
+                self.assertFalse(risultato["postino_headless_attivo"])
+
+                interfaccia.imposta_postino_headless(p_path, attivo=True)
+                risultato = interfaccia.bacheca_progetto(progetto_id="test_proj")
+                self.assertTrue(risultato["postino_headless_attivo"])
+
+    def test_endpoint_toggle_headless(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            progetti = [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                payload = interfaccia.PostinoHeadlessToggleInput(progetto_id="test_proj", attivo=True)
+                risultato = interfaccia.toggle_postino_headless(payload)
+                self.assertEqual(risultato, {"progetto_id": "test_proj", "postino_headless_attivo": True})
+                self.assertTrue(interfaccia.postino_headless_attivo(p_path))
+
+    def test_risveglio_usa_dispatch_headless_solo_con_entrambi_i_toggle_e_capability(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti, richiesta = self._progetto_con_richiesta(tmp, agente="codex")
+            p_path = Path(tmp)
+            interfaccia.imposta_postino(p_path, attivo=True)
+            interfaccia.imposta_postino_headless(p_path, attivo=True)
+
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")  # baseline
+                nuova = bacheca.costruisci_messaggio(
+                    mittente="umano", destinatari=["codex"], tipo="richiesta", testo="nuovo",
+                )
+                bacheca.aggiungi_messaggio(
+                    p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl", nuova
+                )
+                with patch.object(
+                    interfaccia.postino, "dispatch",
+                    return_value={"esito": "inviato", "codice": 0},
+                ) as dispatch_mock, patch.object(interfaccia, "_esegui_risveglio_os") as risveglio_os:
+                    risultato = interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+
+            dispatch_mock.assert_called_once_with(p_path, "codex", nuova["thread_id"])
+            risveglio_os.assert_not_called()
+            self.assertEqual(risultato["risvegli"][0]["status"], "headless")
+            self.assertEqual(risultato["risvegli"][0]["codice"], 0)
+
+    def test_risveglio_headless_bloccato_da_policy_non_apre_comunque_finestra(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti, richiesta = self._progetto_con_richiesta(tmp, agente="codex")
+            p_path = Path(tmp)
+            interfaccia.imposta_postino(p_path, attivo=True)
+            interfaccia.imposta_postino_headless(p_path, attivo=True)
+
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+                nuova = bacheca.costruisci_messaggio(
+                    mittente="umano", destinatari=["codex"], tipo="richiesta", testo="nuovo",
+                )
+                bacheca.aggiungi_messaggio(
+                    p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl", nuova
+                )
+                with patch.object(
+                    interfaccia.postino, "dispatch",
+                    return_value={"esito": "bloccato", "motivo": "debounce"},
+                ), patch.object(interfaccia, "_esegui_risveglio_os") as risveglio_os:
+                    risultato = interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+
+            risveglio_os.assert_not_called()
+            self.assertEqual(risultato["risvegli"][0]["status"], "bloccato")
+            self.assertEqual(risultato["risvegli"][0]["motivo"], "debounce")
+
+    def test_risveglio_headless_ignora_gemini_capability_non_supportata(self) -> None:
+        """Gemini non e' in postino.COMANDI (manual_only): resta sempre sul
+        percorso a finestra, qualunque sia lo stato del toggle headless."""
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti, richiesta = self._progetto_con_richiesta(tmp, agente="gemini")
+            p_path = Path(tmp)
+            interfaccia.imposta_postino(p_path, attivo=True)
+            interfaccia.imposta_postino_headless(p_path, attivo=True)
+
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")  # baseline
+                nuova = bacheca.costruisci_messaggio(
+                    mittente="umano", destinatari=["gemini"], tipo="richiesta", testo="nuovo",
+                )
+                bacheca.aggiungi_messaggio(
+                    p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl", nuova
+                )
+                with patch.object(interfaccia.postino, "dispatch") as dispatch_mock, \
+                     patch.object(interfaccia, "_esegui_risveglio_os", return_value={"status": "test"}) as risveglio_os:
+                    interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+
+            dispatch_mock.assert_not_called()
+            risveglio_os.assert_called_once()
+
+    def test_risveglio_ignora_dispatch_headless_se_postino_base_spento(self) -> None:
+        """Il toggle headless da solo non basta: senza il postino di base acceso
+        resta inerte (nessuna chiamata reale, nessun risveglio automatico)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti, richiesta = self._progetto_con_richiesta(tmp, agente="codex")
+            p_path = Path(tmp)
+            interfaccia.imposta_postino_headless(p_path, attivo=True)  # base resta spento
+
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")  # baseline
+                nuova = bacheca.costruisci_messaggio(
+                    mittente="umano", destinatari=["codex"], tipo="richiesta", testo="nuovo",
+                )
+                bacheca.aggiungi_messaggio(
+                    p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl", nuova
+                )
+                with patch.object(interfaccia.postino, "dispatch") as dispatch_mock, \
+                     patch.object(interfaccia, "_esegui_risveglio_os", return_value={"status": "test"}) as risveglio_os:
+                    interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+
+            dispatch_mock.assert_not_called()
+            risveglio_os.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import bacheca
 import postino
@@ -182,13 +182,18 @@ class PostinoDispatchTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             radice = _radice_attiva(tmp)
             esegui = MagicMock(return_value=MagicMock(returncode=0))
-            esito = postino.dispatch(radice, "claude", "t-postino", esegui=esegui)
+            # shutil.which mockato: su Windows un nome nudo ("claude") non risolve
+            # mai un wrapper .cmd/.ps1 via CreateProcess (bug reale trovato in
+            # verifica live) - dispatch deve sempre passare dal percorso risolto.
+            with patch("postino.shutil.which", return_value=r"C:\fake\claude.cmd"):
+                esito = postino.dispatch(radice, "claude", "t-postino", esegui=esegui)
 
             self.assertEqual(esito["esito"], "inviato")
             self.assertEqual(esito["canale"], "headless")
             self.assertIn("prompt_sha256", esito)
             comando = esegui.call_args.args[0]
-            self.assertEqual(comando[:2], ["claude", "-p"])
+            self.assertEqual(comando[0], r"C:\fake\claude.cmd")
+            self.assertEqual(comando[1], "-p")
             self.assertFalse(esegui.call_args.kwargs["shell"])
 
             stato = json.loads(
@@ -199,6 +204,38 @@ class PostinoDispatchTest(unittest.TestCase):
             self.assertEqual(len(eventi), 1)
             self.assertEqual(eventi[0]["agente"], "sistema")
             self.assertNotIn("Sei claude", json.dumps(eventi[0]), "mai il testo del prompt nel registro")
+
+    def test_dispatch_eseguibile_non_trovato_non_esplode_e_si_registra(self) -> None:
+        """Se il comando non e' installato/risolvibile (successo qui su questa
+        stessa macchina prima di installare claude), dispatch non deve mai
+        propagare un'eccezione: il watcher la logga e basta, e senza
+        registrazione riproverebbe ogni 2.5s all'infinito senza che i tetti
+        (che contano solo gli invii registrati) possano mai frenarlo."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            esegui = MagicMock()
+            with patch("postino.shutil.which", return_value=None):
+                esito = postino.dispatch(radice, "claude", "t-postino", esegui=esegui)
+
+            self.assertEqual(esito["esito"], "errore")
+            self.assertEqual(esito["motivo"], "eseguibile_non_trovato")
+            esegui.assert_not_called()
+
+            stato = json.loads(
+                (radice / "dati_locali" / "orchestrazione" / "postino_stato.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(len(stato["invii"]), 1, "il tentativo fallito va comunque registrato")
+
+    def test_dispatch_eseguibile_non_trovato_conta_per_debounce(self) -> None:
+        """Un tentativo fallito consuma comunque il conteggio dei tetti: e' la
+        difesa contro il retry ogni 2.5s senza mai essere frenato."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            with patch("postino.shutil.which", return_value=None):
+                postino.dispatch(radice, "claude", "t-postino", esegui=MagicMock())
+                secondo = postino.autorizza(radice, "claude", "t-postino")
+
+            self.assertEqual(secondo, {"esito": "bloccato", "motivo": "debounce"})
 
     def test_dispatch_rifiuta_capability_non_autorizzata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

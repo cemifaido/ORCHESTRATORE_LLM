@@ -1272,9 +1272,13 @@
           <label for="bachecaProjSelect">Progetto</label>
           <select id="bachecaProjSelect" style="width:100%;"></select>
         </div>
-        <div id="bachecaPostinoControl" style="display:flex; align-items:center; gap:0.6rem;">
+        <div id="bachecaPostinoControl" style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
           <span style="font-size:0.85rem; color:var(--text-muted); font-weight:600;">📬 Postino Automatico:</span>
           <button type="button" id="bachecaPostinoBtn" class="btn" style="padding:0.35rem 0.8rem; font-size:0.8rem; font-weight:600; border-radius:6px; transition:all 0.2s ease;">
+            🔴 DISATTIVATO
+          </button>
+          <span style="font-size:0.85rem; color:var(--text-muted); font-weight:600; margin-left:0.6rem;" title="Fa rispondere davvero claude/codex in background (claude -p / codex exec), senza aprire finestre. Richiede il Postino Automatico attivo. Gemini non e' supportato (resta a finestra).">🤖 Dispatch Headless:</span>
+          <button type="button" id="bachecaPostinoHeadlessBtn" class="btn" style="padding:0.35rem 0.8rem; font-size:0.8rem; font-weight:600; border-radius:6px; transition:all 0.2s ease;">
             🔴 DISATTIVATO
           </button>
         </div>
@@ -1501,6 +1505,7 @@
         }
       });
       document.getElementById("bachecaPostinoBtn")?.addEventListener("click", togglePostinoAutomatico);
+      document.getElementById("bachecaPostinoHeadlessBtn")?.addEventListener("click", togglePostinoHeadless);
 
       // Paginazione della timeline eventi (50 record per pagina)
       document.getElementById("timelinePrevBtn").addEventListener("click", () => {
@@ -2044,6 +2049,7 @@
     }
 
     let bachecaPostinoAttivo = false;
+    let bachecaPostinoHeadlessAttivo = false;
 
     function renderizzaPostinoState(attivo) {
       bachecaPostinoAttivo = !!attivo;
@@ -2062,6 +2068,7 @@
         btn.style.color = "#fb7185";
         btn.title = "Postino Automatico disattivato (file POSTINO_ATTIVO assente). Clicca per attivare.";
       }
+      renderizzaPostinoHeadlessState(bachecaPostinoHeadlessAttivo);
     }
 
     async function togglePostinoAutomatico() {
@@ -2080,6 +2087,57 @@
         showFeedback(data.postino_attivo ? "Postino Automatico ATTIVATO" : "Postino Automatico DISATTIVATO", "info");
       } catch (err) {
         showFeedback("Impossibile modificare lo stato del Postino Automatico.", "error");
+      }
+    }
+
+    function renderizzaPostinoHeadlessState(attivo) {
+      bachecaPostinoHeadlessAttivo = !!attivo;
+      const btn = document.getElementById("bachecaPostinoHeadlessBtn");
+      if (!btn) return;
+      // Sotto-funzione del postino di base: senza quello acceso, il dispatch
+      // headless resta inerte lato server anche se il flag e' su - il pulsante
+      // lo riflette restando disabilitato per non promettere un effetto che
+      // in questo momento non scatterebbe.
+      btn.disabled = !bachecaPostinoAttivo;
+      btn.style.opacity = bachecaPostinoAttivo ? "1" : "0.5";
+      btn.style.cursor = bachecaPostinoAttivo ? "pointer" : "not-allowed";
+      if (bachecaPostinoHeadlessAttivo) {
+        btn.textContent = "🟢 ATTIVO";
+        btn.style.background = "rgba(16,185,129,0.18)";
+        btn.style.border = "1px solid rgba(16,185,129,0.5)";
+        btn.style.color = "#34d399";
+        btn.title = "Dispatch headless attivo: claude/codex rispondono in background su nuovi messaggi, senza aprire finestre. Clicca per disattivare.";
+      } else {
+        btn.textContent = "🔴 DISATTIVATO";
+        btn.style.background = "rgba(244,63,94,0.18)";
+        btn.style.border = "1px solid rgba(244,63,94,0.5)";
+        btn.style.color = "#fb7185";
+        btn.title = bachecaPostinoAttivo
+          ? "Dispatch headless disattivato: il postino apre solo la finestra dell'agente, va incollato e inviato a mano. Clicca per attivare."
+          : "Richiede prima il Postino Automatico attivo.";
+      }
+    }
+
+    async function togglePostinoHeadless() {
+      if (!bachecaPostinoAttivo) {
+        showFeedback("Attiva prima il Postino Automatico.", "error");
+        return;
+      }
+      const select = document.getElementById("bachecaProjSelect");
+      const progetto_id = (select && select.value) || "orchestratore";
+      const nuovoStato = !bachecaPostinoHeadlessAttivo;
+      try {
+        const res = await fetch("/api/bacheca/postino/headless/toggle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ progetto_id: progetto_id, attivo: nuovoStato })
+        });
+        if (!res.ok) throw new Error("risposta non valida");
+        const data = await res.json();
+        renderizzaPostinoHeadlessState(data.postino_headless_attivo);
+        showFeedback(data.postino_headless_attivo ? "Dispatch Headless ATTIVATO" : "Dispatch Headless DISATTIVATO", "info");
+      } catch (err) {
+        showFeedback("Impossibile modificare lo stato del Dispatch Headless.", "error");
       }
     }
 
@@ -2269,6 +2327,7 @@
 
         renderizzaPendingBacheca(data.pending_per_agente, data.claude_session_id);
         renderizzaPraticheSospese(data.pratiche_sospese);
+        bachecaPostinoHeadlessAttivo = !!data.postino_headless_attivo;
         renderizzaPostinoState(data.postino_attivo);
         await eseguiRisvegliBacheca(progetto_id);
         const thread = data.thread || [];

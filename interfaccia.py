@@ -51,6 +51,11 @@ class PostinoToggleInput(BaseModel):
     attivo: bool
 
 
+class PostinoHeadlessToggleInput(BaseModel):
+    progetto_id: str
+    attivo: bool
+
+
 def postino_attivo(percorso_progetto: Path) -> bool:
     """Restituisce True se il postino automatico e' ATTIVO per il progetto.
     Richiede la presenza esplicita del file dati_locali/orchestrazione/POSTINO_ATTIVO.
@@ -77,6 +82,37 @@ def imposta_postino(percorso_progetto: Path, attivo: bool) -> bool:
             except Exception:
                 pass
     return postino_attivo(percorso_progetto)
+
+
+def postino_headless_attivo(percorso_progetto: Path) -> bool:
+    """Restituisce True se il DISPATCH HEADLESS (claude -p / codex exec reali, non
+    solo apertura finestra) e' attivo per il progetto. Sotto-funzione del postino
+    di base: opt-in separato, perche' spawna processi reali e non solo un
+    risveglio a finestra. Richiede la presenza esplicita del file
+    dati_locali/orchestrazione/POSTINO_HEADLESS_ATTIVO. Default: SPENTO
+    (fail-closed), indipendentemente da postino_attivo()."""
+    ph = percorso_progetto / "dati_locali" / "orchestrazione" / "POSTINO_HEADLESS_ATTIVO"
+    return ph.exists()
+
+
+def imposta_postino_headless(percorso_progetto: Path, attivo: bool) -> bool:
+    """Attiva o disattiva il dispatch headless creando o rimuovendo POSTINO_HEADLESS_ATTIVO."""
+    ph = percorso_progetto / "dati_locali" / "orchestrazione" / "POSTINO_HEADLESS_ATTIVO"
+    ph.parent.mkdir(parents=True, exist_ok=True)
+    if attivo:
+        if not ph.exists():
+            try:
+                ph.write_text("POSTINO_HEADLESS_ATTIVO=1\n", encoding="utf-8")
+            except Exception:
+                pass
+    else:
+        if ph.exists():
+            try:
+                ph.unlink()
+            except Exception:
+                pass
+    return postino_headless_attivo(percorso_progetto)
+
 
 def leggi_progetti() -> list[dict]:
     if not PERCORSO_PROGETTI.exists():
@@ -855,6 +891,7 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
             "flussi": leggi_flussi_dichiarati(),
             "claude_session_id": None,
             "postino_attivo": postino_attivo(p_path),
+            "postino_headless_attivo": postino_headless_attivo(p_path),
         }
 
     thread_ids = sorted({m["thread_id"] for m in messaggi})
@@ -917,6 +954,7 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
         "flussi": leggi_flussi_dichiarati(),
         "claude_session_id": _trova_ultima_sessione_claude(p_path),
         "postino_attivo": postino_attivo(p_path),
+        "postino_headless_attivo": postino_headless_attivo(p_path),
     }
 
 
@@ -949,10 +987,37 @@ def esegui_risvegli_bacheca(progetto_id: str = "orchestratore"):
     claude_session_id = _trova_ultima_sessione_claude(percorso_progetto)
     risvegli = []
     stato_modificato = False
+    dispatch_headless = postino_attivo(percorso_progetto) and postino_headless_attivo(percorso_progetto)
     for agente, items in pendenti.items():
         gia_notificati = set(notificati.get(agente, []))
         candidato = next((item for item in reversed(items) if item["id_messaggio"] not in gia_notificati), None)
         if candidato is None:
+            continue
+
+        # Dispatch headless: solo per capability provata (postino.COMANDI, oggi
+        # claude/codex) e col secondo toggle esplicito acceso - spawna un processo
+        # reale (claude -p / codex exec) invece di aprire una finestra. Gemini
+        # (manual_only) resta sempre sul percorso a finestra sotto, qualunque sia
+        # lo stato di questo toggle. autorizza()/registra_canale() sono interni a
+        # postino.dispatch(): non vanno duplicati qui.
+        if dispatch_headless and agente in postino.COMANDI:
+            esito_dispatch = postino.dispatch(percorso_progetto, agente, candidato["thread_id"])
+            if esito_dispatch["esito"] != "inviato":
+                risvegli.append({
+                    "agente": agente, "thread_id": candidato["thread_id"],
+                    "status": "bloccato", "motivo": esito_dispatch.get("motivo"),
+                })
+                continue
+            gia_notificati.add(candidato["id_messaggio"])
+            notificati[agente] = sorted(gia_notificati)
+            stato_modificato = True
+            risvegli.append({
+                "agente": agente,
+                "thread_id": candidato["thread_id"],
+                "id_messaggio": candidato["id_messaggio"],
+                "status": "headless",
+                "codice": esito_dispatch.get("codice"),
+            })
             continue
 
         if postino_attivo(percorso_progetto):
@@ -1040,6 +1105,17 @@ def toggle_postino(payload: PostinoToggleInput):
     progetto = _progetto_o_404(payload.progetto_id)
     stato = imposta_postino(Path(progetto["percorso"]), payload.attivo)
     return {"progetto_id": payload.progetto_id, "postino_attivo": stato}
+
+
+@app.post("/api/bacheca/postino/headless/toggle")
+def toggle_postino_headless(payload: PostinoHeadlessToggleInput):
+    """Attiva o disattiva il DISPATCH HEADLESS (claude -p / codex exec reali) per
+    un progetto. Sotto-interruttore del postino di base: se il postino generale e'
+    spento, il dispatch headless resta inerte anche con questo flag acceso (vedi
+    dispatch_headless in esegui_risvegli_bacheca)."""
+    progetto = _progetto_o_404(payload.progetto_id)
+    stato = imposta_postino_headless(Path(progetto["percorso"]), payload.attivo)
+    return {"progetto_id": payload.progetto_id, "postino_headless_attivo": stato}
 
 
 _last_mtimes: dict[str, float] = {}
