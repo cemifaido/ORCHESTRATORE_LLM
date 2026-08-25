@@ -127,6 +127,46 @@
       transform: none;
     }
 
+    
+    /* Language Switcher */
+    .lang-switcher {
+      display: inline-flex;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 2px;
+      gap: 3px;
+      align-items: center;
+    }
+
+    .lang-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      padding: 0.35rem 0.65rem;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.2s ease;
+      font-family: var(--font-body);
+    }
+
+    .lang-btn:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .lang-btn.active {
+      background: rgba(59, 130, 246, 0.25);
+      color: #93c5fd;
+      border-color: rgba(59, 130, 246, 0.5);
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+    }
+
     /* Summary Cards */
     .summary-grid {
       display: grid;
@@ -1113,13 +1153,17 @@
       <div class="brand">
         <span class="brand-logo">🛡️</span>
         <div>
-          <h1>Orchestratore LLM</h1>
-          <div class="brand-subtitle">Framework di lavoro multi-agente & watchdog</div>
+          <h1 data-i18n="header_title">Orchestratore LLM</h1>
+          <div class="brand-subtitle" data-i18n="header_subtitle">Framework di lavoro multi-agente & watchdog</div>
         </div>
       </div>
-      <div style="display:flex; gap:0.6rem;">
-        <button class="btn-refresh" id="refreshBtn">🔄 Aggiorna Dati</button>
-        <button class="btn-riavvia" id="riavviaBtn" title="Riavvia il processo del server per applicare modifiche al codice">⟲ Riavvia Sistema</button>
+      <div style="display:flex; gap:0.6rem; align-items:center;">
+        <div class="lang-switcher">
+          <button type="button" class="lang-btn active" id="langItBtn" onclick="impostaLingua('it')" title="Italiano">🇮🇹 IT</button>
+          <button type="button" class="lang-btn" id="langEnBtn" onclick="impostaLingua('en')" title="English">🇬🇧 EN</button>
+        </div>
+        <button class="btn-refresh" id="refreshBtn" data-i18n="btn_refresh">🔄 Aggiorna Dati</button>
+        <button class="btn-riavvia" id="riavviaBtn" data-i18n="btn_restart" data-i18n-title="btn_restart_title" title="Riavvia il processo del server per applicare modifiche al codice">⟲ Riavvia Sistema</button>
       </div>
     </header>
 
@@ -1128,15 +1172,15 @@
     <!-- Summary Statistics -->
     <div class="summary-grid">
       <div class="summary-card">
-        <span class="summary-title">Progetti Monitorati</span>
+        <span class="summary-title" data-i18n="card_projects">Progetti Monitorati</span>
         <span class="summary-val blue" id="valProjects">0</span>
       </div>
       <div class="summary-card">
-        <span class="summary-title">Eventi Registrati</span>
+        <span class="summary-title" data-i18n="card_events">Eventi Registrati</span>
         <span class="summary-val purple" id="valEvents">0</span>
       </div>
       <div class="summary-card">
-        <span class="summary-title">Tempo Elaborazione LLM Cumulato</span>
+        <span class="summary-title" data-i18n="card_latency">Tempo Elaborazione LLM Cumulato</span>
         <span class="summary-val rose" id="valLatency">0 ms</span>
       </div>
     </div>
@@ -1147,41 +1191,41 @@
       <div class="col-left">
         <!-- Monitored Projects -->
         <div class="widget">
-          <h2>📁 Progetti in Monitoraggio</h2>
-          <div id="projectsList">Caricamento progetti...</div>
+          <h2 data-i18n="widget_projects_title">📁 Progetti in Monitoraggio</h2>
+          <div id="projectsList" data-i18n="projects_loading">Caricamento progetti...</div>
         </div>
 
         <!-- Add Project Folder -->
         <div class="widget">
-          <h2>➕ Integra e Monitora Nuovo Progetto</h2>
+          <h2 data-i18n="widget_add_project_title">➕ Integra e Monitora Nuovo Progetto</h2>
           <form id="addProjectForm">
             <div class="form-group">
-              <label for="projNome">Nome Progetto</label>
-              <input type="text" id="projNome" required placeholder="es. Progetto Esempio">
+              <label for="projNome" data-i18n="label_proj_name">Nome Progetto</label>
+              <input type="text" id="projNome" required placeholder="es. Progetto Esempio" data-i18n-placeholder="placeholder_proj_name">
             </div>
             <div class="form-group">
-              <label for="projPercorso">Percorso Cartella (Assoluto)</label>
-              <input type="text" id="projPercorso" required placeholder="es. D:/Share/py/mio_progetto">
+              <label for="projPercorso" data-i18n="label_proj_path">Percorso Cartella (Assoluto)</label>
+              <input type="text" id="projPercorso" required placeholder="es. D:/Share/py/mio_progetto" data-i18n-placeholder="placeholder_proj_path">
             </div>
-            <button type="submit" class="btn-action">Esegui Integrazione & Monitoraggio</button>
+            <button type="submit" class="btn-action" data-i18n="btn_add_project">Esegui Integrazione & Monitoraggio</button>
           </form>
         </div>
 
         <!-- Trigger Sentinel Command -->
         <div class="widget">
-          <h2>⚡ Trigger Guardiano (Sentinella)</h2>
+          <h2 data-i18n="widget_sentinel_title">⚡ Trigger Guardiano (Sentinella)</h2>
           <form id="sentinelForm">
             <div class="form-group">
-              <label for="sentinelProj">Seleziona Progetto</label>
+              <label for="sentinelProj" data-i18n="label_select_proj">Seleziona Progetto</label>
               <select id="sentinelProj" required></select>
             </div>
             <div class="form-group">
-              <label for="sentinelCmd">Comando Whitelistato</label>
+              <label for="sentinelCmd" data-i18n="label_whitelisted_cmd">Comando Whitelistato</label>
               <select id="sentinelCmd" required>
-                <option value="">Seleziona prima un progetto...</option>
+                <option value="" data-i18n="option_select_proj_first">Seleziona prima un progetto...</option>
               </select>
             </div>
-            <button type="submit" class="btn-action">Lancia Gate Esecuzione</button>
+            <button type="submit" class="btn-action" data-i18n="btn_run_sentinel">Lancia Gate Esecuzione</button>
           </form>
           <div class="console-out" id="consoleOutput"></div>
         </div>
@@ -1191,14 +1235,14 @@
       <div class="col-right">
         <!-- LLM Processing Time per Agent -->
         <div class="widget">
-          <h2>⏱️ Tempo Elaborazione LLM Cumulato per Agente</h2>
+          <h2 data-i18n="widget_latency_title">⏱️ Tempo Elaborazione LLM Cumulato per Agente</h2>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Agente</th>
-                  <th>Tempo cumulato</th>
-                  <th>Interazioni</th>
+                  <th data-i18n="th_agent">Agente</th>
+                  <th data-i18n="th_cum_time">Tempo cumulato</th>
+                  <th data-i18n="th_interactions">Interazioni</th>
                 </tr>
               </thead>
               <tbody id="latenzaPerAgenteBody">
@@ -1210,7 +1254,7 @@
 
         <!-- Agent Runs and Rework Chart -->
         <div class="widget">
-          <h2>📊 Esecuzioni e Rework per Agente</h2>
+          <h2 data-i18n="widget_runs_title">📊 Esecuzioni e Rework per Agente</h2>
           <div class="chart-container">
             <canvas id="runsChart"></canvas>
           </div>
@@ -1218,7 +1262,7 @@
 
         <!-- Agent Work Share by Architectural Layer -->
         <div class="widget">
-          <h2>📊 Quota Lavoro per Agente (DB / Backend / Frontend)</h2>
+          <h2 data-i18n="widget_workshare_title">📊 Quota Lavoro per Agente (DB / Backend / Frontend)</h2>
           <div class="chart-container">
             <canvas id="livelloChart"></canvas>
           </div>
@@ -1228,9 +1272,9 @@
 
     <!-- Replay di un commit reale: solo visualizzazione, nessuna chiamata API/costo -->
     <div class="widget">
-      <h2>🎬 Replay di un Commit Reale</h2>
+      <h2 data-i18n="widget_replay_title">🎬 Replay di un Commit Reale</h2>
       <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1.5rem;">
-        Scegli un progetto e un commit reale per rivedere, animata sul diagramma, la sequenza di eventi che lo hanno preceduto.
+        <span data-i18n="replay_desc">Scegli un progetto e un commit reale per rivedere, animata sul diagramma, la sequenza di eventi che lo hanno preceduto.</span>
       </p>
 
       <div class="handoff-container">
@@ -1238,7 +1282,7 @@
         <div class="handoff-controls" style="flex-wrap: wrap;">
           <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1rem;">
             <div class="form-group" style="margin-bottom:0;">
-              <label for="realProjSelect">Progetto</label>
+              <label for="realProjSelect" data-i18n="label_proj">Progetto</label>
               <select id="realProjSelect" style="width:100%;"></select>
             </div>
           </div>
@@ -1254,7 +1298,7 @@
 
           <!-- Replay di un commit reale (dati storici, nessuna chiamata dal vivo) -->
           <div style="width: 100%; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem; margin-top: 1rem; display:flex; gap:0.8rem; align-items:center; flex-wrap:wrap;">
-            <label for="commitSelect" style="white-space:nowrap; font-weight:600;">Rivivi un commit reale:</label>
+            <label for="commitSelect" style="white-space:nowrap; font-weight:600;" data-i18n="label_relive_commit">Rivivi un commit reale:</label>
             <div class="custom-commit-picker" id="customCommitPicker">
               <div class="custom-commit-trigger" id="customCommitTrigger" tabindex="0">
                 <div id="customCommitTriggerContent" style="flex:1; min-width:0;">
@@ -1270,7 +1314,7 @@
               <div class="custom-commit-dropdown" id="customCommitDropdown"></div>
               <select id="commitSelect" style="display:none;"></select>
             </div>
-            <button id="replayCommitBtn" class="btn" style="background: rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.4); color:#c4b5fd; height:fit-content; align-self:center;">🎬 Riproduci</button>
+            <button id="replayCommitBtn" class="btn" style="background: rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.4); color:#c4b5fd; height:fit-content; align-self:center;" data-i18n="btn_play">🎬 Riproduci</button>
           </div>
           <!-- Git Commit Info Card (Visualizzatore Metadati) -->
           <div id="commitCard" class="commit-card">
@@ -1319,31 +1363,31 @@
               <circle cx="130" cy="150" r="32" />
               <circle cx="130" cy="150" r="38" class="node-ring" />
               <text x="130" y="157" class="agent-icon" style="fill: var(--color-umano);">H</text>
-              <text x="130" y="198" class="agent-label">Umano</text>
+              <text id="label_node_umano" x="130" y="198" class="agent-label">Umano</text>
             </g>
             <g id="node_gemini" class="agent-node" style="transform-origin: 265px 65px;">
               <circle cx="265" cy="65" r="32" />
               <circle cx="265" cy="65" r="38" class="node-ring" />
               <text x="265" y="72" class="agent-icon" style="fill: var(--color-gemini);">G</text>
-              <text x="265" y="113" class="agent-label">Gemini</text>
+              <text id="label_node_gemini" x="265" y="113" class="agent-label">Gemini</text>
             </g>
             <g id="node_claude" class="agent-node" style="transform-origin: 535px 65px;">
               <circle cx="535" cy="65" r="32" />
               <circle cx="535" cy="65" r="38" class="node-ring" />
               <text x="535" y="72" class="agent-icon" style="fill: var(--color-claude);">C</text>
-              <text x="535" y="113" class="agent-label">Claude</text>
+              <text id="label_node_claude" x="535" y="113" class="agent-label">Claude</text>
             </g>
             <g id="node_codex" class="agent-node" style="transform-origin: 535px 235px;">
               <circle cx="535" cy="235" r="32" />
               <circle cx="535" cy="235" r="38" class="node-ring" />
               <text x="535" y="242" class="agent-icon" style="fill: var(--color-codex);">CX</text>
-              <text x="535" y="283" class="agent-label">Codex</text>
+              <text id="label_node_codex" x="535" y="283" class="agent-label">Codex</text>
             </g>
             <g id="node_locale" class="agent-node" style="transform-origin: 265px 235px;">
               <circle cx="265" cy="235" r="32" />
               <circle cx="265" cy="235" r="38" class="node-ring" />
               <text x="265" y="242" class="agent-icon" style="fill: var(--color-locale);">L</text>
-              <text x="265" y="283" class="agent-label">Locale</text>
+              <text id="label_node_locale" x="265" y="283" class="agent-label">Locale</text>
             </g>
 
             <!-- Nodo Centrale: Gestore Squadra (Sistema) -->
@@ -1351,17 +1395,17 @@
               <circle cx="400" cy="150" r="34" />
               <circle cx="400" cy="150" r="40" class="node-ring" />
               <text x="400" y="156" class="agent-icon" style="fill: var(--color-sistema); font-size:16px;">GS</text>
-              <text x="400" y="198" class="agent-label" style="font-weight:700;">Gestore Squadra</text>
+              <text id="label_node_sistema" x="400" y="198" class="agent-label" style="font-weight:700;">Gestore Squadra</text>
             </g>
           </svg>
         </div>
 
         <!-- Box Console Handoff con sfondo Matrix Rain -->
         <div class="handoff-console" style="position: relative;">
-          <div class="console-title" style="position: relative; z-index: 3;">💬 Registro di Cooperazione & Messaggi</div>
+          <div class="console-title" style="position: relative; z-index: 3;" data-i18n="console_coop_title">💬 Registro di Cooperazione & Messaggi</div>
           <canvas id="matrixCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; opacity: 0.12; pointer-events: none;"></canvas>
           <div id="handoffLogs" class="console-body" style="position: relative; z-index: 2; background: transparent;">
-            <div style="color: var(--text-muted);">In attesa. Compila il form e clicca "Avvia" per lanciare un compito reale...</div>
+            <div style="color: var(--text-muted);" id="consoleInitialWaiting" data-i18n="console_initial_waiting">In attesa. Scegli un commit e clicca "Riproduci" per rivivere la sequenza...</div>
           </div>
         </div>
       </div>
@@ -1369,9 +1413,9 @@
 
     <!-- Quota Lavoro per Livello Architetturale (anelli concentrici, decorativo) -->
     <div class="widget">
-      <h2>🎯 Quota Lavoro per Livello (Database · Backend · Frontend)</h2>
+      <h2 data-i18n="widget_rings_title">🎯 Quota Lavoro per Livello (Database · Backend · Frontend)</h2>
       <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
-        Anello interno = Database, anello centrale = Backend, anello esterno = Frontend. Ogni anello è diviso per agente (stesso colore del diagramma sopra). Vista decorativa: per confrontare i valori con precisione usa il grafico a barre "Quota Lavoro per Agente".
+        <span data-i18n="rings_desc">Anello interno = Database, anello centrale = Backend, anello esterno = Frontend. Ogni anello è diviso per agente (stesso colore del diagramma sopra). Vista decorativa: per confrontare i valori con precisione usa il grafico a barre "Quota Lavoro per Agente".</span>
       </p>
       <div style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap; justify-content:center;">
         <svg id="livelloRingsSvg" width="220" height="220" viewBox="0 0 200 200"></svg>
@@ -1381,25 +1425,25 @@
 
     <!-- Bacheca Multi-Agente (solo visualizzazione - docs/RFC_BACHECA_MULTIAGENTE.md §9.5) -->
     <div class="widget">
-      <h2>🗂️ Bacheca Multi-Agente</h2>
+      <h2 data-i18n="widget_bacheca_title">🗂️ Bacheca Multi-Agente</h2>
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.8rem; margin-bottom:1rem;">
         <div class="form-group" style="max-width:320px; margin:0;">
-          <label for="bachecaProjSelect">Progetto</label>
+          <label for="bachecaProjSelect" data-i18n="label_proj">Progetto</label>
           <select id="bachecaProjSelect" style="width:100%;"></select>
         </div>
         <div id="bachecaPostinoControl" style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
-          <span style="font-size:0.85rem; color:var(--text-muted); font-weight:600;">📬 Postino Automatico:</span>
+          <span style="font-size:0.85rem; color:var(--text-muted); font-weight:600;" data-i18n="label_postino_auto">📬 Postino Automatico:</span>
           <button type="button" id="bachecaPostinoBtn" class="btn" style="padding:0.35rem 0.8rem; font-size:0.8rem; font-weight:600; border-radius:6px; transition:all 0.2s ease;">
             🔴 DISATTIVATO
           </button>
-          <span style="font-size:0.85rem; color:var(--text-muted); font-weight:600; margin-left:0.6rem;" title="Fa rispondere davvero claude/codex in background (claude -p / codex exec), senza aprire finestre. Richiede il Postino Automatico attivo. Gemini non e' supportato (resta a finestra).">🤖 Dispatch Headless:</span>
+          <span style="font-size:0.85rem; color:var(--text-muted); font-weight:600; margin-left:0.6rem;" title="Fa rispondere davvero claude/codex in background (claude -p / codex exec), senza aprire finestre. Richiede il Postino Automatico attivo. Gemini non e' supportato (resta a finestra)." data-i18n="label_headless_dispatch" data-i18n-title="label_headless_dispatch_title">🤖 Dispatch Headless:</span>
           <button type="button" id="bachecaPostinoHeadlessBtn" class="btn" style="padding:0.35rem 0.8rem; font-size:0.8rem; font-weight:600; border-radius:6px; transition:all 0.2s ease;">
             🔴 DISATTIVATO
           </button>
         </div>
       </div>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem; flex-wrap:wrap; gap:0.5rem;">
-        <h3 style="font-size:0.95rem; color:var(--text-muted); margin:0;">Messaggi pendenti per agente</h3>
+        <h3 style="font-size:0.95rem; color:var(--text-muted); margin:0;" data-i18n="header_pending_agents">Messaggi pendenti per agente</h3>
       </div>
       <div id="bachecaPendingAgenti" class="bacheca-pending-grid">
         <div style="color:var(--text-muted); font-size:0.85rem;">Caricamento...</div>
@@ -1408,61 +1452,61 @@
 
       <!-- Widget Pratiche Sospese & Checkpoint v2 -->
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1.2rem; margin-bottom:0.6rem;">
-        <h3 style="font-size:0.95rem; color:var(--text-muted); margin:0;">⏸️ Pratiche Sospese &amp; Checkpoint v2 (Weft)</h3>
+        <h3 style="font-size:0.95rem; color:var(--text-muted); margin:0;" data-i18n="header_suspended_tasks">⏸️ Pratiche Sospese &amp; Checkpoint v2 (Weft)</h3>
       </div>
       <div id="bachecaPraticheSospese" class="pratiche-sospese-grid">
-        <div style="color:var(--text-muted); font-size:0.85rem;">Nessuna pratica sospesa in attesa.</div>
+        <div style="color:var(--text-muted); font-size:0.85rem;" data-i18n="no_suspended_tasks">Nessuna pratica sospesa in attesa.</div>
       </div>
 
       <div style="display:flex; align-items:center; gap:0.8rem; margin-bottom:0.6rem;">
-        <h3 style="font-size:0.95rem; color:var(--text-muted); margin:0;">Attività live</h3>
-        <button id="bachecaFeedToggle" class="btn" style="background: rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#34d399; padding:0.3rem 0.7rem; font-size:0.78rem;">▶ Avvia</button>
+        <h3 style="font-size:0.95rem; color:var(--text-muted); margin:0;" data-i18n="header_live_activity">Attività live</h3>
+        <button id="bachecaFeedToggle" class="btn" style="background: rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#34d399; padding:0.3rem 0.7rem; font-size:0.78rem;" data-i18n="btn_feed_start">▶ Avvia</button>
       </div>
       <div class="handoff-console" style="height:240px; margin-bottom:1.5rem;">
         <div id="bachecaFeed" class="console-body" style="background: transparent;">
-          <div class="handoff-msg system">Live ferma. Premi "▶ Avvia" per seguire l'attività in tempo reale (con qualche secondo di ritardo).</div>
+          <div class="handoff-msg system" id="feedPlaceholder" data-i18n="feed_initial_paused">Live ferma. Premi "▶ Avvia" per seguire l'attività in tempo reale (con qualche secondo di ritardo).</div>
         </div>
       </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Thread</th>
-              <th>Stato</th>
-              <th>Fase Workflow (compito_standard)</th>
-              <th>Ultimo mittente</th>
-              <th>Tipo</th>
-              <th>Aspetta</th>
-              <th>Verdetto umano</th>
+              <th data-i18n="th_thread">Thread</th>
+              <th data-i18n="th_status">Stato</th>
+              <th data-i18n="th_phase">Fase Workflow (compito_standard)</th>
+              <th data-i18n="th_last_sender">Ultimo mittente</th>
+              <th data-i18n="th_type">Tipo</th>
+              <th data-i18n="th_awaits">Aspetta</th>
+              <th data-i18n="th_human_verdict">Verdetto umano</th>
               <th></th>
             </tr>
           </thead>
           <tbody id="bachecaBody">
-            <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Caricamento bacheca...</td></tr>
+            <tr><td colspan="8" style="text-align: center; color: var(--text-muted);" data-i18n="bacheca_loading">Caricamento bacheca...</td></tr>
           </tbody>
         </table>
       </div>
-      <h3 style="font-size:0.95rem; color:var(--text-muted); margin-top:1.5rem;">File attualmente in carico</h3>
+      <h3 style="font-size:0.95rem; color:var(--text-muted); margin-top:1.5rem;" data-i18n="header_locked_files">File attualmente in carico</h3>
       <div id="bachecaOccupati" style="font-size:0.85rem; color:var(--text-muted);">Nessuno.</div>
       <div id="bachecaDettaglio" style="margin-top:1.5rem;"></div>
     </div>
 
     <!-- Combined Event Timeline -->
     <div class="widget">
-      <h2>⏳ Timeline degli Eventi Aggregati</h2>
+      <h2 data-i18n="widget_timeline_title">⏳ Timeline degli Eventi Aggregati</h2>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Timestamp</th>
-              <th>Progetto</th>
-              <th>Compito</th>
-              <th>Agente</th>
-              <th>Tipo</th>
-              <th>Stato</th>
-              <th>Gate</th>
-              <th>Umano</th>
-              <th>Note</th>
+              <th data-i18n="th_timestamp">Timestamp</th>
+              <th data-i18n="th_project">Progetto</th>
+              <th data-i18n="th_task">Compito</th>
+              <th data-i18n="th_agent">Agente</th>
+              <th data-i18n="th_type">Tipo</th>
+              <th data-i18n="th_status">Stato</th>
+              <th data-i18n="th_gate">Gate</th>
+              <th data-i18n="th_human">Umano</th>
+              <th data-i18n="th_notes">Note</th>
             </tr>
           </thead>
           <tbody id="timelineBody">
@@ -1473,14 +1517,456 @@
         </table>
       </div>
       <div style="display:flex; justify-content:center; align-items:center; gap:1rem; margin-top:1rem;">
-        <button id="timelinePrevBtn" class="btn" style="background: rgba(255,255,255,0.08); border: 1px solid var(--card-border); color: var(--text-main); padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">‹ Precedente</button>
+        <button id="timelinePrevBtn" class="btn" style="background: rgba(255,255,255,0.08); border: 1px solid var(--card-border); color: var(--text-main); padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;" data-i18n="btn_prev">‹ Precedente</button>
         <span id="timelinePageInfo" style="color: var(--text-muted); font-size:0.85rem;">Pagina 1</span>
-        <button id="timelineNextBtn" class="btn" style="background: rgba(255,255,255,0.08); border: 1px solid var(--card-border); color: var(--text-main); padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">Successiva ›</button>
+        <button id="timelineNextBtn" class="btn" style="background: rgba(255,255,255,0.08); border: 1px solid var(--card-border); color: var(--text-main); padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;" data-i18n="btn_next">Successiva ›</button>
       </div>
     </div>
   </div>
 
   <script>
+    const I18N = {
+      it: {
+        // Header & Global
+        header_title: "Orchestratore LLM",
+        header_subtitle: "Framework di lavoro multi-agente & watchdog",
+        btn_refresh: "🔄 Aggiorna Dati",
+        btn_restart: "⟲ Riavvia Sistema",
+        btn_restart_title: "Riavvia il processo del server per applicare modifiche al codice",
+        restart_confirm: "Riavviare il processo del server? La dashboard sarà irraggiungibile per qualche secondo.",
+        restart_in_progress: "⟲ Riavvio in corso...",
+        restart_requested: "Riavvio richiesto: attendo che il nuovo processo sia pronto...",
+        restart_timeout: "Il server non ha risposto entro 30s dopo il riavvio: controllalo manualmente.",
+        loading_data_error: "Errore nel caricamento dei dati: ",
+
+        // Summary cards
+        card_projects: "Progetti Monitorati",
+        card_events: "Eventi Registrati",
+        card_latency: "Tempo Elaborazione LLM Cumulato",
+
+        // Left Column: Progetti
+        widget_projects_title: "📁 Progetti in Monitoraggio",
+        projects_loading: "Caricamento progetti...",
+        projects_empty: "Nessun progetto registrato.",
+        project_active_modules: "Moduli attivi: ",
+        project_llm_time: "Tempo LLM: ",
+        project_rework: "Rework: ",
+        project_error: "⚠ Registro non leggibile: ",
+
+        // Left Column: Aggiungi Progetto
+        widget_add_project_title: "➕ Integra e Monitora Nuovo Progetto",
+        label_proj_name: "Nome Progetto",
+        placeholder_proj_name: "es. Progetto Esempio",
+        label_proj_path: "Percorso Cartella (Assoluto)",
+        placeholder_proj_path: "es. D:/Share/py/mio_progetto",
+        btn_add_project: "Esegui Integrazione & Monitoraggio",
+        project_added_success: 'Progetto "{nome}" integrato e monitorato con successo!',
+
+        // Left Column: Sentinella
+        widget_sentinel_title: "⚡ Trigger Guardiano (Sentinella)",
+        label_select_proj: "Seleziona Progetto",
+        label_whitelisted_cmd: "Comando Whitelistato",
+        option_select_proj_first: "Seleziona prima un progetto...",
+        option_no_cmd: "Nessun comando configurato",
+        btn_run_sentinel: "Lancia Gate Esecuzione",
+        sentinel_starting: 'Avvio sentinella per comando "{cmd}" su progetto "{proj}"...\n',
+        sentinel_outcome: ">> Esito sentinella: ",
+        sentinel_return_code: "codice ritornato: ",
+        sentinel_local_triage: "Triage locale: ",
+        sentinel_exec_error: "Errore esecuzione: ",
+        sentinel_finished: 'Comando "{cmd}" terminato con esito: {gate}',
+
+        // Right Column: Latenze & Grafici
+        widget_latency_title: "⏱️ Tempo Elaborazione LLM Cumulato per Agente",
+        th_agent: "Agente",
+        th_cum_time: "Tempo cumulato",
+        th_interactions: "Interazioni",
+        latency_no_data: "Nessun dato disponibile.",
+        widget_runs_title: "📊 Esecuzioni e Rework per Agente",
+        chart_runs_label: "Esecuzioni",
+        chart_rework_label: "Rework",
+        widget_workshare_title: "📊 Quota Lavoro per Agente (DB / Backend / Frontend)",
+        chart_db_label: "Database",
+        chart_backend_label: "Backend",
+        chart_frontend_label: "Frontend",
+
+        // Replay Commit Reale
+        widget_replay_title: "🎬 Replay di un Commit Reale",
+        replay_desc: "Scegli un progetto e un commit reale per rivedere, animata sul diagramma, la sequenza di eventi che lo hanno preceduto.",
+        label_proj: "Progetto",
+        label_relive_commit: "Rivivi un commit reale:",
+        btn_play: "🎬 Riproduci",
+        commit_select_placeholder: "Seleziona un commit...",
+        commit_none_avail: "Nessun commit disponibile",
+        commit_load_fail: "Impossibile caricare i commit",
+        commit_author_label: "Autore: ",
+        interaction_singular: "1 interazione collegata",
+        interaction_plural: "{count} interazioni collegate",
+        interaction_short_singular: "1 interazione",
+        interaction_short_plural: "{count} interazioni",
+        select_commit_to_play: "Seleziona un commit da riprodurre.",
+        replay_retrieving_events: "<b>[Sistema]</b> Recupero gli eventi reali del commit selezionato...",
+        replay_no_events: "Nessun evento registrato nella finestra di questo commit.",
+        replay_starting: "<b>[Sistema]</b> Replay di {count} eventi reali di questo commit...",
+        replay_complete_header: "📊 REPLAY COMPLETATO — DATI REALI DI QUESTO COMMIT",
+        replay_free_checks: "dei controlli di verifica gestiti GRATIS dal modello locale",
+        replay_free: "gratis",
+        replay_paid: "a pagamento",
+        replay_est_savings: "Stima risparmio: ",
+        replay_no_savings_checks: "Nessun controllo di verifica in questo commit da cui stimare un risparmio.",
+
+        // SVG Diagram Nodes
+        node_umano: "Umano",
+        node_gemini: "Gemini",
+        node_claude: "Claude",
+        node_codex: "Codex",
+        node_locale: "Locale",
+        node_sistema: "Gestore Squadra",
+
+        // Console Handoff
+        console_coop_title: "💬 Registro di Cooperazione & Messaggi",
+        console_initial_waiting: "In attesa. Scegli un commit e clicca \"Riproduci\" per rivivere la sequenza...",
+
+        // Anelli Livello
+        widget_rings_title: "🎯 Quota Lavoro per Livello (Database · Backend · Frontend)",
+        rings_desc: "Anello interno = Database, anello centrale = Backend, anello esterno = Frontend. Ogni anello è diviso per agente (stesso colore del diagramma sopra). Vista decorativa: per confrontare i valori con precisione usa il grafico a barre \"Quota Lavoro per Agente\".",
+        ring_db: "Database (centro)",
+        ring_backend: "Backend (centrale)",
+        ring_frontend: "Frontend (superficie)",
+
+        // Bacheca
+        widget_bacheca_title: "🗂️ Bacheca Multi-Agente",
+        label_postino_auto: "📬 Postino Automatico:",
+        label_headless_dispatch: "🤖 Dispatch Headless:",
+        label_headless_dispatch_title: "Fa rispondere davvero claude/codex in background (claude -p / codex exec), senza aprire finestre. Richiede il Postino Automatico attivo. Gemini non e' supportato (resta a finestra).",
+        status_active: "🟢 ATTIVO",
+        status_disabled: "🔴 DISATTIVATO",
+        postino_auto_on_title: "Postino Automatico attivo (risveglio automatico su nuovi messaggi). Clicca per disattivare.",
+        postino_auto_off_title: "Postino Automatico disattivato (file POSTINO_ATTIVO assente). Clicca per attivare.",
+        headless_on_title: "Dispatch headless attivo: claude/codex rispondono in background su nuovi messaggi, senza aprire finestre. Clicca per disattivare.",
+        headless_off_title: "Dispatch headless disattivato: il postino apre solo la finestra dell'agente, va incollato e inviato a mano. Clicca per attivare.",
+        headless_requires_postino: "Richiede prima il Postino Automatico attivo.",
+        postino_activated_msg: "Postino Automatico ATTIVATO",
+        postino_deactivated_msg: "Postino Automatico DISATTIVATO",
+        headless_activated_msg: "Dispatch Headless ATTIVATO",
+        headless_deactivated_msg: "Dispatch Headless DISATTIVATO",
+        activate_postino_first: "Attiva prima il Postino Automatico.",
+        header_pending_agents: "Messaggi pendenti per agente",
+        btn_wake: "⚡ Risveglia",
+        btn_wake_title: "Apre l'agente e copia il prompt di risveglio",
+        btn_copy_cmd: "Copia comando",
+        mode_hook_active: "hook attivo",
+        mode_manual_pull: "pull manuale",
+        header_suspended_tasks: "⏸️ Pratiche Sospese & Checkpoint v2 (Weft)",
+        no_suspended_tasks: "Nessuna pratica sospesa in attesa.",
+        actions_expected_by_outcome: "Azioni previste per esito:",
+        badge_awaits: "Attende: ",
+        label_human_verdict: "Verdetto Umano: ",
+        header_live_activity: "Attività live",
+        btn_feed_start: "▶ Avvia",
+        btn_feed_pause: "⏸ Ferma",
+        feed_initial_paused: "Live ferma. Premi \"▶ Avvia\" per seguire l'attività in tempo reale (con qualche secondo di ritardo).",
+        feed_started: "Live avviata, in attesa del prossimo aggiornamento (ogni 5s)...",
+        feed_proj_changed: "Progetto cambiato, in attesa di nuova attività...",
+        th_thread: "Thread",
+        th_status: "Stato",
+        th_phase: "Fase Workflow (compito_standard)",
+        th_last_sender: "Ultimo mittente",
+        th_type: "Tipo",
+        th_awaits: "Aspetta",
+        th_human_verdict: "Verdetto umano",
+        th_action: "",
+        bacheca_loading: "Caricamento bacheca...",
+        bacheca_no_threads: "Nessun thread in bacheca per questo progetto.",
+        btn_relive: "▶ Rivivi",
+        header_locked_files: "File attualmente in carico",
+        none_locked: "Nessuno.",
+        lease_expires: "lease",
+        lease_no_expiry: "senza scadenza",
+        conflict_banner: "⚠ {count} conflitto{suffix} segnalat{suffix2}, ancora da revisionare",
+        thread_replay_completed: "📬 REPLAY DEL THREAD COMPLETATO",
+        thread_loading: "Caricamento thread {id}...",
+        thread_load_error: "Impossibile caricare la cronologia del thread.",
+        wake_prompt_copied: "Prompt per {agente} copiato negli appunti. Se la chat si apre vuota, incolla e invia.",
+        wake_copy_fail: "Apro {agente}, ma non sono riuscito a copiare il prompt negli appunti.",
+        cmd_copied: "Comando copiato: ",
+        cmd_copy_fail: "Impossibile copiare il comando: ",
+        auto_wake_sent: "Risveglio automatico inviato per: ",
+
+        // Timeline Eventi
+        widget_timeline_title: "⏳ Timeline degli Eventi Aggregati",
+        th_timestamp: "Timestamp",
+        th_project: "Progetto",
+        th_task: "Compito",
+        th_gate: "Gate",
+        th_human: "Umano",
+        th_notes: "Note",
+        timeline_loading: "Caricamento eventi...",
+        timeline_empty: "Nessun evento in timeline.",
+        btn_prev: "‹ Precedente",
+        btn_next: "Successiva ›",
+        timeline_page_info: "Pagina {page} di {pages} ({total} eventi totali)",
+
+        // Workflow Stepper
+        step_task: "1. Compito",
+        step_gate: "2. Gate",
+        step_triage: "3. Triage",
+        step_log: "4. Registro",
+        step_human: "5. Umano",
+        step_action: "6. Azione",
+        step_close: "7. Chiusura"
+      },
+      en: {
+        // Header & Global
+        header_title: "LLM Orchestrator",
+        header_subtitle: "Multi-agent teamwork framework & watchdog",
+        btn_refresh: "🔄 Refresh Data",
+        btn_restart: "⟲ Restart System",
+        btn_restart_title: "Restart server process to apply code changes",
+        restart_confirm: "Restart server process? The dashboard will be unavailable for a few seconds.",
+        restart_in_progress: "⟲ Restart in progress...",
+        restart_requested: "Restart requested: waiting for new process to be ready...",
+        restart_timeout: "The server did not respond within 30s after restart: please check manually.",
+        loading_data_error: "Error loading data: ",
+
+        // Summary cards
+        card_projects: "Monitored Projects",
+        card_events: "Recorded Events",
+        card_latency: "Cumulative LLM Processing Time",
+
+        // Left Column: Projects
+        widget_projects_title: "📁 Monitored Projects",
+        projects_loading: "Loading projects...",
+        projects_empty: "No registered projects.",
+        project_active_modules: "Active modules: ",
+        project_llm_time: "LLM Time: ",
+        project_rework: "Rework: ",
+        project_error: "⚠ Audit log unreadable: ",
+
+        // Left Column: Add Project
+        widget_add_project_title: "➕ Integrate & Monitor New Project",
+        label_proj_name: "Project Name",
+        placeholder_proj_name: "e.g. My App Backend",
+        label_proj_path: "Folder Path (Absolute)",
+        placeholder_proj_path: "e.g. D:/Share/py/my_project",
+        btn_add_project: "Execute Integration & Monitoring",
+        project_added_success: 'Project "{nome}" integrated and monitored successfully!',
+
+        // Left Column: Sentinel
+        widget_sentinel_title: "⚡ Guardian Trigger (Sentinel)",
+        label_select_proj: "Select Project",
+        label_whitelisted_cmd: "Whitelisted Command",
+        option_select_proj_first: "Select a project first...",
+        option_no_cmd: "No command configured",
+        btn_run_sentinel: "Run Execution Gate",
+        sentinel_starting: 'Starting sentinel for command "{cmd}" on project "{proj}"...\n',
+        sentinel_outcome: ">> Sentinel outcome: ",
+        sentinel_return_code: "return code: ",
+        sentinel_local_triage: "Local triage: ",
+        sentinel_exec_error: "Execution error: ",
+        sentinel_finished: 'Command "{cmd}" finished with outcome: {gate}',
+
+        // Right Column: Latencies & Charts
+        widget_latency_title: "⏱️ Cumulative LLM Processing Time per Agent",
+        th_agent: "Agent",
+        th_cum_time: "Cumulative time",
+        th_interactions: "Interactions",
+        latency_no_data: "No data available.",
+        widget_runs_title: "📊 Executions and Rework per Agent",
+        chart_runs_label: "Executions",
+        chart_rework_label: "Rework",
+        widget_workshare_title: "📊 Work Share per Agent (DB / Backend / Frontend)",
+        chart_db_label: "Database",
+        chart_backend_label: "Backend",
+        chart_frontend_label: "Frontend",
+
+        // Replay Real Commit
+        widget_replay_title: "🎬 Real Commit Replay",
+        replay_desc: "Choose a project and a real commit to replay, animated on the diagram, the sequence of events that preceded it.",
+        label_proj: "Project",
+        label_relive_commit: "Replay a real commit:",
+        btn_play: "🎬 Play",
+        commit_select_placeholder: "Select a commit...",
+        commit_none_avail: "No commit available",
+        commit_load_fail: "Unable to load commits",
+        commit_author_label: "Author: ",
+        interaction_singular: "1 linked interaction",
+        interaction_plural: "{count} linked interactions",
+        interaction_short_singular: "1 interaction",
+        interaction_short_plural: "{count} interactions",
+        select_commit_to_play: "Select a commit to replay.",
+        replay_retrieving_events: "<b>[System]</b> Retrieving real events for selected commit...",
+        replay_no_events: "No events recorded in the window of this commit.",
+        replay_starting: "<b>[System]</b> Replaying {count} real events of this commit...",
+        replay_complete_header: "📊 REPLAY COMPLETED — REAL DATA FOR THIS COMMIT",
+        replay_free_checks: "of verification checks handled for FREE by local model",
+        replay_free: "free",
+        replay_paid: "paid",
+        replay_est_savings: "Estimated savings: ",
+        replay_no_savings_checks: "No verification checks in this commit to estimate savings from.",
+
+        // SVG Diagram Nodes
+        node_umano: "Human",
+        node_gemini: "Gemini",
+        node_claude: "Claude",
+        node_codex: "Codex",
+        node_locale: "Local",
+        node_sistema: "Team Manager",
+
+        // Console Handoff
+        console_coop_title: "💬 Cooperation Log & Messages",
+        console_initial_waiting: "Waiting. Select a commit and click \"Play\" to replay the sequence...",
+
+        // Concentric Rings
+        widget_rings_title: "🎯 Work Share per Architectural Layer (DB · Backend · Frontend)",
+        rings_desc: "Inner ring = Database, middle ring = Backend, outer ring = Frontend. Each ring is partitioned by agent (same color as diagram above). Decorative view: for precise comparison use the \"Work Share per Agent\" bar chart.",
+        ring_db: "Database (inner)",
+        ring_backend: "Backend (middle)",
+        ring_frontend: "Frontend (outer)",
+
+        // Board
+        widget_bacheca_title: "🗂️ Multi-Agent Board",
+        label_postino_auto: "📬 Automatic Postman:",
+        label_headless_dispatch: "🤖 Headless Dispatch:",
+        label_headless_dispatch_title: "Runs claude/codex autonomously in background (claude -p / codex exec) without opening windows. Requires Automatic Postman enabled. Gemini not supported (window only).",
+        status_active: "🟢 ACTIVE",
+        status_disabled: "🔴 DISABLED",
+        postino_auto_on_title: "Automatic Postman active (auto-wakes agents on new messages). Click to disable.",
+        postino_auto_off_title: "Automatic Postman disabled (POSTINO_ATTIVO file missing). Click to enable.",
+        headless_on_title: "Headless dispatch active: claude/codex respond in background on new messages, without opening windows. Click to disable.",
+        headless_off_title: "Headless dispatch disabled: postman opens agent window, must paste and send manually. Click to enable.",
+        headless_requires_postino: "Requires Automatic Postman to be active first.",
+        postino_activated_msg: "Automatic Postman ACTIVATED",
+        postino_deactivated_msg: "Automatic Postman DISABLED",
+        headless_activated_msg: "Headless Dispatch ACTIVATED",
+        headless_deactivated_msg: "Headless Dispatch DISABLED",
+        activate_postino_first: "Activate Automatic Postman first.",
+        header_pending_agents: "Pending messages per agent",
+        btn_wake: "⚡ Wake up",
+        btn_wake_title: "Opens the agent and copies the wakeup prompt",
+        btn_copy_cmd: "Copy command",
+        mode_hook_active: "hook active",
+        mode_manual_pull: "manual pull",
+        header_suspended_tasks: "⏸️ Suspended Tasks & Checkpoint v2 (Weft)",
+        no_suspended_tasks: "No suspended tasks pending.",
+        actions_expected_by_outcome: "Expected actions by outcome:",
+        badge_awaits: "Awaiting: ",
+        label_human_verdict: "Human Verdict: ",
+        header_live_activity: "Live activity",
+        btn_feed_start: "▶ Start",
+        btn_feed_pause: "⏸ Pause",
+        feed_initial_paused: "Live stopped. Press \"▶ Start\" to follow activity in real time (with a few seconds delay).",
+        feed_started: "Live started, waiting for next update (every 5s)...",
+        feed_proj_changed: "Project changed, waiting for new activity...",
+        th_thread: "Thread",
+        th_status: "Status",
+        th_phase: "Workflow Phase (compito_standard)",
+        th_last_sender: "Last sender",
+        th_type: "Type",
+        th_awaits: "Awaiting",
+        th_human_verdict: "Human verdict",
+        th_action: "",
+        bacheca_loading: "Loading board...",
+        bacheca_no_threads: "No threads on the board for this project.",
+        btn_relive: "▶ Replay",
+        header_locked_files: "Currently locked files",
+        none_locked: "None.",
+        lease_expires: "lease",
+        lease_no_expiry: "no expiry",
+        conflict_banner: "⚠ {count} conflict(s) reported, awaiting review",
+        thread_replay_completed: "📬 THREAD REPLAY COMPLETED",
+        thread_loading: "Loading thread {id}...",
+        thread_load_error: "Unable to load thread history.",
+        wake_prompt_copied: "Prompt for {agente} copied to clipboard. If chat opens empty, paste and send.",
+        wake_copy_fail: "Opening {agente}, but failed to copy prompt to clipboard.",
+        cmd_copied: "Command copied: ",
+        cmd_copy_fail: "Unable to copy command: ",
+        auto_wake_sent: "Automatic wakeup sent for: ",
+
+        // Event Timeline
+        widget_timeline_title: "⏳ Aggregated Event Timeline",
+        th_timestamp: "Timestamp",
+        th_project: "Project",
+        th_task: "Task",
+        th_gate: "Gate",
+        th_human: "Human",
+        th_notes: "Notes",
+        timeline_loading: "Loading events...",
+        timeline_empty: "No events in timeline.",
+        btn_prev: "‹ Previous",
+        btn_next: "Next ›",
+        timeline_page_info: "Page {page} of {pages} ({total} total events)",
+
+        // Workflow Stepper
+        step_task: "1. Task",
+        step_gate: "2. Gate",
+        step_triage: "3. Triage",
+        step_log: "4. Log",
+        step_human: "5. Human",
+        step_action: "6. Action",
+        step_close: "7. Close"
+      }
+    };
+
+    let linguaCorrente = localStorage.getItem("lingua_orchestratore") || "it";
+    if (linguaCorrente !== "it" && linguaCorrente !== "en") linguaCorrente = "it";
+
+    function t(key, params = {}, fallback = "") {
+      const dict = I18N[linguaCorrente] || I18N["it"];
+      let text = dict[key] !== undefined ? dict[key] : (I18N["it"][key] !== undefined ? I18N["it"][key] : (fallback || key));
+      if (typeof text === "string" && params && Object.keys(params).length > 0) {
+        Object.entries(params).forEach(([k, v]) => {
+          text = text.replaceAll(`{${k}}`, v);
+        });
+      }
+      return text;
+    }
+
+    function impostaLingua(lingua) {
+      if (lingua !== "it" && lingua !== "en") lingua = "it";
+      linguaCorrente = lingua;
+      localStorage.setItem("lingua_orchestratore", lingua);
+      document.documentElement.lang = lingua;
+
+      // Aggiorna stato pulsanti bandiera
+      const btnIt = document.getElementById("langItBtn");
+      const btnEn = document.getElementById("langEnBtn");
+      if (btnIt) btnIt.className = "lang-btn" + (lingua === "it" ? " active" : "");
+      if (btnEn) btnEn.className = "lang-btn" + (lingua === "en" ? " active" : "");
+
+      // Aggiorna tutti gli elementi con data-i18n
+      document.querySelectorAll("[data-i18n]").forEach(el => {
+        const key = el.getAttribute("data-i18n");
+        if (key) el.innerHTML = t(key);
+      });
+      document.querySelectorAll("[data-i18n-placeholder]").forEach(el => {
+        const key = el.getAttribute("data-i18n-placeholder");
+        if (key) el.placeholder = t(key);
+      });
+      document.querySelectorAll("[data-i18n-title]").forEach(el => {
+        const key = el.getAttribute("data-i18n-title");
+        if (key) el.title = t(key);
+      });
+
+      // Aggiorna etichette SVG diagramma radiale
+      const lUmano = document.getElementById("label_node_umano");
+      if (lUmano) lUmano.textContent = t("node_umano");
+      const lGemini = document.getElementById("label_node_gemini");
+      if (lGemini) lGemini.textContent = t("node_gemini");
+      const lClaude = document.getElementById("label_node_claude");
+      if (lClaude) lClaude.textContent = t("node_claude");
+      const lCodex = document.getElementById("label_node_codex");
+      if (lCodex) lCodex.textContent = t("node_codex");
+      const lLocale = document.getElementById("label_node_locale");
+      if (lLocale) lLocale.textContent = t("node_locale");
+      const lSistema = document.getElementById("label_node_sistema");
+      if (lSistema) lSistema.textContent = t("node_sistema");
+
+      // Re-render dinamico dei componenti per aggiornare testi generati via JS
+      aggiornaDati();
+      caricaCommit();
+    }
+
     let runsChartInstance = null;
     let livelloChartInstance = null;
     let progettiCorrenti = [];
@@ -1489,9 +1975,9 @@
     let bachecaFeedAttivo = false;
     let bachecaFeedIdsMostrati = new Set();
     const AGENTI_BACHECA_DASHBOARD = [
-      { id: "claude", label: "Claude", modo: "hook attivo" },
-      { id: "codex", label: "Codex", modo: "hook attivo" },
-      { id: "gemini", label: "Gemini", modo: "pull manuale" }
+      { id: "claude", label: "Claude", modoKey: "mode_hook_active" },
+      { id: "codex", label: "Codex", modoKey: "mode_hook_active" },
+      { id: "gemini", label: "Gemini", modoKey: "mode_manual_pull" }
     ];
 
     function escapeHtml(str) {
@@ -1504,14 +1990,12 @@
         .replace(/'/g, "&#039;");
     }
 
-    // Timestamp della bacheca sono salvati in UTC ('Z'); qui si mostrano in ora
-    // italiana (Europe/Rome gestisce da solo il cambio legale/solare, a differenza
-    // di un offset fisso +1/+2 hardcoded).
     function formattaOraIt(iso, soloOra = false) {
+      const locale = linguaCorrente === "it" ? "it-IT" : "en-US";
       const opzioni = soloOra
         ? { hour: "2-digit", minute: "2-digit", second: "2-digit" }
         : { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" };
-      return new Date(iso).toLocaleString("it-IT", { timeZone: "Europe/Rome", ...opzioni });
+      return new Date(iso).toLocaleString(locale, { timeZone: "Europe/Rome", ...opzioni });
     }
 
     async function copiaTestoNegliAppunti(testo) {
@@ -1575,23 +2059,23 @@
 
     document.addEventListener("DOMContentLoaded", async () => {
       initMatrixRain();
-      aggiornaDati();
+      impostaLingua(linguaCorrente);
 
-      // Aggiornamento automatico ogni 5 secondi (reattività stile Vue)
+      // Aggiornamento automatico ogni 5 secondi
       setInterval(aggiornaDati, 5000);
 
-      document.getElementById("refreshBtn").addEventListener("click", aggiornaDati);
-      document.getElementById("addProjectForm").addEventListener("submit", aggiungiProgetto);
-      document.getElementById("sentinelForm").addEventListener("submit", eseguiSentinella);
-      document.getElementById("riavviaBtn").addEventListener("click", riavviaSistema);
+      document.getElementById("refreshBtn")?.addEventListener("click", aggiornaDati);
+      document.getElementById("addProjectForm")?.addEventListener("submit", aggiungiProgetto);
+      document.getElementById("sentinelForm")?.addEventListener("submit", eseguiSentinella);
+      document.getElementById("riavviaBtn")?.addEventListener("click", riavviaSistema);
 
       // Listener per aggiornare la lista dei comandi quando cambia il progetto
-      document.getElementById("sentinelProj").addEventListener("change", aggiornaComandiSelect);
+      document.getElementById("sentinelProj")?.addEventListener("change", aggiornaComandiSelect);
 
       // Replay di un commit reale
       caricaCommit();
-      document.getElementById("realProjSelect").addEventListener("change", caricaCommit);
-      document.getElementById("commitSelect").addEventListener("change", aggiornaCommitCardSelezionato);
+      document.getElementById("realProjSelect")?.addEventListener("change", caricaCommit);
+      document.getElementById("commitSelect")?.addEventListener("change", aggiornaCommitCardSelezionato);
       document.getElementById("customCommitTrigger")?.addEventListener("click", toggleCustomCommitDropdown);
       document.addEventListener("click", (e) => {
         const picker = document.getElementById("customCommitPicker");
@@ -1599,29 +2083,29 @@
           chiudiCustomCommitDropdown();
         }
       });
-      document.getElementById("replayCommitBtn").addEventListener("click", avviaReplayCommit);
+      document.getElementById("replayCommitBtn")?.addEventListener("click", avviaReplayCommit);
 
       // Bacheca multi-agente
-      document.getElementById("bachecaProjSelect").addEventListener("change", () => {
+      document.getElementById("bachecaProjSelect")?.addEventListener("change", () => {
         document.getElementById("bachecaDettaglio").innerHTML = "";
         bachecaFeedIdsMostrati = new Set();
-        document.getElementById("bachecaFeed").innerHTML = '<div class="handoff-msg system">Progetto cambiato, in attesa di nuova attività...</div>';
+        document.getElementById("bachecaFeed").innerHTML = `<div class="handoff-msg system">${t("feed_proj_changed")}</div>`;
         caricaBacheca();
         if (bachecaFeedAttivo) caricaBachecaFeed();
       });
-      document.getElementById("bachecaFeedToggle").addEventListener("click", () => {
+      document.getElementById("bachecaFeedToggle")?.addEventListener("click", () => {
         bachecaFeedAttivo = !bachecaFeedAttivo;
         const btn = document.getElementById("bachecaFeedToggle");
         if (bachecaFeedAttivo) {
-          btn.textContent = "⏸ Ferma";
+          btn.textContent = t("btn_feed_pause");
           btn.style.background = "rgba(244,63,94,0.15)";
           btn.style.borderColor = "rgba(244,63,94,0.4)";
           btn.style.color = "#f87171";
-          document.getElementById("bachecaFeed").innerHTML = '<div class="handoff-msg system">Live avviata, in attesa del prossimo aggiornamento (ogni 5s)...</div>';
+          document.getElementById("bachecaFeed").innerHTML = `<div class="handoff-msg system">${t("feed_started")}</div>`;
           bachecaFeedIdsMostrati = new Set();
           caricaBachecaFeed();
         } else {
-          btn.textContent = "▶ Avvia";
+          btn.textContent = t("btn_feed_start");
           btn.style.background = "rgba(16,185,129,0.15)";
           btn.style.borderColor = "rgba(16,185,129,0.4)";
           btn.style.color = "#34d399";
@@ -1630,38 +2114,36 @@
       document.getElementById("bachecaPostinoBtn")?.addEventListener("click", togglePostinoAutomatico);
       document.getElementById("bachecaPostinoHeadlessBtn")?.addEventListener("click", togglePostinoHeadless);
 
-      // Paginazione della timeline eventi (50 record per pagina)
-      document.getElementById("timelinePrevBtn").addEventListener("click", () => {
+      // Paginazione della timeline eventi
+      document.getElementById("timelinePrevBtn")?.addEventListener("click", () => {
         if (paginaTimelineCorrente > 1) {
           paginaTimelineCorrente--;
           aggiornaDati();
         }
       });
-      document.getElementById("timelineNextBtn").addEventListener("click", () => {
+      document.getElementById("timelineNextBtn")?.addEventListener("click", () => {
         paginaTimelineCorrente++;
         aggiornaDati();
       });
-
-
     });
 
     async function riavviaSistema() {
-      if (!confirm("Riavviare il processo del server? La dashboard sarà irraggiungibile per qualche secondo.")) {
+      if (!confirm(t("restart_confirm"))) {
         return;
       }
       const btn = document.getElementById("riavviaBtn");
-      btn.disabled = true;
-      btn.textContent = "⟲ Riavvio in corso...";
-      showFeedback("Riavvio richiesto: attendo che il nuovo processo sia pronto...", "success");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = t("restart_in_progress");
+      }
+      showFeedback(t("restart_requested"), "success");
 
       try {
         await fetch("/api/sistema/riavvia", { method: "POST" });
       } catch (err) {
-        // Atteso: il processo termina subito dopo aver risposto, la fetch può fallire.
+        // Atteso: il processo termina subito
       }
 
-      // Il vecchio processo muore e un nuovo processo si avvia al suo posto sulla
-      // stessa porta: eseguo polling finché non risponde di nuovo, poi ricarico.
       const attendiRiavvio = async () => {
         for (let tentativo = 0; tentativo < 30; tentativo++) {
           await new Promise(r => setTimeout(r, 1000));
@@ -1672,18 +2154,21 @@
               return;
             }
           } catch (err) {
-            // server ancora giù: continua a tentare
+            // riprova
           }
         }
-        btn.disabled = false;
-        btn.textContent = "⟲ Riavvia Sistema";
-        showFeedback("Il server non ha risposto entro 30s dopo il riavvio: controllalo manualmente.", "error");
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = t("btn_restart");
+        }
+        showFeedback(t("restart_timeout"), "error");
       };
       attendiRiavvio();
     }
 
     function showFeedback(text, type = "success") {
       const banner = document.getElementById("feedbackBanner");
+      if (!banner) return;
       banner.textContent = text;
       banner.className = "banner " + type;
       banner.style.display = "block";
@@ -1695,31 +2180,33 @@
     async function aggiornaDati() {
       try {
         const res = await fetch(`/api/stato?pagina=${paginaTimelineCorrente}&per_pagina=50`);
-        if (!res.ok) throw new Error("Risposta del server non valida");
+        if (!res.ok) throw new Error(t("loading_data_error"));
         const data = await res.json();
 
         // 1. Stats globali
-        document.getElementById("valProjects").textContent = data.globali.progetti_totali;
-        document.getElementById("valEvents").textContent = data.globali.eventi_totali;
-        document.getElementById("valLatency").textContent = `${data.globali.latenza_totale.toLocaleString()} ms`;
+        const elProj = document.getElementById("valProjects");
+        if (elProj) elProj.textContent = data.globali.progetti_totali;
+        const elEv = document.getElementById("valEvents");
+        if (elEv) elEv.textContent = data.globali.eventi_totali;
+        const elLat = document.getElementById("valLatency");
+        if (elLat) elLat.textContent = `${data.globali.latenza_totale.toLocaleString()} ms`;
 
-        // Salva progetti correnti globalmente
-        progettiCorrenti = data.progetti;
+        progettiCorrenti = data.progetti || [];
 
-        // 2. Select Sentinella (Preserva il progetto selezionato)
+        // 2. Select Sentinella
         const sentinelSelect = document.getElementById("sentinelProj");
-        const prevSelectedProj = sentinelSelect.value;
-        
-        sentinelSelect.innerHTML = "";
-        data.progetti.forEach(p => {
-          const opt = document.createElement("option");
-          opt.value = p.id;
-          opt.textContent = p.nome;
-          sentinelSelect.appendChild(opt);
-        });
-
-        if (prevSelectedProj && data.progetti.some(p => p.id === prevSelectedProj)) {
-          sentinelSelect.value = prevSelectedProj;
+        if (sentinelSelect) {
+          const prevSelectedProj = sentinelSelect.value;
+          sentinelSelect.innerHTML = "";
+          data.progetti.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = p.nome;
+            sentinelSelect.appendChild(opt);
+          });
+          if (prevSelectedProj && data.progetti.some(p => p.id === prevSelectedProj)) {
+            sentinelSelect.value = prevSelectedProj;
+          }
         }
 
         // Popola anche realProjSelect del simulatore reale
@@ -1761,76 +2248,85 @@
 
         // 3. Progetti list
         const pList = document.getElementById("projectsList");
-        pList.innerHTML = "";
-        if (data.progetti.length === 0) {
-          pList.innerHTML = `<div style="text-align: center; color: var(--text-muted);">Nessun progetto registrato.</div>`;
-        } else {
-          data.progetti.forEach(p => {
-            const pStat = data.progetto_stats[p.id] || { esecuzioni: 0, latenza: 0, rework: 0 };
-            const card = document.createElement("div");
-            card.className = "project-card";
-            const avviso = pStat.errore
-              ? `<div class="project-error">⚠ Registro non leggibile: ${escapeHtml(pStat.errore)}</div>`
-              : "";
-            card.innerHTML = `
-              <div class="project-head">
-                <span class="project-name">${p.nome}</span>
-                <span class="badge">id: ${p.id}</span>
-              </div>
-              <div class="project-path">${p.percorso}</div>
-              <div class="project-meta-row">
-                <span>Moduli attivi: <b>${pStat.esecuzioni}</b></span>
-                <span>Tempo LLM: <b>${(pStat.latenza || 0).toLocaleString()} ms</b></span>
-                <span>Rework: <b class="badge rework">${pStat.rework}</b></span>
-              </div>
-              ${avviso}
-            `;
-            pList.appendChild(card);
-          });
+        if (pList) {
+          pList.innerHTML = "";
+          if (!data.progetti || data.progetti.length === 0) {
+            pList.innerHTML = `<div style="text-align: center; color: var(--text-muted);">${t("projects_empty")}</div>`;
+          } else {
+            data.progetti.forEach(p => {
+              const pStat = data.progetto_stats[p.id] || { esecuzioni: 0, latenza: 0, rework: 0 };
+              const card = document.createElement("div");
+              card.className = "project-card";
+              const avviso = pStat.errore
+                ? `<div class="project-error">${t("project_error")}${escapeHtml(pStat.errore)}</div>`
+                : "";
+              card.innerHTML = `
+                <div class="project-head">
+                  <span class="project-name">${escapeHtml(p.nome)}</span>
+                  <span class="badge">id: ${escapeHtml(p.id)}</span>
+                </div>
+                <div class="project-path">${escapeHtml(p.percorso)}</div>
+                <div class="project-meta-row">
+                  <span>${t("project_active_modules")}<b>${pStat.esecuzioni}</b></span>
+                  <span>${t("project_llm_time")}<b>${(pStat.latenza || 0).toLocaleString()} ms</b></span>
+                  <span>${t("project_rework")}<b class="badge rework">${pStat.rework}</b></span>
+                </div>
+                ${avviso}
+              `;
+              pList.appendChild(card);
+            });
+          }
         }
 
         // 4. Timeline
         const tBody = document.getElementById("timelineBody");
-        tBody.innerHTML = "";
-        if (data.eventi.length === 0) {
-          tBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">Nessun evento in timeline.</td></tr>`;
-        } else {
-          data.eventi.forEach(ev => {
-            const tr = document.createElement("tr");
-            tr.innerHTML = `
-              <td>${ev.timestamp || '—'}</td>
-              <td><span class="tag-project">${ev._progetto_nome || '—'}</span></td>
-              <td>${ev.id_compito || '—'}</td>
-              <td><span class="tag-agent">${ev.agente || '—'}</span></td>
-              <td>${ev.tipo_compito || '—'}</td>
-              <td><span class="status-badge ${ev.stato || ''}">${ev.stato || '—'}</span></td>
-              <td><span class="status-badge ${ev.esito_gate || ''}">${ev.esito_gate || '—'}</span></td>
-              <td><span class="status-badge ${ev.verdetto_umano || ''}">${ev.verdetto_umano || '—'}</span></td>
-              <td title="${ev.note || ''}">${ev.note || '—'}</td>
-            `;
-            tBody.appendChild(tr);
-          });
+        if (tBody) {
+          tBody.innerHTML = "";
+          if (!data.eventi || data.eventi.length === 0) {
+            tBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">${t("timeline_empty")}</td></tr>`;
+          } else {
+            data.eventi.forEach(ev => {
+              const tr = document.createElement("tr");
+              tr.innerHTML = `
+                <td>${ev.timestamp || '—'}</td>
+                <td><span class="tag-project">${ev._progetto_nome || '—'}</span></td>
+                <td>${ev.id_compito || '—'}</td>
+                <td><span class="tag-agent">${ev.agente || '—'}</span></td>
+                <td>${ev.tipo_compito || '—'}</td>
+                <td><span class="status-badge ${ev.stato || ''}">${ev.stato || '—'}</span></td>
+                <td><span class="status-badge ${ev.esito_gate || ''}">${ev.esito_gate || '—'}</span></td>
+                <td><span class="status-badge ${ev.verdetto_umano || ''}">${ev.verdetto_umano || '—'}</span></td>
+                <td title="${ev.note || ''}">${ev.note || '—'}</td>
+              `;
+              tBody.appendChild(tr);
+            });
+          }
         }
 
-        const paginazione = data.paginazione || { pagina: 1, pagine_totali: 1, eventi_totali: data.eventi.length };
+        const paginazione = data.paginazione || { pagina: 1, pagine_totali: 1, eventi_totali: (data.eventi ? data.eventi.length : 0) };
         paginaTimelineCorrente = paginazione.pagina;
-        document.getElementById("timelinePageInfo").textContent =
-          `Pagina ${paginazione.pagina} di ${paginazione.pagine_totali} (${paginazione.eventi_totali} eventi totali)`;
-        document.getElementById("timelinePrevBtn").disabled = paginazione.pagina <= 1;
-        document.getElementById("timelineNextBtn").disabled = paginazione.pagina >= paginazione.pagine_totali;
+        const elInfo = document.getElementById("timelinePageInfo");
+        if (elInfo) {
+          elInfo.textContent = t("timeline_page_info", { page: paginazione.pagina, pages: paginazione.pagine_totali, total: paginazione.eventi_totali });
+        }
+        const btnPrev = document.getElementById("timelinePrevBtn");
+        if (btnPrev) btnPrev.disabled = paginazione.pagina <= 1;
+        const btnNext = document.getElementById("timelineNextBtn");
+        if (btnNext) btnNext.disabled = paginazione.pagina >= paginazione.pagine_totali;
 
         // 5. Grafici
-        renderizzaGrafici(data.agente_stats, data.livello_stats || {});
+        renderizzaGrafici(data.agente_stats || {}, data.livello_stats || {});
         renderizzaAnelliLivello(data.livello_stats || {});
 
       } catch (err) {
-        showFeedback(`Errore nel caricamento dei dati: ${err.message}`, "error");
+        showFeedback(`${t("loading_data_error")}${err.message}`, "error");
       }
     }
 
     function aggiornaComandiSelect() {
       const projSelect = document.getElementById("sentinelProj");
       const cmdSelect = document.getElementById("sentinelCmd");
+      if (!projSelect || !cmdSelect) return;
       const selectedProjId = projSelect.value;
       const prevSelectedCmd = cmdSelect.value;
 
@@ -1840,7 +2336,7 @@
       if (!proj || !proj.comandi || proj.comandi.length === 0) {
         const opt = document.createElement("option");
         opt.value = "";
-        opt.textContent = "Nessun comando configurato";
+        opt.textContent = t("option_no_cmd");
         cmdSelect.appendChild(opt);
         return;
       }
@@ -1862,7 +2358,7 @@
       if (!tbody) return;
       const agenti = Object.keys(agenteStats).sort();
       if (agenti.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted);">Nessun dato disponibile.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted);">${t("latency_no_data")}</td></tr>`;
         return;
       }
       tbody.innerHTML = "";
@@ -1887,83 +2383,89 @@
 
       // Chart 2: Esecuzioni e Rework per agente
       if (runsChartInstance) runsChartInstance.destroy();
-      const ctxRuns = document.getElementById("runsChart").getContext("2d");
-      runsChartInstance = new Chart(ctxRuns, {
-        type: 'bar',
-        data: {
-          labels: agenti,
-          datasets: [
-            {
-              label: 'Esecuzioni',
-              data: esecuzioni,
-              backgroundColor: 'rgba(59, 130, 246, 0.75)',
-              borderColor: '#3b82f6',
-              borderWidth: 1
-            },
-            {
-              label: 'Rework',
-              data: rework,
-              backgroundColor: 'rgba(244, 63, 94, 0.75)',
-              borderColor: '#f43f5e',
-              borderWidth: 1
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } },
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', stepSize: 1 } }
+      const elRuns = document.getElementById("runsChart");
+      if (elRuns) {
+        const ctxRuns = elRuns.getContext("2d");
+        runsChartInstance = new Chart(ctxRuns, {
+          type: 'bar',
+          data: {
+            labels: agenti,
+            datasets: [
+              {
+                label: t("chart_runs_label"),
+                data: esecuzioni,
+                backgroundColor: 'rgba(59, 130, 246, 0.75)',
+                borderColor: '#3b82f6',
+                borderWidth: 1
+              },
+              {
+                label: t("chart_rework_label"),
+                data: rework,
+                backgroundColor: 'rgba(244, 63, 94, 0.75)',
+                borderColor: '#f43f5e',
+                borderWidth: 1
+              }
+            ]
           },
-          plugins: {
-            legend: {
-              labels: { color: '#f3f4f6', font: { family: 'Inter' } }
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } },
+              y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', stepSize: 1 } }
+            },
+            plugins: {
+              legend: {
+                labels: { color: '#f3f4f6', font: { family: 'Inter' } }
+              }
             }
           }
-        }
-      });
+        });
+      }
 
-      // Chart 3: quota di lavoro per agente, ripartita per livello architetturale
+      // Chart 3: quota di lavoro per agente
       const agentiLivello = Object.keys(livelloStats).sort();
       const datiDatabase = agentiLivello.map(a => livelloStats[a].database || 0);
       const datiBackend = agentiLivello.map(a => livelloStats[a].backend || 0);
       const datiFrontend = agentiLivello.map(a => livelloStats[a].frontend || 0);
 
       if (livelloChartInstance) livelloChartInstance.destroy();
-      const ctxLivello = document.getElementById("livelloChart").getContext("2d");
-      livelloChartInstance = new Chart(ctxLivello, {
-        type: 'bar',
-        data: {
-          labels: agentiLivello,
-          datasets: [
-            { label: 'Database', data: datiDatabase, backgroundColor: '#3987e5', borderColor: '#3987e5', borderWidth: 1 },
-            { label: 'Backend', data: datiBackend, backgroundColor: '#c98500', borderColor: '#c98500', borderWidth: 1 },
-            { label: 'Frontend', data: datiFrontend, backgroundColor: '#d55181', borderColor: '#d55181', borderWidth: 1 }
-          ]
-        },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            x: { stacked: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', stepSize: 1 } },
-            y: { stacked: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } }
+      const elLivello = document.getElementById("livelloChart");
+      if (elLivello) {
+        const ctxLivello = elLivello.getContext("2d");
+        livelloChartInstance = new Chart(ctxLivello, {
+          type: 'bar',
+          data: {
+            labels: agentiLivello,
+            datasets: [
+              { label: t("chart_db_label"), data: datiDatabase, backgroundColor: '#3987e5', borderColor: '#3987e5', borderWidth: 1 },
+              { label: t("chart_backend_label"), data: datiBackend, backgroundColor: '#c98500', borderColor: '#c98500', borderWidth: 1 },
+              { label: t("chart_frontend_label"), data: datiFrontend, backgroundColor: '#d55181', borderColor: '#d55181', borderWidth: 1 }
+            ]
           },
-          plugins: {
-            legend: {
-              labels: { color: '#f3f4f6', font: { family: 'Inter' } }
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { stacked: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', stepSize: 1 } },
+              y: { stacked: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af' } }
             },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  return `${context.dataset.label}: ${context.parsed.x}`;
+            plugins: {
+              legend: {
+                labels: { color: '#f3f4f6', font: { family: 'Inter' } }
+              },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    return `${context.dataset.label}: ${context.parsed.x}`;
+                  }
                 }
               }
             }
           }
-        }
-      });
+        });
+      }
     }
 
     const COLORI_AGENTE = { umano: '#10b981', gemini: '#00f0ff', claude: '#ff6b00', codex: '#bd00ff', locale: '#94a3b8' };
@@ -1979,9 +2481,9 @@
       const ns = "http://www.w3.org/2000/svg";
       const CX = 100, CY = 100, SPESSORE = 18, GAP = 2;
       const ANELLI = [
-        { livello: "database", raggio: 30, etichetta: "Database (centro)" },
-        { livello: "backend", raggio: 55, etichetta: "Backend (centrale)" },
-        { livello: "frontend", raggio: 80, etichetta: "Frontend (superficie)" }
+        { livello: "database", raggio: 30, etichettaKey: "ring_db" },
+        { livello: "backend", raggio: 55, etichettaKey: "ring_backend" },
+        { livello: "frontend", raggio: 80, etichettaKey: "ring_frontend" }
       ];
 
       ANELLI.forEach(anello => {
@@ -2017,7 +2519,7 @@
           segmento.setAttribute("transform", `rotate(-90 ${CX} ${CY})`);
 
           const titolo = document.createElementNS(ns, "title");
-          titolo.textContent = `${agente}: ${valore} (${anello.etichetta})`;
+          titolo.textContent = `${agente}: ${valore} (${t(anello.etichettaKey)})`;
           segmento.appendChild(titolo);
           svg.appendChild(segmento);
           offsetAccumulato += lunghezzaArco;
@@ -2029,7 +2531,8 @@
         riga.style.display = "flex";
         riga.style.alignItems = "center";
         riga.style.gap = "0.4rem";
-        riga.innerHTML = `<span style="width:10px; height:10px; border-radius:50%; background:${COLORI_AGENTE[agente]}; display:inline-block;"></span><span style="color:var(--text-muted);">${escapeHtml(agente)}</span>`;
+        const labelAgente = (agente === "umano" ? t("node_umano") : (agente === "locale" ? t("node_locale") : agente));
+        riga.innerHTML = `<span style="width:10px; height:10px; border-radius:50%; background:${COLORI_AGENTE[agente]}; display:inline-block;"></span><span style="color:var(--text-muted);">${escapeHtml(labelAgente)}</span>`;
         legenda.appendChild(riga);
       });
     }
@@ -2047,9 +2550,9 @@
         });
         const data = await res.json();
         if (!res.ok) {
-          throw new Error(data.detail || "Errore sconosciuto dell'integrazione");
+          throw new Error(data.detail || "Errore");
         }
-        showFeedback(`Progetto "${nome}" integrato e monitorato con successo!`, "success");
+        showFeedback(t("project_added_success", { nome: nome }), "success");
         document.getElementById("addProjectForm").reset();
         aggiornaDati();
       } catch (err) {
@@ -2064,7 +2567,7 @@
       const consoleBox = document.getElementById("consoleOutput");
 
       consoleBox.style.display = "block";
-      consoleBox.textContent = `Avvio sentinella per comando "${comando}" su progetto "${progetto_id}"...\n`;
+      consoleBox.textContent = t("sentinel_starting", { cmd: comando, proj: progetto_id });
 
       try {
         const res = await fetch("/api/sentinella", {
@@ -2083,15 +2586,15 @@
         const output = data.dati.output || "";
         const triage = data.dati.triage;
         const triageInfo = triage
-          ? `\n>> Triage locale: ${triage.stato || "n/d"} — ${triage.note || ""} (${triage.metadati?.metodo || "n/d"})\n`
+          ? `\n>> ${t("sentinel_local_triage")}${triage.stato || "n/d"} — ${triage.note || ""} (${triage.metadati?.metodo || "n/d"})\n`
           : "";
 
-        consoleBox.textContent += `\n>> Esito sentinella: ${esito.toUpperCase()} (codice ritornato: ${returncode})${triageInfo}\nOutput:\n${output}`;
+        consoleBox.textContent += `\n${t("sentinel_outcome")}${esito.toUpperCase()} (${t("sentinel_return_code")}${returncode})${triageInfo}\nOutput:\n${output}`;
         
-        showFeedback(`Comando "${comando}" terminato con esito: ${gateInfo.toUpperCase()}`, esito === "success" ? "success" : "error");
+        showFeedback(t("sentinel_finished", { cmd: comando, gate: gateInfo.toUpperCase() }), esito === "success" ? "success" : "error");
         aggiornaDati();
       } catch (err) {
-        consoleBox.textContent += `\nErrore esecuzione: ${err.message}`;
+        consoleBox.textContent += `\n${t("sentinel_exec_error")}${err.message}`;
         showFeedback(err.message, "error");
       }
     }
@@ -2103,9 +2606,12 @@
         clearInterval(simTimer);
         simTimer = null;
       }
-      document.getElementById("startSimBtn").style.display = "inline-block";
-      document.getElementById("stopSimBtn").style.display = "none";
-      document.getElementById("commitCard").style.display = "none";
+      const elStart = document.getElementById("startSimBtn");
+      if (elStart) elStart.style.display = "inline-block";
+      const elStop = document.getElementById("stopSimBtn");
+      if (elStop) elStop.style.display = "none";
+      const elCard = document.getElementById("commitCard");
+      if (elCard) elCard.style.display = "none";
 
       document.querySelectorAll(".agent-node").forEach(node => {
         node.setAttribute("class", "agent-node");
@@ -2122,7 +2628,7 @@
       dropdown.innerHTML = "";
 
       if (commitCorrenti.length === 0) {
-        dropdown.innerHTML = '<div style="padding:0.8rem; color:var(--text-muted); text-align:center; font-size:0.8rem;">Nessun commit disponibile</div>';
+        dropdown.innerHTML = `<div style="padding:0.8rem; color:var(--text-muted); text-align:center; font-size:0.8rem;">${t("commit_none_avail")}</div>`;
         return;
       }
 
@@ -2133,7 +2639,7 @@
         item.className = "custom-commit-item" + (c.hash === hashSelezionato ? " selected" : "");
         item.setAttribute("data-hash", c.hash);
         const n = Number(c.interazioni || 0);
-        const labelInt = n === 1 ? "1 interazione" : `${n} interazioni`;
+        const labelInt = n === 1 ? t("interaction_short_singular") : t("interaction_short_plural", { count: n });
         const dataStr = c.data ? c.data.slice(0, 16).replace("T", " ") : "";
         item.innerHTML = `
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.3rem;">
@@ -2162,31 +2668,31 @@
       const commitSelect = document.getElementById("commitSelect");
       const hash = commitSelect ? commitSelect.value : "";
       if (!hash) {
-        document.getElementById("commitCard").style.display = "none";
+        const elCard = document.getElementById("commitCard");
+        if (elCard) elCard.style.display = "none";
         const triggerTitle = document.getElementById("triggerTitle");
-        if (triggerTitle) triggerTitle.textContent = "Seleziona un commit...";
+        if (triggerTitle) triggerTitle.textContent = t("commit_select_placeholder");
         return;
       }
       const selectedCommit = commitCorrenti.find(c => c.hash === hash);
       if (selectedCommit) {
         document.getElementById("commitHashVal").textContent = selectedCommit.hash.slice(0, 7);
-        document.getElementById("commitDateVal").textContent = new Date(selectedCommit.data).toLocaleString();
+        document.getElementById("commitDateVal").textContent = formattaOraIt(selectedCommit.data);
         document.getElementById("commitMsgVal").textContent = selectedCommit.messaggio;
-        document.getElementById("commitAuthorVal").textContent = `Autore: ${selectedCommit.autore}`;
+        document.getElementById("commitAuthorVal").textContent = `${t("commit_author_label")}${selectedCommit.autore}`;
         const numInterazioni = Number(selectedCommit.interazioni || 0);
-        const labelInterazioni = numInterazioni === 1 ? "1 interazione collegata" : `${numInterazioni} interazioni collegate`;
+        const labelInterazioni = numInterazioni === 1 ? t("interaction_singular") : t("interaction_plural", { count: numInterazioni });
         const badgeEl = document.getElementById("commitInterazioniBadge");
         if (badgeEl) {
           badgeEl.textContent = `⚡ ${labelInterazioni}`;
         }
         document.getElementById("commitCard").style.display = "block";
 
-        // Aggiorna anche il trigger del custom picker
         const tBadge = document.getElementById("triggerBadge");
         const tDate = document.getElementById("triggerDate");
         const tHash = document.getElementById("triggerHash");
         const tTitle = document.getElementById("triggerTitle");
-        if (tBadge) tBadge.textContent = `⚡ ${numInterazioni} interazion${numInterazioni === 1 ? 'e' : 'i'}`;
+        if (tBadge) tBadge.textContent = `⚡ ${labelInterazioni}`;
         if (tDate) tDate.textContent = selectedCommit.data ? selectedCommit.data.slice(0, 16).replace("T", " ") : "";
         if (tHash) tHash.textContent = selectedCommit.hash.slice(0, 7);
         if (tTitle) tTitle.textContent = selectedCommit.messaggio;
@@ -2197,21 +2703,19 @@
 
     function toggleCustomCommitDropdown() {
       const dropdown = document.getElementById("customCommitDropdown");
-      if (dropdown) {
-        dropdown.classList.toggle("open");
-      }
+      if (dropdown) dropdown.classList.toggle("open");
     }
 
     function chiudiCustomCommitDropdown() {
       const dropdown = document.getElementById("customCommitDropdown");
-      if (dropdown) {
-        dropdown.classList.remove("open");
-      }
+      if (dropdown) dropdown.classList.remove("open");
     }
 
     async function caricaCommit() {
-      const progetto_id = document.getElementById("realProjSelect").value || "orchestratore";
+      const elProj = document.getElementById("realProjSelect");
+      const progetto_id = (elProj && elProj.value) || "orchestratore";
       const commitSelect = document.getElementById("commitSelect");
+      if (!commitSelect) return;
       try {
         const res = await fetch(`/api/commit/lista?progetto_id=${encodeURIComponent(progetto_id)}&limite=20`);
         if (!res.ok) throw new Error("risposta non valida");
@@ -2219,7 +2723,7 @@
         commitSelect.innerHTML = "";
         commitCorrenti = data.commit || [];
         if (commitCorrenti.length === 0) {
-          commitSelect.innerHTML = '<option value="">Nessun commit disponibile</option>';
+          commitSelect.innerHTML = `<option value="">${t("commit_none_avail")}</option>`;
           document.getElementById("commitCard").style.display = "none";
           renderizzaCustomCommitPicker();
           return;
@@ -2228,16 +2732,17 @@
           const opt = document.createElement("option");
           opt.value = c.hash;
           const numInterazioni = Number(c.interazioni || 0);
-          const labelInterazioni = numInterazioni === 1 ? "1 interazione" : `${numInterazioni} interazioni`;
+          const labelInterazioni = numInterazioni === 1 ? t("interaction_short_singular") : t("interaction_short_plural", { count: numInterazioni });
           opt.textContent = `[${labelInterazioni}] ${c.data.slice(0, 16)} — ${c.messaggio}`;
-          opt.title = `${c.messaggio} (${labelInterazioni} collegate)`;
+          opt.title = `${c.messaggio} (${labelInterazioni})`;
           commitSelect.appendChild(opt);
         });
         aggiornaCommitCardSelezionato();
       } catch (err) {
-        commitSelect.innerHTML = '<option value="">Impossibile caricare i commit</option>';
+        commitSelect.innerHTML = `<option value="">${t("commit_load_fail")}</option>`;
         commitCorrenti = [];
-        document.getElementById("commitCard").style.display = "none";
+        const elCard = document.getElementById("commitCard");
+        if (elCard) elCard.style.display = "none";
         renderizzaCustomCommitPicker();
       }
     }
@@ -2264,9 +2769,9 @@
     async function apriRisveglioAgente(uri, prompt, agenteId) {
       try {
         await copiaTestoNegliAppunti(prompt);
-        showFeedback(`Prompt per ${agenteId} copiato negli appunti. Se la chat si apre vuota, incolla e invia.`, "success");
+        showFeedback(t("wake_prompt_copied", { agente: agenteId }), "success");
       } catch (err) {
-        showFeedback(`Apro ${agenteId}, ma non sono riuscito a copiare il prompt negli appunti.`, "error");
+        showFeedback(t("wake_copy_fail", { agente: agenteId }), "error");
       }
       if (uri) {
         window.location.href = uri;
@@ -2281,17 +2786,17 @@
       const btn = document.getElementById("bachecaPostinoBtn");
       if (!btn) return;
       if (bachecaPostinoAttivo) {
-        btn.textContent = "🟢 ATTIVO";
+        btn.textContent = t("status_active");
         btn.style.background = "rgba(16,185,129,0.18)";
         btn.style.border = "1px solid rgba(16,185,129,0.5)";
         btn.style.color = "#34d399";
-        btn.title = "Postino Automatico attivo (risveglio automatico su nuovi messaggi). Clicca per disattivare.";
+        btn.title = t("postino_auto_on_title");
       } else {
-        btn.textContent = "🔴 DISATTIVATO";
+        btn.textContent = t("status_disabled");
         btn.style.background = "rgba(244,63,94,0.18)";
         btn.style.border = "1px solid rgba(244,63,94,0.5)";
         btn.style.color = "#fb7185";
-        btn.title = "Postino Automatico disattivato (file POSTINO_ATTIVO assente). Clicca per attivare.";
+        btn.title = t("postino_auto_off_title");
       }
       renderizzaPostinoHeadlessState(bachecaPostinoHeadlessAttivo);
     }
@@ -2309,9 +2814,9 @@
         if (!res.ok) throw new Error("risposta non valida");
         const data = await res.json();
         renderizzaPostinoState(data.postino_attivo);
-        showFeedback(data.postino_attivo ? "Postino Automatico ATTIVATO" : "Postino Automatico DISATTIVATO", "info");
+        showFeedback(data.postino_attivo ? t("postino_activated_msg") : t("postino_deactivated_msg"), "info");
       } catch (err) {
-        showFeedback("Impossibile modificare lo stato del Postino Automatico.", "error");
+        showFeedback("Errore toggle Postino", "error");
       }
     }
 
@@ -2319,33 +2824,27 @@
       bachecaPostinoHeadlessAttivo = !!attivo;
       const btn = document.getElementById("bachecaPostinoHeadlessBtn");
       if (!btn) return;
-      // Sotto-funzione del postino di base: senza quello acceso, il dispatch
-      // headless resta inerte lato server anche se il flag e' su - il pulsante
-      // lo riflette restando disabilitato per non promettere un effetto che
-      // in questo momento non scatterebbe.
       btn.disabled = !bachecaPostinoAttivo;
       btn.style.opacity = bachecaPostinoAttivo ? "1" : "0.5";
       btn.style.cursor = bachecaPostinoAttivo ? "pointer" : "not-allowed";
       if (bachecaPostinoHeadlessAttivo) {
-        btn.textContent = "🟢 ATTIVO";
+        btn.textContent = t("status_active");
         btn.style.background = "rgba(16,185,129,0.18)";
         btn.style.border = "1px solid rgba(16,185,129,0.5)";
         btn.style.color = "#34d399";
-        btn.title = "Dispatch headless attivo: claude/codex rispondono in background su nuovi messaggi, senza aprire finestre. Clicca per disattivare.";
+        btn.title = t("headless_on_title");
       } else {
-        btn.textContent = "🔴 DISATTIVATO";
+        btn.textContent = t("status_disabled");
         btn.style.background = "rgba(244,63,94,0.18)";
         btn.style.border = "1px solid rgba(244,63,94,0.5)";
         btn.style.color = "#fb7185";
-        btn.title = bachecaPostinoAttivo
-          ? "Dispatch headless disattivato: il postino apre solo la finestra dell'agente, va incollato e inviato a mano. Clicca per attivare."
-          : "Richiede prima il Postino Automatico attivo.";
+        btn.title = bachecaPostinoAttivo ? t("headless_off_title") : t("headless_requires_postino");
       }
     }
 
     async function togglePostinoHeadless() {
       if (!bachecaPostinoAttivo) {
-        showFeedback("Attiva prima il Postino Automatico.", "error");
+        showFeedback(t("activate_postino_first"), "error");
         return;
       }
       const select = document.getElementById("bachecaProjSelect");
@@ -2360,9 +2859,9 @@
         if (!res.ok) throw new Error("risposta non valida");
         const data = await res.json();
         renderizzaPostinoHeadlessState(data.postino_headless_attivo);
-        showFeedback(data.postino_headless_attivo ? "Dispatch Headless ATTIVATO" : "Dispatch Headless DISATTIVATO", "info");
+        showFeedback(data.postino_headless_attivo ? t("headless_activated_msg") : t("headless_deactivated_msg"), "info");
       } catch (err) {
-        showFeedback("Impossibile modificare lo stato del Dispatch Headless.", "error");
+        showFeedback("Errore toggle Headless", "error");
       }
     }
 
@@ -2376,7 +2875,7 @@
         const risvegli = data.risvegli || [];
         if (risvegli.length > 0) {
           const agenti = risvegli.map(r => r.agente).join(", ");
-          showFeedback(`Risveglio automatico inviato per: ${agenti}`, "success");
+          showFeedback(`${t("auto_wake_sent")}${agenti}`, "success");
         }
       } catch (err) {
         console.warn("Risveglio automatico non riuscito:", err);
@@ -2397,19 +2896,19 @@
         if (count > 0) {
           const uri = uriRisveglioAgente(agente.id, claudeSessionId);
           const prompt = promptRisveglioAgente(agente.id);
-          risvegliaBtnHtml = `<button type="button" class="bacheca-risveglia-btn" data-uri="${escapeHtml(uri)}" data-prompt="${escapeHtml(prompt)}" data-agente="${escapeHtml(agente.id)}" title="Apre l'agente e copia il prompt di risveglio">⚡ Risveglia</button>`;
+          risvegliaBtnHtml = `<button type="button" class="bacheca-risveglia-btn" data-uri="${escapeHtml(uri)}" data-prompt="${escapeHtml(prompt)}" data-agente="${escapeHtml(agente.id)}" title="${t("btn_wake_title")}">${t("btn_wake")}</button>`;
         }
         card.innerHTML = `
           <div class="bacheca-pending-main">
             <span class="bacheca-pending-count ${count > 0 ? "has-pending" : ""}">${count}</span>
             <div>
               <div><span class="tag-agent ${escapeHtml(agente.id)}">${escapeHtml(agente.label)}</span></div>
-              <div style="font-size:0.72rem; color:var(--text-muted); margin-top:0.15rem;">${escapeHtml(agente.modo)}</div>
+              <div style="font-size:0.72rem; color:var(--text-muted); margin-top:0.15rem;">${escapeHtml(t(agente.modoKey))}</div>
             </div>
           </div>
           <div style="display: flex; align-items: center;">
             ${risvegliaBtnHtml}
-            <button type="button" class="bacheca-copy-btn" title="${escapeHtml(comando)}">Copia comando</button>
+            <button type="button" class="bacheca-copy-btn" title="${escapeHtml(comando)}">${t("btn_copy_cmd")}</button>
           </div>
         `;
         if (count > 0) {
@@ -2424,9 +2923,9 @@
         card.querySelector(".bacheca-copy-btn").addEventListener("click", async () => {
           try {
             await copiaTestoNegliAppunti(comando);
-            showFeedback(`Comando copiato: ${comando}`, "success");
+            showFeedback(`${t("cmd_copied")}${comando}`, "success");
           } catch (err) {
-            showFeedback(`Impossibile copiare il comando: ${comando}`, "error");
+            showFeedback(`${t("cmd_copy_fail")}${comando}`, "error");
           }
         });
         box.appendChild(card);
@@ -2437,7 +2936,7 @@
       const box = document.getElementById("bachecaPraticheSospese");
       if (!box) return;
       if (!pratiche || pratiche.length === 0) {
-        box.innerHTML = `<div style="color:var(--text-muted); font-size:0.85rem; padding:0.5rem 0;">Nessuna pratica sospesa in attesa.</div>`;
+        box.innerHTML = `<div style="color:var(--text-muted); font-size:0.85rem; padding:0.5rem 0;">${t("no_suspended_tasks")}</div>`;
         return;
       }
       box.innerHTML = "";
@@ -2448,7 +2947,7 @@
         let azioniHtml = "";
         if (p.azioni_per_esito && Object.keys(p.azioni_per_esito).length > 0) {
           azioniHtml = `<div class="pratica-azioni">
-            <div style="font-size:0.73rem; color:var(--text-muted); margin-bottom:0.3rem; font-weight:600; text-transform:uppercase;">Azioni previste per esito:</div>`;
+            <div style="font-size:0.73rem; color:var(--text-muted); margin-bottom:0.3rem; font-weight:600; text-transform:uppercase;">${t("actions_expected_by_outcome")}</div>`;
           for (const [esito, azione] of Object.entries(p.azioni_per_esito)) {
             let cls = "esito-modifiche";
             if (esito === "approvato") cls = "esito-approvato";
@@ -2474,7 +2973,7 @@
               <span style="font-family:monospace; font-size:0.82rem; color:#93c5fd; font-weight:600;">[Thread ${escapeHtml(p.thread_id.slice(0,8))}]</span>
               <span class="tag-agent ${escapeHtml(p.mittente)}" style="margin-left:0.4rem;">${escapeHtml(p.mittente)}</span>
             </div>
-            <span class="pratica-badge-attende">Attende: ${escapeHtml(p.attende || 'umano')}</span>
+            <span class="pratica-badge-attende">${t("badge_awaits")}${escapeHtml(p.attende || 'umano')}</span>
           </div>
           <div style="font-weight:600; font-size:0.88rem; color:var(--text-main); margin-bottom:0.4rem;">
             🎯 ${escapeHtml(p.oggetto_atteso || 'Verdetto sul checkpoint')}
@@ -2482,8 +2981,8 @@
           ${azioniHtml}
           ${contestoHtml}
           <div style="margin-top:0.5rem; font-size:0.75rem; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
-            <span>Verdetto Umano: <b>${escapeHtml(p.verdetto_umano || 'non_revisionato')}</b></span>
-            <span>${p.timestamp ? new Date(p.timestamp).toLocaleTimeString() : ''}</span>
+            <span>${t("label_human_verdict")}<b>${escapeHtml(p.verdetto_umano || 'non_revisionato')}</b></span>
+            <span>${p.timestamp ? formattaOraIt(p.timestamp, true) : ''}</span>
           </div>
         `;
         box.appendChild(card);
@@ -2495,8 +2994,8 @@
       if (flussoDichiarato && Array.isArray(flussoDichiarato.passi) && flussoDichiarato.passi.length > 0) {
         passi = flussoDichiarato.passi.map((p, idx) => {
           let label = p.id;
-          if (p.id === "approvazione_umana") label = "Umano";
-          else if (p.id === "azione_irreversibile") label = "Azione";
+          if (p.id === "approvazione_umana") label = (linguaCorrente === "it" ? "Umano" : "Human");
+          else if (p.id === "azione_irreversibile") label = (linguaCorrente === "it" ? "Azione" : "Action");
           else label = p.id.charAt(0).toUpperCase() + p.id.slice(1);
           return {
             id: p.id,
@@ -2504,15 +3003,14 @@
           };
         });
       } else {
-        // Fallback esplicito se config/flussi/*.json non disponibile
         passi = [
-          { id: "compito", label: "1. Compito" },
-          { id: "gate", label: "2. Gate" },
-          { id: "triage", label: "3. Triage" },
-          { id: "registrazione", label: "4. Registro" },
-          { id: "approvazione_umana", label: "5. Umano" },
-          { id: "azione_irreversibile", label: "6. Azione" },
-          { id: "chiusura", label: "7. Chiusura" }
+          { id: "compito", label: t("step_task") },
+          { id: "gate", label: t("step_gate") },
+          { id: "triage", label: t("step_triage") },
+          { id: "registrazione", label: t("step_log") },
+          { id: "approvazione_umana", label: t("step_human") },
+          { id: "azione_irreversibile", label: t("step_action") },
+          { id: "chiusura", label: t("step_close") }
         ];
       }
 
@@ -2536,15 +3034,16 @@
       const corpo = document.getElementById("bachecaBody");
       const banner = document.getElementById("bachecaBanner");
       const occupatiBox = document.getElementById("bachecaOccupati");
+      if (!corpo) return;
       try {
         const res = await fetch(`/api/bacheca?progetto_id=${encodeURIComponent(progetto_id)}`);
         if (!res.ok) throw new Error("risposta non valida");
         const data = await res.json();
 
         if (data.errore) {
-          corpo.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#f87171;">⚠ Bacheca non leggibile: ${escapeHtml(data.errore)}</td></tr>`;
-          banner.innerHTML = "";
-          occupatiBox.innerHTML = "Nessuno.";
+          corpo.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#f87171;">⚠ ${escapeHtml(data.errore)}</td></tr>`;
+          if (banner) banner.innerHTML = "";
+          if (occupatiBox) occupatiBox.innerHTML = t("none_locked");
           renderizzaPendingBacheca(data.pending_per_agente, data.claude_session_id);
           renderizzaPraticheSospese([]);
           return;
@@ -2560,12 +3059,14 @@
         const flussoStandard = flussi.compito_standard || null;
 
         const conflitti = thread.filter(t => t.ultimo_tipo === "segnalazione_conflitto" && t.stato !== "chiuso" && t.stato !== "annullato");
-        banner.innerHTML = conflitti.length > 0
-          ? `<div class="bacheca-banner-conflitto">⚠ ${conflitti.length} conflitto${conflitti.length > 1 ? "i" : ""} segnalat${conflitti.length > 1 ? "i" : "o"}, ancora da revisionare</div>`
-          : "";
+        if (banner) {
+          banner.innerHTML = conflitti.length > 0
+            ? `<div class="bacheca-banner-conflitto">${t("conflict_banner", { count: conflitti.length, suffix: conflitti.length > 1 ? "i" : "o", suffix2: conflitti.length > 1 ? "i" : "o" })}</div>`
+            : "";
+        }
 
         if (thread.length === 0) {
-          corpo.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">Nessun thread in bacheca per questo progetto.</td></tr>`;
+          corpo.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">${t("bacheca_no_threads")}</td></tr>`;
         } else {
           corpo.innerHTML = "";
           thread.forEach(t => {
@@ -2583,7 +3084,7 @@
               <td>${escapeHtml(t.ultimo_tipo)}</td>
               <td>${aspetta}</td>
               <td>${escapeHtml(t.verdetto_umano)}</td>
-              <td><button class="btn bacheca-btn-rivivi" style="background: rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.4); color:#c4b5fd; padding:0.3rem 0.6rem; font-size:0.75rem;">▶ Rivivi</button></td>
+              <td><button class="btn bacheca-btn-rivivi" style="background: rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.4); color:#c4b5fd; padding:0.3rem 0.6rem; font-size:0.75rem;">${t("btn_relive")}</button></td>
             `;
             tr.addEventListener("click", () => mostraDettaglioThreadBacheca(progetto_id, t.thread_id));
             tr.querySelector(".bacheca-btn-rivivi").addEventListener("click", (ev) => {
@@ -2594,17 +3095,19 @@
           });
         }
 
-        const occupati = data.occupati || {};
-        const fileOccupati = Object.keys(occupati);
-        occupatiBox.innerHTML = fileOccupati.length === 0
-          ? "Nessuno."
-          : fileOccupati.map(f => {
-              const info = occupati[f];
-              const scadenza = info.scadenza ? new Date(info.scadenza).toLocaleString() : "senza scadenza";
-              return `<div>- <b>${escapeHtml(f)}</b>: <span class="tag-agent ${escapeHtml(info.agente)}">${escapeHtml(info.agente)}</span> (lease ${scadenza})</div>`;
-            }).join("");
+        if (occupatiBox) {
+          const occupati = data.occupati || {};
+          const fileOccupati = Object.keys(occupati);
+          occupatiBox.innerHTML = fileOccupati.length === 0
+            ? t("none_locked")
+            : fileOccupati.map(f => {
+                const info = occupati[f];
+                const scadenza = info.scadenza ? formattaOraIt(info.scadenza) : t("lease_no_expiry");
+                return `<div>- <b>${escapeHtml(f)}</b>: <span class="tag-agent ${escapeHtml(info.agente)}">${escapeHtml(info.agente)}</span> (${t("lease_expires")} ${scadenza})</div>`;
+              }).join("");
+        }
       } catch (err) {
-        corpo.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#f87171;">Errore nel caricamento della bacheca.</td></tr>`;
+        corpo.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#f87171;">Errore bacheca.</td></tr>`;
         renderizzaPendingBacheca({});
         renderizzaPraticheSospese([]);
       }
@@ -2615,6 +3118,7 @@
       const select = document.getElementById("bachecaProjSelect");
       const progetto_id = (select && select.value) || "orchestratore";
       const feed = document.getElementById("bachecaFeed");
+      if (!feed) return;
       try {
         const res = await fetch(`/api/bacheca/feed?progetto_id=${encodeURIComponent(progetto_id)}&limite=50`);
         if (!res.ok) throw new Error("risposta non valida");
@@ -2643,7 +3147,8 @@
 
     async function mostraDettaglioThreadBacheca(progetto_id, thread_id) {
       const box = document.getElementById("bachecaDettaglio");
-      box.innerHTML = `<div class="handoff-console"><div class="handoff-msg system">Caricamento thread ${escapeHtml(thread_id.slice(0, 8))}...</div></div>`;
+      if (!box) return;
+      box.innerHTML = `<div class="handoff-console"><div class="handoff-msg system">${t("thread_loading", { id: escapeHtml(thread_id.slice(0, 8)) })}</div></div>`;
       try {
         const res = await fetch(`/api/bacheca/thread?progetto_id=${encodeURIComponent(progetto_id)}&thread_id=${encodeURIComponent(thread_id)}`);
         if (!res.ok) throw new Error("thread non trovato");
@@ -2658,52 +3163,63 @@
         `).join("");
         box.innerHTML = `<div class="handoff-console">${righe}</div>`;
       } catch (err) {
-        box.innerHTML = `<div class="handoff-console"><div class="handoff-msg fail">Impossibile caricare la cronologia del thread.</div></div>`;
+        box.innerHTML = `<div class="handoff-console"><div class="handoff-msg fail">${t("thread_load_error")}</div></div>`;
       }
     }
 
     async function avviaReplayCommit() {
-      const progetto_id = document.getElementById("realProjSelect").value || "orchestratore";
-      const hash = document.getElementById("commitSelect").value;
+      const elProj = document.getElementById("realProjSelect");
+      const progetto_id = (elProj && elProj.value) || "orchestratore";
+      const elCommit = document.getElementById("commitSelect");
+      const hash = elCommit ? elCommit.value : "";
       const logBox = document.getElementById("handoffLogs");
 
       if (!hash) {
-        showFeedback("Seleziona un commit da riprodurre.", "error");
+        showFeedback(t("select_commit_to_play"), "error");
         return;
       }
 
       fermaSimulazione();
-      document.getElementById("startSimBtn").style.display = "none";
-      document.getElementById("stopSimBtn").style.display = "inline-block";
+      const elStart = document.getElementById("startSimBtn");
+      if (elStart) elStart.style.display = "none";
+      const elStop = document.getElementById("stopSimBtn");
+      if (elStop) elStop.style.display = "inline-block";
 
-      // Popola e mostra la Git Commit Card
       aggiornaCommitCardSelezionato();
 
-      logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Recupero gli eventi reali del commit selezionato...<span class="terminal-cursor"></span></div>`;
+      if (logBox) {
+        logBox.innerHTML = `<div class="handoff-msg system">${t("replay_retrieving_events")}<span class="terminal-cursor"></span></div>`;
+      }
 
       let dati;
       try {
         const res = await fetch(`/api/commit/eventi?progetto_id=${encodeURIComponent(progetto_id)}&hash=${encodeURIComponent(hash)}`);
         if (!res.ok) {
           const errData = await res.json();
-          throw new Error(errData.detail || "Errore nel recupero degli eventi del commit");
+          throw new Error(errData.detail || "Errore nel recupero eventi");
         }
         dati = await res.json();
       } catch (err) {
-        logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
-        logBox.innerHTML += `<div class="handoff-msg fail"><b>[Sistema] Errore:</b> ${escapeHtml(err.message)}</div><span class="terminal-cursor"></span>`;
+        if (logBox) {
+          logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
+          logBox.innerHTML += `<div class="handoff-msg fail"><b>[Sistema] Errore:</b> ${escapeHtml(err.message)}</div><span class="terminal-cursor"></span>`;
+        }
         fermaSimulazione();
         return;
       }
 
       const eventi = dati.eventi || [];
       if (eventi.length === 0) {
-        logBox.innerHTML = `<div class="handoff-msg system">Nessun evento registrato nella finestra di questo commit.</div><span class="terminal-cursor"></span>`;
+        if (logBox) {
+          logBox.innerHTML = `<div class="handoff-msg system">${t("replay_no_events")}</div><span class="terminal-cursor"></span>`;
+        }
         fermaSimulazione();
         return;
       }
 
-      logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Replay di ${eventi.length} eventi reali di questo commit...<span class="terminal-cursor"></span></div>`;
+      if (logBox) {
+        logBox.innerHTML = `<div class="handoff-msg system">${t("replay_starting", { count: eventi.length })}<span class="terminal-cursor"></span></div>`;
+      }
 
       let agentePrecedente = "umano";
       let indice = 0;
@@ -2713,44 +3229,40 @@
         const linea = document.getElementById(`path_${da}_${a}`) || document.getElementById(`path_${a}_${da}`);
         if (linea) {
           linea.classList.add(`active-${da}`);
-          if (fallito) {
-            linea.classList.add("active-fail");
-          }
+          if (fallito) linea.classList.add("active-fail");
         }
       }
 
       function passoSuccessivo() {
-        // Rimuove il cursore precedente
-        logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
+        if (logBox) logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
 
         if (indice >= eventi.length) {
-          // Chiusura del cerchio: il risultato torna all'umano per la revisione finale.
           document.querySelectorAll(".agent-node").forEach(node => node.setAttribute("class", "agent-node"));
           document.querySelectorAll(".handoff-line").forEach(line => line.setAttribute("class", "handoff-line"));
           evidenziaLinea(agentePrecedente, "umano", false);
           const nodoUmano = document.getElementById("node_umano");
-          if (nodoUmano) {
-            nodoUmano.classList.add("active", "active-success");
-          }
+          if (nodoUmano) nodoUmano.classList.add("active", "active-success");
 
           const s = dati.stima_risparmio;
           let riepilogo;
-          if (s.percentuale_gratis !== null) {
+          if (s && s.percentuale_gratis !== null) {
             riepilogo = `
 <div class="handoff-msg success" style="font-family: monospace; white-space: pre-wrap; line-height: 1.4; margin-top: 0.8rem;">
-<b>📊 REPLAY COMPLETATO — DATI REALI DI QUESTO COMMIT</b>
+<b>${t("replay_complete_header")}</b>
 --------------------------------------------
-🛡️ <b>${s.percentuale_gratis}%</b> dei controlli di verifica gestiti GRATIS dal modello locale
-   (${s.controlli_locale} gratis / ${s.controlli_a_pagamento} a pagamento)
- 💰 Stima risparmio: ~$${s.risparmio_stimato_usd.toFixed(5)} (rif. ${escapeHtml(s.modello_riferimento)})
+🛡️ <b>${s.percentuale_gratis}%</b> ${t("replay_free_checks")}
+   (${s.controlli_locale} ${t("replay_free")} / ${s.controlli_a_pagamento} ${t("replay_paid")})
+ 💰 ${t("replay_est_savings")}~$${s.risparmio_stimato_usd.toFixed(5)} (rif. ${escapeHtml(s.modello_riferimento)})
 --------------------------------------------
 </div>`;
           } else {
-            riepilogo = `<div class="handoff-msg system">Nessun controllo di verifica in questo commit da cui stimare un risparmio.</div>`;
+            riepilogo = `<div class="handoff-msg system">${t("replay_no_savings_checks")}</div>`;
           }
-          logBox.innerHTML += riepilogo;
-          logBox.innerHTML += `<span class="terminal-cursor"></span>`;
-          logBox.scrollTop = logBox.scrollHeight;
+          if (logBox) {
+            logBox.innerHTML += riepilogo;
+            logBox.innerHTML += `<span class="terminal-cursor"></span>`;
+            logBox.scrollTop = logBox.scrollHeight;
+          }
           fermaSimulazione();
           return;
         }
@@ -2771,9 +3283,11 @@
 
         const badge = `<span class="tag-agent ${escapeHtml(ev.agente || '')}">${escapeHtml((ev.agente || "?").toUpperCase())}</span>`;
         const msgClass = "handoff-msg" + (fallito ? " fail" : " success");
-        logBox.innerHTML += `<div class="${msgClass}"><b>${badge}</b> [${escapeHtml(ev.timestamp.slice(11, 19))}]: ${escapeHtml(ev.note || "")}</div>`;
-        logBox.innerHTML += `<span class="terminal-cursor"></span>`;
-        logBox.scrollTop = logBox.scrollHeight;
+        if (logBox) {
+          logBox.innerHTML += `<div class="${msgClass}"><b>${badge}</b> [${escapeHtml(ev.timestamp.slice(11, 19))}]: ${escapeHtml(ev.note || "")}</div>`;
+          logBox.innerHTML += `<span class="terminal-cursor"></span>`;
+          logBox.scrollTop = logBox.scrollHeight;
+        }
 
         indice++;
       }
@@ -2782,10 +3296,6 @@
       simTimer = setInterval(passoSuccessivo, 1800);
     }
 
-    // Colore/esito per tipo di messaggio bacheca, per il replay animato: non c'e'
-    // un vero e proprio esito_gate/stato come negli eventi.jsonl, quindi il "fallito"
-    // qui e' solo un modo per riusare gli stessi stili handoff-msg/nodo esistenti,
-    // non un giudizio reale sul messaggio.
     function _esitoVisivoTipoMessaggio(tipo) {
       if (tipo === "segnalazione_conflitto") return "fail";
       if (tipo === "chiusura") return "success";
@@ -2794,15 +3304,20 @@
 
     async function avviaReplayThreadBacheca(progetto_id, thread_id) {
       const logBox = document.getElementById("handoffLogs");
-      const widgetHandoff = document.querySelector(".handoff-container").closest(".widget");
+      const widgetHandoff = document.querySelector(".handoff-container")?.closest(".widget");
       if (widgetHandoff) widgetHandoff.scrollIntoView({ behavior: "smooth", block: "start" });
 
       fermaSimulazione();
-      document.getElementById("startSimBtn").style.display = "none";
-      document.getElementById("stopSimBtn").style.display = "inline-block";
-      document.getElementById("commitCard").style.display = "none";
+      const elStart = document.getElementById("startSimBtn");
+      if (elStart) elStart.style.display = "none";
+      const elStop = document.getElementById("stopSimBtn");
+      if (elStop) elStop.style.display = "inline-block";
+      const elCard = document.getElementById("commitCard");
+      if (elCard) elCard.style.display = "none";
 
-      logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Recupero la cronologia del thread bacheca...<span class="terminal-cursor"></span></div>`;
+      if (logBox) {
+        logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Recupero cronologia thread...<span class="terminal-cursor"></span></div>`;
+      }
 
       let dati;
       try {
@@ -2810,30 +3325,38 @@
         if (!res.ok) throw new Error("thread non trovato");
         dati = await res.json();
       } catch (err) {
-        logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
-        logBox.innerHTML += `<div class="handoff-msg fail"><b>[Sistema] Errore:</b> ${escapeHtml(err.message)}</div><span class="terminal-cursor"></span>`;
+        if (logBox) {
+          logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
+          logBox.innerHTML += `<div class="handoff-msg fail"><b>[Sistema] Errore:</b> ${escapeHtml(err.message)}</div><span class="terminal-cursor"></span>`;
+        }
         fermaSimulazione();
         return;
       }
 
       const msgs = dati.messaggi || [];
       if (msgs.length === 0) {
-        logBox.innerHTML = `<div class="handoff-msg system">Nessun messaggio in questo thread.</div><span class="terminal-cursor"></span>`;
+        if (logBox) {
+          logBox.innerHTML = `<div class="handoff-msg system">Nessun messaggio in questo thread.</div><span class="terminal-cursor"></span>`;
+        }
         fermaSimulazione();
         return;
       }
 
-      logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Rivivo ${msgs.length} messaggi del thread ${escapeHtml(thread_id.slice(0, 8))}...<span class="terminal-cursor"></span></div>`;
+      if (logBox) {
+        logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Rivivo ${msgs.length} messaggi del thread ${escapeHtml(thread_id.slice(0, 8))}...<span class="terminal-cursor"></span></div>`;
+      }
 
       let indiceThread = 0;
 
       function passoSuccessivoThread() {
-        logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
+        if (logBox) logBox.innerHTML = logBox.innerHTML.replace('<span class="terminal-cursor"></span>', '');
 
         if (indiceThread >= msgs.length) {
           document.querySelectorAll(".agent-node").forEach(node => node.setAttribute("class", "agent-node"));
-          logBox.innerHTML += `<div class="handoff-msg success"><b>📬 REPLAY DEL THREAD COMPLETATO</b></div><span class="terminal-cursor"></span>`;
-          logBox.scrollTop = logBox.scrollHeight;
+          if (logBox) {
+            logBox.innerHTML += `<div class="handoff-msg success"><b>${t("thread_replay_completed")}</b></div><span class="terminal-cursor"></span>`;
+            logBox.scrollTop = logBox.scrollHeight;
+          }
           fermaSimulazione();
           return;
         }
@@ -2851,9 +3374,11 @@
         const badgeMittente = `<span class="tag-agent ${escapeHtml(m.mittente)}">${escapeHtml(m.mittente.toUpperCase())}</span>`;
         const destinatari = (m.destinatari || []).map(d => escapeHtml(d)).join(", ");
         const msgClass = "handoff-msg" + (esito !== "neutro" ? ` ${esito}` : " system");
-        logBox.innerHTML += `<div class="${msgClass}"><b>${badgeMittente} → ${destinatari}</b> [${escapeHtml(formattaOraIt(m.timestamp, true))}] (${escapeHtml(m.tipo)}): ${escapeHtml(m.testo)}</div>`;
-        logBox.innerHTML += `<span class="terminal-cursor"></span>`;
-        logBox.scrollTop = logBox.scrollHeight;
+        if (logBox) {
+          logBox.innerHTML += `<div class="${msgClass}"><b>${badgeMittente} → ${destinatari}</b> [${escapeHtml(formattaOraIt(m.timestamp, true))}] (${escapeHtml(m.tipo)}): ${escapeHtml(m.testo)}</div>`;
+          logBox.innerHTML += `<span class="terminal-cursor"></span>`;
+          logBox.scrollTop = logBox.scrollHeight;
+        }
 
         indiceThread++;
       }

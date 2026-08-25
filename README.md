@@ -1,5 +1,9 @@
 # Squadra — orchestratore LLM multi-agente
 
+**Italiano** | 🇬🇧 [English](README_EN.md)
+
+---
+
 **Squadra** coordina Claude, Codex, Gemini, un piccolo modello locale e una persona sullo stesso codicebase. Trasforma un insieme di chat scollegate in un processo visibile: richieste, responsabilità, verifiche, approvazioni e risultati restano tracciati e riprendibili.
 
 Non è un sistema che decide al posto tuo. È una sala operativa: automatizza il passaggio di contesto e il lavoro ripetitivo, mentre le decisioni importanti restano umane.

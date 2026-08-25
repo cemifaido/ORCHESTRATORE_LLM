@@ -375,6 +375,9 @@ def integra_progetto(dest_path: Path):
     dashboard li invoca sempre da qui con --config/--registro e cwd sul progetto target,
     cosi' un aggiornamento dell'orchestratore vale per tutti i progetti senza dover
     re-integrare nulla. Vedi docs/ORCHESTRAZIONE_LAVORATORI.md."""
+    dest_path = dest_path.resolve()
+    if dest_path == RADICE:
+        return
     # 1. Crea directory locali per dati runtime e configurazioni
     (dest_path / "dati_locali" / "orchestrazione").mkdir(parents=True, exist_ok=True)
     (dest_path / "schema").mkdir(parents=True, exist_ok=True)

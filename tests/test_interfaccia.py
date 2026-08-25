@@ -729,6 +729,31 @@ class PostinoHeadlessTest(unittest.TestCase):
             self.assertIsInstance(c["interazioni"], int)
 
 
+class InterfacciaI18nTest(unittest.TestCase):
+    def test_interfaccia_html_contiene_selettore_lingua_e_dizionari_i18n(self) -> None:
+        """Verifica che interfaccia.html contenga lo switcher lingua IT/EN e il dizionario i18n."""
+        self.assertTrue(interfaccia.PERCORSO_HTML.exists())
+        html = interfaccia.PERCORSO_HTML.read_text(encoding="utf-8")
+        self.assertIn("lang-switcher", html)
+        self.assertIn("langItBtn", html)
+        self.assertIn("langEnBtn", html)
+        self.assertIn("impostaLingua", html)
+        self.assertIn("const I18N =", html)
+        self.assertIn("header_title", html)
+        self.assertIn("LLM Orchestrator", html)
+        self.assertIn("Orchestratore LLM", html)
+
+    def test_readme_bilingue_presente(self) -> None:
+        """Verifica che README.md e README_EN.md siano coerenti e collegati tra loro."""
+        readme_it = interfaccia.RADICE / "README.md"
+        readme_en = interfaccia.RADICE / "README_EN.md"
+        self.assertTrue(readme_it.exists())
+        self.assertTrue(readme_en.exists())
+        self.assertIn("README_EN.md", readme_it.read_text(encoding="utf-8"))
+        self.assertIn("README.md", readme_en.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
