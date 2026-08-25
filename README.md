@@ -210,6 +210,15 @@ La postura completa, inclusi canali ufficiali, limiti e differenze tra provider,
 - [Flusso dichiarato](docs/PIANO_FLUSSO_DICHIARATO.md) — workflow validabile e punti di controllo.
 - [LiteLLM opzionale](docs/INTEGRAZIONE_LITELLM.md) — integrazione di provider locali o a consumo.
 
+## Disclaimer & Crediti
+
+> [!IMPORTANT]
+> **Attribuzione e Riconoscimento dei Crediti**:
+> Questo progetto è condiviso per uso, studio e sperimentazione. Se utilizzi, integri, riadatti o ti ispiri a questo codicebase (o a parti di esso) nei tuoi progetti, strumenti o pubblicazioni, **è richiesta l'esplicita inclusione nei crediti** citando:
+> - **Autore / Ideatore**: Paolo Pavesi (`cemifaido`) - paolo.pavesi@gmail.com
+> - **Progetto originale**: *Squadra — Orchestratore LLM Multi-Agente* (Repository: [https://github.com/cemifaido/ORCHESTRATORE_LLM](https://github.com/cemifaido/ORCHESTRATORE_LLM))
+
 ---
 
 Squadra non sostituisce il giudizio umano: lo rende più informato, più veloce e verificabile.
+

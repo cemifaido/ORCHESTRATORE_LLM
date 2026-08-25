@@ -210,6 +210,15 @@ The full security posture, official channels, limits, and provider specifics are
 - [Declared Workflows](docs/PIANO_FLUSSO_DICHIARATO.md) — Verifiable workflows, phases, and checkpoint gates.
 - [Optional LiteLLM Integration](docs/INTEGRAZIONE_LITELLM.md) — Connecting local or pay-per-token providers.
 
+## Disclaimer & Credits
+
+> [!IMPORTANT]
+> **Attribution & Credit Notice**:
+> This project is shared for use, research, and collaborative development. If you use, adapt, fork, or build upon this codebase (or any part of it) in your own software, tools, or publications, **you are requested to clearly include attribution in your credits** referencing:
+> - **Author / Creator**: Paolo Pavesi (`cemifaido`)
+> - **Original Project**: *Squadra — Multi-Agent LLM Orchestrator* (Repository: [https://github.com/cemifaido/ORCHESTRATORE_LLM](https://github.com/cemifaido/ORCHESTRATORE_LLM))
+
 ---
 
 Squadra does not replace human judgment: it makes it faster, better informed, and fully verifiable.
+
