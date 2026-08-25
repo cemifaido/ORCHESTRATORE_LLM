@@ -130,7 +130,7 @@ Implicazione per il progetto:
 - se l'IDE non supporta hook locali, si resta al fallback manuale via `GEMINI.md`;
 - non si devono bypassare conferme umane o protezioni dell'IDE;
 - non si devono inviare segreti o dati sensibili a servizi non pagati/non protetti;
-- l'uso di Antigravity CLI (`agy`) in modalità headless/non interattiva da processi di background dell'IDE su Windows è escluso per via di un bug del binario in assenza di TTY (causa blocco indefinito); per l'automazione di background si ricorre a chiamate API dirette (via `litellm`), mentre l'uso di `agy` è riservato all'interazione dell'utente all'interno di un terminale reale.
+- l'uso di Antigravity CLI (`agy`) in modalità headless/non interattiva da processi di background era escluso fino al 2026-07-08 per un bug del binario in assenza di TTY (causa blocco indefinito). **Non più vero dal 2026-08-25**: il bug era un'attesa di approvazione permessi mai risolta, non un limite di piattaforma — aggirato con `--dangerously-skip-permissions`, vedi "Aggiornamento 2026-08-25" più sotto per i dettagli e il rischio accettato esplicitamente.
 
 Fonti:
 [Google Terms of Service](https://policies.google.com/terms),
@@ -215,14 +215,25 @@ manuale — mai colmato per analogia con un altro provider).
 | Provider | Risveglio via URI (apre pannello + precompila, non invia) | CLI headless |
 |---|---|---|
 | Claude | `official_hook_pull` — verificato, affidabile | `official_headless` — verificato (`claude -p`), pulito |
-| Codex | `official_hook_pull` — verificato, solo se il pannello non è già aperto | `official_headless` (a consumo) — richiede `OPENAI_API_KEY` e crediti a pagamento OpenAI API Platform (non coperto dall'abbonamento flat dell'IDE) |
-| Gemini/Antigravity | `manual_only` — nessun path noto verso cui indirizzare l'URI | `manual_only` — `agy -p` esiste ed è documentato, ma un bug reale lo blocca senza un TTY interattivo vero: non usabile da script/subprocessi su Windows |
+| Codex | `official_hook_pull` — verificato, solo se il pannello non è già aperto | `official_headless` (a consumo, con questo pacchetto npm del 2026-07-08) — richiede `OPENAI_API_KEY` e crediti a pagamento OpenAI API Platform (non coperto dall'abbonamento flat dell'IDE) |
+| Gemini/Antigravity | `manual_only` — nessun path noto verso cui indirizzare l'URI | `manual_only` (al 2026-07-08) — `agy -p` esiste ed è documentato, ma un bug reale lo blocca senza un TTY interattivo vero: non usabile da script/subprocessi su Windows |
 
-Per Gemini, finché non emerge una prova diversa, restano validi il pull manuale
-(§4.3 della RFC) e, per compiti automatici in background, le chiamate dirette via
-`litellm`/`capoturno.py` invece di `agy` — indicazione di Gemini stesso. 
+Tabella e paragrafo sotto sono lo **snapshot del 2026-07-08**, lasciato intatto come
+cronologia. **Entrambe le righe "a consumo"/`manual_only` della CLI headless sono
+superate**: vedi "Aggiornamento 2026-08-24" (Codex, autenticazione ChatGPT via CLI
+Rust attuale) e "Aggiornamento 2026-08-25" (Gemini, `official_headless` verificato)
+più sotto per lo stato corrente, o direttamente
+`docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`.
 
-Per Codex, si conferma che la CLI headless non condivide la quota dell'abbonamento flat dell'IDE ma attinge a crediti a consumo (OpenAI API Platform): per l'automazione a costo zero in background è necessario ricadere sul canale interattivo/hook/pull (§4.3 della RFC).
+Per Gemini, al 2026-07-08 restavano validi il pull manuale (§4.3 della RFC) e, per
+compiti automatici in background, le chiamate dirette via `litellm`/`capoturno.py`
+invece di `agy` — indicazione di Gemini stesso, resa non necessaria dall'aggiornamento
+del 2026-08-25 qui sotto.
+
+Per Codex, al 2026-07-08 si confermava che la CLI headless non condivideva la quota
+dell'abbonamento flat dell'IDE ma attingeva a crediti a consumo (OpenAI API
+Platform) — vero per il pacchetto npm testato allora, non per la CLI Rust attuale
+usata dal postino (vedi "Aggiornamento 2026-08-24").
 
 ## Aggiornamento 2026-08-24: automazione headless con canali ufficiali documentati
 
@@ -270,6 +281,14 @@ headless è ammessa per il dispatcher, alle condizioni seguenti (non opzionali):
    verifica del 2026-07-08 usava `codex -q`) e riverificare `claude -p`
    nell'invocazione esatta del dispatcher. Gemini resta `manual_only` finché
    il bug TTY di `agy` non è risolto: per lui solo deep link/pull.
+
+**Nota 2026-08-25 su quale via è davvero in uso**: verificato leggendo la
+configurazione reale (non assunto), il postino di questa installazione usa la
+via account ChatGPT per Codex (`~/.codex/auth.json`, `auth_mode: chatgpt`,
+nessuna `OPENAI_API_KEY`/`CODEX_API_KEY` impostata nell'ambiente) — non la via
+a consumo. Lo stesso vale per Claude (login abbonamento, `--bare` non usato) e
+per Gemini (token OAuth in `~/.gemini/antigravity-cli/`). L'unico costo reale
+del sistema oggi è l'LLM locale (gratis, hardware già posseduto).
 
 ## Aggiornamento 2026-08-25: Gemini/`agy` verificato `official_headless`
 

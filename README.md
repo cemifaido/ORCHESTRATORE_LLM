@@ -14,6 +14,8 @@ Il principio è semplice:
 - `capoturno.py` — motore di orchestrazione reale: instrada, chiama l'agente via LiteLLM, scrive la patch, valida con la sentinella e fa rework/failover automatico (vedi `docs/ORCHESTRAZIONE_LAVORATORI.md#capoturno`).
 - `instrada.py` — suggerisce l'agente più adatto per un tipo di compito.
 - `bacheca.py` — bacheca multi-agente: messaggistica strutturata fra Claude/Codex/Gemini/locale/umano senza API a pagamento (vedi `docs/RFC_BACHECA_MULTIAGENTE.md`).
+- `postino.py` — dispatch headless automatico per i thread pendenti in bacheca: lancia davvero l'agente giusto in background (mai per azioni irreversibili, tetti anti-loop, spento di default) — vedi `docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`.
+- `verifica_aggiornamenti_cli.py` — controllo periodico delle versioni di claude/codex/agy, riassunto delle note di rilascio col modello locale, notifica in bacheca; mai un aggiornamento senza verdetto umano.
 - `schema/` — schemi versionati per eventi, compiti e messaggi della bacheca.
 - `config/` — esempi di configurazione per agenti e comandi ammessi.
 - `adattatori/` — integrazioni opzionali, importate solo quando servono.
@@ -96,4 +98,4 @@ Sono richiamabili anche come comandi whitelistati dalla sentinella: `controllo_l
 6. Il capofila operativo resta l'umano: il modello locale fa solo guardia su output ripetitivi.
 
 La mappa documentale è in `docs/INDEX.md`; la specifica operativa completa è in `docs/ORCHESTRAZIONE_LAVORATORI.md`.
-La bacheca multi-agente senza API a pagamento (`bacheca.py`, implementata e testata, hook verificati per Claude Code e Codex) è documentata in `docs/RFC_BACHECA_MULTIAGENTE.md` (tecnico) e `docs/GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md` (senza dettagli tecnici).
+La bacheca multi-agente senza API a pagamento (`bacheca.py`, implementata e testata, hook verificati per Claude Code e Codex) è documentata in `docs/RFC_BACHECA_MULTIAGENTE.md` (tecnico) e `docs/GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md` (senza dettagli tecnici). Il postino (`postino.py`, dispatch headless automatico anche per Gemini, verificato dal vivo) è documentato in `docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`.

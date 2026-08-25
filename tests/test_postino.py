@@ -28,9 +28,12 @@ def _scrivi_invii(radice: Path, invii: list[dict]) -> None:
     )
 
 
-def _invio(minuti_fa: int, *, agente: str = "codex", thread_id: str = "t-postino", canale: str = "headless") -> dict:
+def _invio(
+    minuti_fa: int, *, agente: str = "codex", thread_id: str = "t-postino",
+    canale: str = "headless", modo: str | None = None,
+) -> dict:
     quando = (datetime.now(UTC) - timedelta(minutes=minuti_fa)).isoformat()
-    return {"quando": quando, "agente": agente, "thread_id": thread_id, "canale": canale, "codice": 0}
+    return {"quando": quando, "agente": agente, "thread_id": thread_id, "canale": canale, "modo": modo, "codice": 0}
 
 
 class PostinoPolicyTest(unittest.TestCase):
@@ -264,6 +267,91 @@ class PostinoDispatchTest(unittest.TestCase):
                 (radice / "dati_locali" / "orchestrazione" / "postino_stato.json").read_text(encoding="utf-8")
             )
             self.assertEqual(stato["invii"][0]["canale"], "deep_link")
+
+
+class PostinoModoRevisioneTest(unittest.TestCase):
+    """Modalita' revisione (decisione umana, 2026-08-25): su richiesta esplicita
+    i soci possono ispezionare/verificare davvero, non solo commentare in
+    bacheca; i suoi turni azzerano il tetto_thread come un tocco umano, ad
+    ogni risposta scritta in questa modalita' (nessun tetto fisso alzato)."""
+
+    def test_dispatch_modo_revisione_usa_comandi_estesi_e_registra_modo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            esegui = MagicMock(return_value=MagicMock(returncode=0))
+            with patch("postino.shutil.which", return_value=r"C:\fake\claude.cmd"):
+                esito = postino.dispatch(radice, "claude", "t-postino", modo="revisione", esegui=esegui)
+
+            self.assertEqual(esito["esito"], "inviato")
+            self.assertEqual(esito["modo"], "revisione")
+            comando = esegui.call_args.args[0]
+            self.assertIn("Bash(git diff *)", comando[2])
+            self.assertIn("Bash(ruff check *)", comando[2])
+            self.assertIn("Bash(python -m mypy *)", comando[2])
+
+            stato = json.loads(
+                (radice / "dati_locali" / "orchestrazione" / "postino_stato.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(stato["invii"][0]["modo"], "revisione")
+
+    def test_dispatch_modo_routine_predefinito_usa_comandi_ristretti(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            esegui = MagicMock(return_value=MagicMock(returncode=0))
+            with patch("postino.shutil.which", return_value=r"C:\fake\claude.cmd"):
+                postino.dispatch(radice, "claude", "t-postino", esegui=esegui)
+
+            comando = esegui.call_args.args[0]
+            self.assertNotIn("git diff", comando[2])
+            stato = json.loads(
+                (radice / "dati_locali" / "orchestrazione" / "postino_stato.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(stato["invii"][0]["modo"], "routine")
+
+    def test_invio_revisione_azzera_il_tetto_del_thread(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            # 3 invii routine (default max_turni_thread=3) esauriscono il tetto
+            _scrivi_invii(radice, [_invio(60 + i) for i in range(3)])
+            self.assertEqual(
+                postino.autorizza(radice, "claude", "t-postino"),
+                {"esito": "bloccato", "motivo": "tetto_thread"},
+            )
+            # un invio in modalita' revisione ADESSO azzera il tetto, come un tocco umano
+            invii = json.loads(
+                (radice / "dati_locali" / "orchestrazione" / "postino_stato.json").read_text(encoding="utf-8")
+            )["invii"]
+            invii.append(_invio(0, modo="revisione"))
+            _scrivi_invii(radice, invii)
+            self.assertEqual(postino.autorizza(radice, "claude", "t-postino"), {"esito": "autorizzato"})
+
+    def test_ogni_invio_revisione_azzera_di_nuovo_il_tetto(self) -> None:
+        """'si azzera anche su ogni risposta scritta da un agente in modalita'
+        revisione' (decisione umana, 2026-08-25): non solo il primo turno di
+        revisione, ma OGNI turno sposta in avanti il punto di reset."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            invii = [_invio(50, modo="revisione")]
+            invii += [_invio(40 - i) for i in range(3)]  # 3 routine dopo il primo reset: esauriscono il tetto
+            _scrivi_invii(radice, invii)
+            self.assertEqual(
+                postino.autorizza(radice, "claude", "t-postino"),
+                {"esito": "bloccato", "motivo": "tetto_thread"},
+            )
+            invii.append(_invio(1, modo="revisione"))  # nuovo turno di revisione: azzera di nuovo
+            _scrivi_invii(radice, invii)
+            self.assertEqual(postino.autorizza(radice, "claude", "t-postino"), {"esito": "autorizzato"})
+
+    def test_invio_revisione_su_altro_thread_non_azzera(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            invii = [_invio(60 + i) for i in range(3)]
+            invii.append(_invio(0, thread_id="altro-thread", modo="revisione"))
+            _scrivi_invii(radice, invii)
+            self.assertEqual(
+                postino.autorizza(radice, "claude", "t-postino"),
+                {"esito": "bloccato", "motivo": "tetto_thread"},
+            )
 
 
 if __name__ == "__main__":

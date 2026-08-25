@@ -162,6 +162,12 @@ iniettano automaticamente il contesto rilevante all'avvio di una sessione — ve
 [RFC Bacheca multi-agente](RFC_BACHECA_MULTIAGENTE.md) e, in versione senza dettagli
 tecnici, [Guida semplice alla bacheca multi-agente](GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md).
 
+Un livello di automazione ulteriore, il **postino**, toglie anche il bisogno di
+aprire una sessione perché l'hook scatti: quando c'è un messaggio pendente, un
+processo in background lancia davvero l'agente giusto in headless (mai per
+azioni irreversibili, sempre con tetti anti-loop e opt-in esplicito, spento di
+default) — vedi [Guida: il postino e il dispatch headless](GUIDA_POSTINO_DISPATCH_HEADLESS.md).
+
 Anche il modello locale (`triage_locale.py`) ora registra un evento (`--agente locale`,
 `tipo_compito=monitoraggio`) per ogni classificazione: prima il suo lavoro spariva in
 stdout, ora ha la stessa visibilità degli altri tre nella dashboard/registro.

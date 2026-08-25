@@ -8,6 +8,16 @@ la cronaca delle decisioni e dei guardrail concordati con Gemini/Codex;
 usarlo, prerequisiti per replicarlo altrove) vedi
 `docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`**.
 
+**Evoluzione successiva (stesso giorno)**: il perimetro fisso del guardrail 7
+(solo `bacheca.py`/`registro.py`) lasciava gli agenti "spettatori" — potevano
+commentare ma non ispezionare/verificare davvero il lavoro (`git diff`,
+rieseguire test/lint). Su richiesta esplicita dell'umano è stata aggiunta una
+seconda modalità, **solo su richiesta esplicita, mai dal watcher automatico**:
+`postino.dispatch(..., modo="revisione")` autorizza esplicitamente
+ispezione/verifica read-only (mai scrittura), e i suoi turni azzerano il tetto
+per thread come un tocco umano invece di alzare un numero fisso — dettagli in
+`docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md#modalità-revisione-su-richiesta-esplicita-mai-automatica`.
+
 Approvato per l'implementazione il 2026-08-24 (decisione umana dopo
 revisione di Gemini e Codex, thread `1732e5bc`); Lotto A a Gemini, Lotto B a
 Codex. **Autore**: Claude, su richiesta dell'utente. Il problema, con le
@@ -36,9 +46,12 @@ Fatti verificati su cui poggiare (non ripartire da zero):
 - `POST /api/bacheca/risvegli` esiste in `interfaccia.py` (risveglio a un
   click di tutti i pendenti, via deep link + appunti). Verificato 2026-07-08.
 - CLI headless **ufficiali** verificate: `claude -p` e `codex -q` funzionano
-  pulite; `agy` (Gemini) ha un bug reale su Windows (richiede terminale
-  interattivo) → per Gemini resta il deep link finché non è risolto. Dettagli
-  in `docs/RFC_BACHECA_MULTIAGENTE.md` §4.4 e `docs/ESPERIMENTO_SVEGLIA_POLLING.md`.
+  pulite; `agy` (Gemini) aveva un bug reale su Windows (richiede terminale
+  interattivo). **Aggiornato 2026-08-25**: aggirato con
+  `--dangerously-skip-permissions` (rischio accettato esplicitamente
+  dall'umano, i permessi granulari di `agy` restano un difetto del tool) —
+  Gemini è oggi wired in `postino.COMANDI` come claude/codex. Dettagli in
+  `docs/RFC_BACHECA_MULTIAGENTE.md` §4.4/§10 e `docs/ESPERIMENTO_SVEGLIA_POLLING.md`.
 - Principio di `docs/CONFORMITA_TOS_BACHECA.md`: dispatch per capability
   dichiarata e provata (`official_headless` / `official_hook_pull` /
   `manual_only`), mai per analogia. Il vecchio esperimento di polling fallì
@@ -57,15 +70,16 @@ passaggi intermedi.
 
 ### Livello 2 — turno headless per chi lo supporta
 
-Per gli agenti con capability `official_headless` (oggi: claude, codex) il
-risveglio non apre finestre: lancia la CLI ufficiale documentata (`claude -p`;
-`codex exec`, con `CODEX_API_KEY` se configurata, account ChatGPT altrimenti —
-entrambe le vie documentate dal provider) con un prompt fisso e vincolato
-(vedi guardrail 7), l'agente scrive in bacheca, il watcher sveglia il
-destinatario successivo. Il Lotto B deve **ri-verificare con un test reale**
-l'invocazione esatta (`codex exec` non è la stessa cosa del vecchio
-`codex -q` provato a luglio). Gemini continua col deep link
-(`manual_only`/finestra) finché `agy` resta rotto: nessun aggiramento.
+Per gli agenti con capability `official_headless` il risveglio non apre
+finestre: lancia la CLI ufficiale documentata (`claude -p`; `codex exec`,
+autenticato via abbonamento ChatGPT; `agy -p
+--dangerously-skip-permissions`) con un prompt fisso e vincolato (vedi
+guardrail 7), l'agente scrive in bacheca, il watcher sveglia il destinatario
+successivo. **Verificato dal vivo il 2026-08-25 per tutti e tre gli agenti**,
+incluso Gemini — l'esclusione originaria di questa sezione (`agy` rotto,
+resta il deep link) è superata: vedi
+`docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md` per i dettagli operativi e i
+prerequisiti reali che hanno richiesto due giorni di verifica.
 
 ### Livello 3 — il flusso guida, l'umano decide solo dove è scritto
 

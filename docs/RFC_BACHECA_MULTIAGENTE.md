@@ -572,16 +572,23 @@ interattiva documentata:
 | Gemini/Antigravity | `agy` (installato via `irm https://antigravity.google/cli/install.ps1 \| iex`, sostituisce Gemini CLI dismesso il 18/06/2026) | `-p`/`--print` | ❌ **bug confermato**: va in stallo a CPU quasi zero se lanciato senza un vero TTY interattivo (funziona se un umano lo lancia a mano nel proprio terminale, si blocca indefinitamente se invocato da uno script/subprocesso/estensione IDE) — confermato da Gemini stesso con test comparativo diretto |
 
 Conseguenza pratica per il piano di capability (proposto da Codex in bacheca,
-`official_headless`/`official_hook_pull`/`manual_only`): Claude qualifica per
-`official_headless` flat con prova reale, non solo documentazione. Codex qualifica
-solo come `official_headless` **a consumo API** in questa installazione npm: è
-tecnicamente headless, ma non soddisfa il requisito "senza API a pagamento" perché
-usa `OPENAI_API_KEY` e crediti OpenAI API Platform. Gemini **non** qualifica per
-`official_headless` nonostante il flag esista e sia documentato — il bug lo rende
-inutilizzabile per invocazioni programmatiche su Windows, quindi resta `manual_only`
-per questo canale specifico. Per compiti automatici in background lato Gemini,
-l'indicazione (Gemini stesso, in bacheca) è di passare da API dirette via
-`litellm`/`capoturno.py` solo per debug o contesti non sensibili, non da `agy`.
+`official_headless`/`official_hook_pull`/`manual_only`), **valida al momento di
+questa verifica (2026-07-08)**: Claude qualifica per `official_headless` flat con
+prova reale, non solo documentazione. Codex qualifica solo come `official_headless`
+**a consumo API** in questa installazione npm: è tecnicamente headless, ma non
+soddisfa il requisito "senza API a pagamento" perché usa `OPENAI_API_KEY` e crediti
+OpenAI API Platform. Gemini **non** qualifica per `official_headless` nonostante il
+flag esista e sia documentato — il bug lo rende inutilizzabile per invocazioni
+programmatiche su Windows, quindi resta `manual_only` per questo canale specifico.
+
+**Non più vero, superato il 2026-08-25 — vedi §10**: sia il bug non-TTY di Gemini sia
+la dipendenza di Codex da `OPENAI_API_KEY` a consumo riguardavano gli strumenti così
+com'erano allora (pacchetto npm più vecchio per Codex, bug di `agy` mai aggirato per
+Gemini). La CLI Codex Rust attuale autentica via abbonamento ChatGPT, e il bug di
+`agy` si aggira con `--dangerously-skip-permissions`: oggi tutti e tre gli agenti
+qualificano per il dispatch headless del postino, con differenze reali solo su
+*quanto* il perimetro sia imposto dal tool (claude/codex) o solo dal prompt
+(gemini) — dettagli in §10 e in `docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`.
 
 L'estensione `google.gemini-cli-vscode-ide-companion` (installata in Antigravity)
 espone comunque un meccanismo diverso, non testato in questa sessione: un server
@@ -905,22 +912,61 @@ piano, riflette cosa è stato costruito davvero, in ordine cronologico:
    ufficiale dei tre provider: `claude -p`/`codex -q` funzionanti e puliti, `agy -p`
    bloccato da un bug reale non-TTY su Windows, non usabile per invocazioni
    programmatiche.
-12. **Fatto**: `orchestratore_brainstorming.py` (script a sé, non un comando di
-   `bacheca.py` — quest'ultimo resta puro CRUD di messaggi per design) implementa
-   le fasi 1 e 1.5 di `docs/PIANO_SPERIMENTAZIONE_HEADLESS.md`: invoca Claude
-   headless (`claude -p`), sintetizza con il modello locale (riusa
-   `bacheca.sintetizza_thread` esistente, non duplicato), indirizza il risultato a
-   Gemini in bacheca. 10 test (`tests/test_orchestratore_brainstorming.py`, mock su
-   subprocess/modello locale) più una verifica end-to-end reale (`claude -p` vero).
-   La fase Gemini resta manuale per design, nessun codice da scrivere lì — pull
-   via `bacheca.py prossimo --agente gemini`, sintesi/triage finale via
-   `bacheca.py sintetizza` già esistente. Prima di questo lavoro, un'esperimento
-   isolato di Gemini (fuori repo) aveva rischiato di validare per errore un loop
-   "Claude<->Gemini" in cui il turno "Gemini" era in realtà il modello locale
-   mascherato — corretto nei documenti (`docs/STORICO_ESPERIMENTO_BRAINSTORMING.md`,
-   `docs/WALKTHROUGH_ESPERIMENTO_HEADLESS.md`) prima che diventasse un dato
-   fuorviante per il futuro.
+12. **Fatto (2026-07-08), poi superato dal postino (2026-08-25)**:
+   `orchestratore_brainstorming.py` (script a sé, non un comando di `bacheca.py`
+   — quest'ultimo resta puro CRUD di messaggi per design) è stato il primo
+   esperimento di risveglio headless: invocava Claude (`claude -p`), sintetizzava
+   con il modello locale (riusa `bacheca.sintetizza_thread`), indirizzava il
+   risultato a Gemini in bacheca — ma la fase Gemini restava manuale per design
+   (pull via `bacheca.py prossimo --agente gemini`), perché all'epoca `agy`
+   headless era bloccato da un bug non-TTY su Windows. 10 test
+   (`tests/test_orchestratore_brainstorming.py`) più una verifica end-to-end
+   reale con `claude -p` vero restano validi come test dello script in sé, ma il
+   caso d'uso generale che risolveva (rispondere in background senza aprire
+   finestre) è ora coperto in modo generico per tutti e tre gli agenti dal
+   postino (`postino.py`, vedi `docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`), non
+   solo per un loop di brainstorming a tre fasi hardcoded. Prima di questo
+   lavoro, un esperimento isolato di Gemini (fuori repo) aveva rischiato di
+   validare per errore un loop "Claude<->Gemini" in cui il turno "Gemini" era in
+   realtà il modello locale mascherato — un errore reale, corretto sul momento
+   perché non diventasse un dato fuorviante per il futuro (i documenti che ne
+   riportavano il resoconto sono stati rimossi il 2026-08-25 una volta che il
+   postino ha reso obsoleto anche il piano che descrivevano, non solo
+   quell'errore specifico).
 
 Il punto 9 (revisione Gemini di documento/schema) resta l'unico passo aperto in
 questa lista — tutto il resto è stato costruito, testato e verificato (a mano, con
 mock, o entrambi) durante le sessioni di lavoro.
+
+## 10. Aggiornamento 2026-08-25: il postino generalizza questo RFC
+
+Il meccanismo di attivazione descritto in §4 (pull via hook, con push solo per
+il focus, mai per il contenuto) restava comunque legato a un vincolo: **un
+umano doveva aprire la sessione perché l'hook scattasse**. Il postino
+(`postino.py`, `docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`) rimuove anche
+quest'ultimo passaggio per i tre agenti: un turno autorizzato lancia davvero
+`claude -p`/`codex exec`/`agy -p --dangerously-skip-permissions` in
+background, l'agente legge la bacheca, decide e scrive la risposta da solo,
+senza che nessuno apra un IDE. Due correzioni concrete rispetto a quanto
+scritto sopra in §4.4:
+
+- **Gemini/`agy` ora qualifica per il dispatch headless**, non più solo
+  `manual_only`: il bug non-TTY di §4.4 era un'attesa di approvazione
+  interattiva mai risolta, non un limite di piattaforma — `agy -p
+  --dangerously-skip-permissions` funziona in modo identico a `claude -p`/
+  `codex exec` una volta rimossa quell'attesa (verificato dal vivo,
+  2026-08-25). Resta una differenza reale, non cosmetica: per claude/codex il
+  perimetro è imposto dal tool stesso (`--allowedTools`/`--sandbox`), per
+  Gemini resta imposto solo dal prompt (i permessi granulari di `agy` restano
+  un difetto del tool, non risolto — rischio accettato esplicitamente
+  dall'umano).
+- **Codex headless in questa installazione non usa più `OPENAI_API_KEY` a
+  consumo**: la CLI Rust attuale (`codex exec --sandbox workspace-write`)
+  autentica con l'abbonamento ChatGPT (`~/.codex/auth.json`, `auth_mode:
+  chatgpt`), diversa dal vecchio pacchetto npm citato in §4.4 che richiedeva
+  crediti API separati. La distinzione fra "flat" e "a consumo" per Codex,
+  vera quando scritta, non descrive più l'installazione corrente.
+
+Il resto di §3-§7 (schema, event-sourcing, coordinamento file, ruolo del
+locale) resta valido: il postino è un consumatore in più di `bacheca.py`,
+non un meccanismo alternativo.

@@ -191,4 +191,34 @@ Due funzioni in più nel pannello:
 **Hook automatici**: se configurati (`.claude/settings.json`, `.codex/hooks.json`),
 Claude Code e Codex leggono da soli i messaggi in sospeso all'avvio di una sessione
 o all'invio di un prompt — verificato che funziona davvero, non solo in teoria.
-Gemini/Antigravity per ora resta manuale (`bacheca.py prossimo --agente gemini`).
+Gemini/Antigravity per ora resta manuale (`bacheca.py prossimo --agente gemini`)
+per questo meccanismo specifico — ma vedi sotto: il postino copre anche Gemini in
+un altro modo.
+
+---
+
+## 9. Il postino: risvegli automatici, anche a sessione chiusa
+
+Tutto il punto 8 sopra richiede comunque che tu apra una sessione perché l'hook
+scatti. Il postino va oltre: quando c'è un messaggio pendente in bacheca, un
+processo in background lancia davvero l'agente giusto (`claude -p`, `codex exec`,
+`agy -p`), che legge, decide e scrive la risposta da solo — nessun pannello da
+aprire, nessun invio da premere. Copre tutti e tre gli agenti, Gemini incluso.
+
+Spento di default: due interruttori nel pannello "🗂️ Bacheca Multi-Agente" della
+dashboard, entrambi da accendere esplicitamente — "📬 Postino Automatico" (il
+watcher più il vecchio risveglio a finestra) e "🤖 Dispatch Headless" (il
+lancio reale in background, inerte se il primo è spento). Un thread non riceve
+più di un certo numero di risvegli automatici consecutivi senza un tuo
+intervento — scrivere qualcosa tu nel thread azzera il conteggio.
+
+Per design l'agente svegliato dal postino può solo leggere/rispondere in
+bacheca — mai commit, push, cancellazioni o rete; se il compito richiede di
+modificare codice davvero, lascia un checkpoint e si ferma. Quando serve invece
+che un socio **verifichi** davvero il lavoro (rilegga un diff, rieseguisse i
+test/il linter), esiste una seconda modalità attivabile solo su richiesta
+esplicita (mai dal watcher), che allarga il perimetro a questi controlli di
+sola lettura — mai a scrittura.
+
+Guida operativa completa (prerequisiti, come si accende, come si replica su
+un'altra macchina): `docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`.

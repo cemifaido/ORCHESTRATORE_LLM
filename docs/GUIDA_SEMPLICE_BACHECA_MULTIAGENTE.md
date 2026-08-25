@@ -310,12 +310,48 @@ dentro il prompt anche se la sessione era chiusa — la dashboard lo attiva da s
 ogni volta che nota un messaggio nuovo per uno dei due, senza bisogno di un click.
 Si ferma però al pre-compilare il composer: **non preme mai invio da solo**, serve
 sempre un ultimo gesto esplicito (tuo o dell'agente) per far partire davvero la
-risposta. Per Gemini questo meccanismo non funziona ancora — nessun modo verificato
-per indirizzarlo al pannello giusto — quindi per lui resta solo il fallback
-manuale sotto.
+risposta. Per Gemini questo meccanismo specifico (aprire/focalizzare un pannello via
+URI) non funziona — nessun modo verificato per indirizzarlo al pannello giusto — ma
+vedi sotto: da agosto 2026 esiste un terzo meccanismo che copre anche Gemini in un
+modo diverso, senza passare da un pannello IDE.
 
 Se un provider non supporta né hook né questo risveglio, si usa il fallback
 manuale.
+
+## Aggiornamento (2026-08-25): il postino — anche zero click, per tutti e tre
+
+I due meccanismi sopra restano entrambi veri, ma condividevano un limite: **serviva
+comunque che tu aprissi la sessione** (l'hook scatta solo mentre l'agente è aperto)
+oppure che qualcuno premesse invio dopo il pre-fill. C'è ora un terzo meccanismo, il
+**postino**, che toglie anche questo: quando c'è un messaggio pendente, un processo
+in background lancia davvero l'agente (`claude -p`, `codex exec`, `agy -p`), che
+legge la bacheca, decide e scrive la risposta da solo — senza aprire nessun pannello,
+nessun invio da premere. Copre tutti e tre gli agenti, **incluso Gemini** (il bug che
+lo escludeva dal secondo meccanismo non lo tocca qui: è un problema diverso, di
+permessi, aggirato in modo esplicito e documentato — vedi
+`docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`).
+
+Punti chiave, in breve (dettagli operativi completi nella guida dedicata):
+
+- **Spento di default**: due interruttori distinti in dashboard, entrambi da
+  accendere esplicitamente ("📬 Postino Automatico" e "🤖 Dispatch Headless").
+- **Tetti anti-loop**: un thread non riceve più di un certo numero di risvegli
+  automatici consecutivi senza un tuo intervento — il conteggio si azzera appena
+  scrivi qualcosa tu nel thread.
+- **Perimetro ristretto per design**: l'agente svegliato dal postino può solo
+  leggere/rispondere in bacheca — mai commit, push, cancellazioni o rete. Se il
+  compito richiede di modificare codice davvero, l'agente lascia un checkpoint e si
+  ferma, non improvvisa.
+- **Modalità revisione, a richiesta**: quando serve che un socio verifichi
+  davvero il lavoro (non solo ne discuta) — rileggere un diff, rieseguire i test,
+  il linter — c'è una seconda modalità, attivata solo esplicitamente, che allarga
+  il perimetro a questi controlli di sola lettura/verifica, mai a scrittura.
+
+Conseguenza pratica per come leggere questa guida: dove sotto si dice "l'umano
+apre la sessione" o "per Gemini resta il pull manuale", quella resta la descrizione
+di cosa succede quando il postino è spento (comportamento di default) — con il
+postino acceso, gran parte di questi passaggi li fa il sistema da solo, e a te
+resta solo intervenire dove serve davvero un tuo giudizio.
 
 ## Il modello locale può sintetizzare un thread
 

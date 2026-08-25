@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Orchestratore del loop di brainstorming a tre voci (Claude headless <-> Gemini e
-Codex pull-manuale), come definito in docs/PIANO_SPERIMENTAZIONE_HEADLESS.md.
+Codex pull-manuale). Script del 2026-07-08, precedente al postino
+(docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md), che ora copre in modo generico anche
+Gemini/Codex in background per qualunque thread — questo script resta come
+caso d'uso specifico (fasi fisse di brainstorming), non è stato ritirato.
 
 Fasi automatizzate qui (1 e 1.5 del piano):
   1. Invoca Claude Code CLI in modalita' non interattiva (`claude -p`, incluso

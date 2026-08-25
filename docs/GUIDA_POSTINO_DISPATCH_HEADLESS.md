@@ -190,6 +190,56 @@ un difetto: è il confine di sicurezza che funziona come previsto. La
 revisione di merito su un diff/commit resta un compito per l'umano o per un
 agente in sessione interattiva normale, non per il dispatch headless.
 
+## Modalità revisione (su richiesta esplicita, mai automatica)
+
+**Perché esiste**: la sezione precedente documentava un limite reale — un
+agente in dispatch headless non poteva fare una vera revisione tecnica
+(`git diff`, rieseguire il gate), restando uno "spettatore" della bacheca
+invece che un socio in grado di verificare davvero il lavoro. L'umano ha
+chiesto (2026-08-25) che i soci potessero farlo *a richiesta*, restando un
+perimetro di sola ispezione/verifica, mai di scrittura.
+
+**Cosa cambia**: `postino.dispatch(radice, agente, thread_id, modo="revisione")`
+— un secondo parametro esplicito, non un nuovo interruttore. La modalità
+predefinita resta `modo="routine"` (il perimetro ristretto di sempre); la
+modalità `"revisione"` va invocata deliberatamente, mai dal watcher
+automatico.
+
+- **Comandi estesi solo dove serve tecnicamente**: `COMANDI_REVISIONE` in
+  `postino.py`. Per **claude** è uno sblocco reale del perimetro imposto dal
+  tool: `--allowedTools` guadagna `Bash(git diff *)`, `Bash(git log *)`,
+  `Bash(git show *)`, `Bash(git status *)`, `Bash(python -m unittest *)`,
+  `Bash(ruff check *)`, `Bash(python -m mypy *)`, oltre a `bacheca.py`/
+  `registro.py` di sempre. Per **codex** e **gemini** i comandi restano
+  identici alla modalità routine — il loro sandbox/bypass già lo
+  permetterebbe tecnicamente; cambia solo il prompt (sotto), che li
+  autorizza esplicitamente a farlo.
+- **Prompt dedicato** (`postino.prompt_revisione()`): dichiara esplicitamente
+  cosa è permesso (diff/log/show/status, rieseguire test/lint/type-check,
+  riportare l'esito **reale** di ciò che è stato eseguito per davvero, mai
+  una previsione) e ribadisce cosa resta vietato **sempre**, anche in questa
+  modalità: modificare file, commit, push, cancellazioni, installazioni,
+  rete non necessaria. Stesso confine sul contesto non fidato della bacheca
+  della modalità routine.
+- **Il tetto_thread si azzera ad ogni turno di revisione**, esattamente come
+  un tocco umano (decisione umana esplicita, 2026-08-25: *"nessun tetto
+  fisso: si azzera anche su ogni risposta scritta da un agente in modalità
+  revisione"*) — non un numero più alto, un reset. `postino._ultimo_reset_thread()`
+  prende il più recente fra l'ultimo messaggio `mittente=umano` sul thread e
+  l'ultimo invio con `modo="revisione"` sul thread: ogni turno di revisione
+  sposta di nuovo in avanti il punto da cui si riparte a contare, non solo il
+  primo. Il budget giornaliero (`max_invii_giorno`) e il debounce restano
+  invariati — la modalità revisione consuma comunque quota e resta soggetta
+  al debounce per coppia agente+thread, evita solo il blocco per "troppi
+  turni senza un umano".
+- **Non ha ancora un pulsante o un comando CLI dedicato**: essendo
+  volutamente "a richiesta" e non automatica, oggi si invoca chiamando
+  `postino.dispatch(...)` direttamente (es. da un interprete Python o da
+  un piccolo script usa-e-getta) — non c'è un rischio di uso accidentale dal
+  watcher, che chiama sempre e solo `modo="routine"` di default. Un
+  trigger dedicato (pulsante dashboard o sotto-comando) resta un possibile
+  passo successivo, non ancora fatto perché non richiesto.
+
 ## Controllo automatico degli aggiornamenti delle CLI
 
 Un compito separato ma imparentato: le tre CLI che il postino usa
