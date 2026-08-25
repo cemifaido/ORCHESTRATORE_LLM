@@ -28,22 +28,59 @@ Il principio guida è semplice:
 
 ---
 
-## Installazione & Configurazione Guidata (Setup Wizard)
+## Guida all'Installazione & Prerequisiti
 
-Al primo utilizzo (oppure quando si desidera riconfigurare porte, percorsi o agenti abilitati), eseguire il wizard di setup interattivo:
+### 1. Prerequisiti di Sistema
+Prima di iniziare, assicurati di avere installato sul tuo computer:
+- **Python >= 3.10** (raccomandato Python 3.11, 3.12, 3.13 o 3.14).
+- **Git** per la gestione del repository e dei branch.
+- **Node.js** (opzionale, necessario solo se intendi installare le CLI di Claude o Codex via `npm`).
+
+---
+
+### 2. Account e Strumenti Assistenti AI (Opzionali e Modulari)
+Squadra è pensata per funzionare con **qualsiasi combinazione di assistenti**: puoi usarne tre, due, uno solo, o lavorare solo con l'operatore umano e il modello locale.
+
+| Assistente | Tool CLI | Come si installa | Account / Login richiesto |
+|---|---|---|---|
+| **Claude Code** | `claude` | `npm install -g @anthropic-ai/claude-code` | Abbonamento Anthropic (Claude Pro/Team/Max) con login una tantum `claude` |
+| **OpenAI Codex** | `codex` | `npm install -g @openai/codex` | Abbonamento OpenAI (ChatGPT Plus/Team) con login una tantum `codex` |
+| **Google Gemini** | `agy` | `irm https://antigravity.google/cli/install.ps1 \| iex` | Account Google con login OAuth una tantum `agy models` |
+| **Modello Locale** | `llama-server` | Binario `llama.cpp` + modello `.gguf` (es. Qwen 2.5 3B) | **Nessun account, 100% gratuito e offline** (se non hai GPU dedicata, il wizard disattiva l'LLM e usa triage deterministico) |
+
+---
+
+### 3. Procedura Passo-Passo per Partire
+
+#### Passo 1: Copiare o Clonare il Progetto
+Scarica o clona il repository nella cartella desiderata:
+```powershell
+git clone <URL_REPOSITORY> _ORCHESTRATORE_LLM
+cd _ORCHESTRATORE_LLM
+```
+
+#### Passo 2: Eseguire il Setup Wizard Guidato
+Avvia il wizard di configurazione (esegue la diagnosi, chiede quali agenti abilitare, installa le dipendenze e genera il file `.env` locale):
 
 ```powershell
 .\setup.ps1
 ```
+*(oppure `python setup_wizard.py`)*
 
-oppure:
+Durante il wizard ti verrà chiesto:
+1. Quali assistenti abilitare tra quelli presenti sul tuo PC.
+2. Se disponi di una GPU per il modello locale o se preferisci la modalità leggera senza GPU.
+3. Se desideri installare automaticamente le dipendenze Python (`requirements.txt` e `requirements-dev.txt`).
+4. La porta della Dashboard web (default `8095`).
+5. Se installare l'hook Git pre-commit per il controllo automatico di qualità.
+
+#### Passo 3: Avvio della Dashboard
+Al termine del setup, avvia la console operativa:
 
 ```powershell
-python setup_wizard.py
+.\avvia_dashboard.ps1
 ```
-
-> [!TIP]
-> **Massima modularità**: Se il computer non ha una scheda video (GPU) dedicata o non ha installato uno degli agenti (`claude`, `codex`, `gemini`), il wizard adatta la configurazione e il sistema funzionerà regolarmente con le sole risorse disponibili (eseguendo triage deterministico senza errori).
+Il browser si aprirà automaticamente su `http://127.0.0.1:8095`.
 
 ---
 
