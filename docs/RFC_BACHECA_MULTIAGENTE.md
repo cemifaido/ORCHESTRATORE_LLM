@@ -739,27 +739,57 @@ layer su GPU contro i 18 stimati per Q4_K_M). Q4_K_M/Llama 3.1 restano un'opzion
 futuro emergessero thread più complessi di questi 3 di prova dove serva più margine di
 ragionamento — non misurato, solo un'ipotesi plausibile da riverificare se necessario.
 
-### 6.4 Bug noto: caratteri accentati UTF-8 corrotti
+### 6.4 Chiuso (2026-08-25): non era corruzione dei dati, era la console di Windows
 
-Presente identicamente su **tutti e tre** i modelli testati (Qwen Q3_K_M, Qwen
-Q4_K_M, Llama 3.1 8B Q4_K_M) — stesso sintomo esatto (es. "è" → `�`) su due famiglie di
-modelli e tokenizer completamente diversi, servite dallo stesso `llama-server.exe`.
-Questo è un indizio forte, non ancora confermato, che la causa **non è il modello**
-(come ipotizzato nella nota preesistente in `ORCHESTRAZIONE_LAVORATORI.md`) ma
-qualcosa di condiviso a valle nel pipeline — più probabilmente un mismatch di encoding
-fra la risposta HTTP di `llama-server` e il lato Python/Windows che la legge (un
-mismatch cp1252/UTF-8 è un problema comune su Windows). **Da investigare
-separatamente**, non blocca il resto di questo design: il bug altera solo
-occasionalmente il testo libero (`sintesi`/`conflitto`), mai la struttura JSON o
-l'esito booleano di un campo.
+**Storia della diagnosi** (lasciata per intero, non riscritta, perché la
+sequenza "sintomo → ipotesi plausibile ma sbagliata → causa vera" è lei stessa
+la lezione utile): presente identicamente su **tutti e tre** i modelli testati
+(Qwen Q3_K_M, Qwen Q4_K_M, Llama 3.1 8B Q4_K_M) — stesso sintomo esatto (es.
+"è" → `�`) su due famiglie di modelli e tokenizer completamente diversi. Prima
+ipotesi (nota preesistente in `ORCHESTRAZIONE_LAVORATORI.md`): il modello.
+Seconda ipotesi (sopra in questa sezione): un mismatch di encoding fra la
+risposta HTTP di `llama-server` e il lato Python/Windows. Terza (indagine
+Gemini, L7 della revisione di sicurezza esterna, stesso giorno): fallback
+sulla code page di sistema Windows nell'I/O stream, combinato con un decode
+HTTP non esplicito — direzione giusta, causa non ancora isolata con precisione.
 
-**Ricetta pratica per quando qualcuno la investiga** (non fatto ora, solo annotato):
-salvare sempre JSON strutturato dal dispatcher, mai decisioni basate sul testo libero
-accentato (già coerente col design: instradamento è deterministico, non testuale);
-riprodurre con un prompt che forzi accenti nella risposta per isolare il caso;
-forzare `encoding="utf-8"` in ogni lettura/scrittura lato Python; controllare gli
-header/il decoding della risposta HTTP di `llama-server` prima di sospettare ancora
-il modello.
+**Causa reale, isolata con una riproduzione end-to-end** (non un'ipotesi:
+verificato byte per byte, script a perdere, 2026-08-25):
+
+1. Richiesta HTTP diretta a `llama-server` con un prompt che forza accenti
+   nella risposta: l'header `Content-Type` dichiara `charset=utf-8` e i
+   **byte grezzi della risposta sono UTF-8 perfettamente corretto**
+   (`\xc3\xa9` per "é", `\xc3\xa0` per "à", ecc. — controllato prima di
+   qualunque decode implicito).
+2. Chiamata reale a `litellm.completamento_locale()` (non solo l'HTTP grezzo,
+   la funzione vera usata da `bacheca.sintetizza_thread`): il testo estratto
+   è corretto — verificato codificandolo di nuovo in UTF-8 e confrontando i
+   byte.
+3. Scrittura reale su un `messaggi.jsonl` di prova via
+   `bacheca.aggiungi_messaggio()` (che apre il file con `encoding="utf-8"`,
+   come tutta la bacheca) e rilettura via `bacheca.leggi_messaggi()`: il testo
+   riletto **è identico byte per byte** all'originale.
+
+**In nessun punto della pipeline reale (llama-server → litellm → bacheca →
+file su disco → rilettura) i dati sono mai stati corrotti.** L'unico posto
+dove l'accento si perde è `print()` su un terminale Windows la cui codepage
+attiva non è UTF-8 (`cp1252`/OEM): verificato dal vivo che
+`sys.stdout.encoding` risulta `cp1252` di default su questa macchina, che
+`print("perché")` in quelle condizioni produce `perch�`, e che
+`sys.stdout.reconfigure(encoding="utf-8", errors="replace")` prima del
+`print` risolve **immediatamente e completamente** lo stesso identico caso
+(stesso script, stesso terminale, unica differenza la reconfigure). Non un
+bug nel modello, non un bug nella pipeline dati, non un mismatch nella
+risposta HTTP — un default di encoding della console di Windows che si
+applica a qualunque programma Python stampi testo non-ASCII, non specifico
+di questo progetto.
+
+**Fix applicato**: `sys.stdout.reconfigure(encoding="utf-8", errors="replace")`
+a inizio `main()` in `triage_locale.py`, `sentinella.py`, `bacheca.py` — i tre
+punti dove testo libero generato dal modello/scritto dagli agenti viene
+stampato a video per un umano. Nessuna modifica a `adattatori/litellm.py` o a
+`bacheca.py` per la lettura/scrittura file: erano già corretti, cambiarli
+sarebbe stato un fix per un bug che non esisteva lì.
 
 ## 7. Punti aperti, non ancora decisi
 

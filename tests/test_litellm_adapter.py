@@ -100,6 +100,45 @@ class LiteLLMAdapterTest(unittest.TestCase):
         self.assertEqual(litellm.testo_da_risposta({"choices": []}), "")
         self.assertEqual(litellm.testo_da_risposta({}), "")
 
+    def test_estrai_primo_oggetto_json_semplice(self) -> None:
+        self.assertEqual(
+            litellm.estrai_primo_oggetto_json('{"esito": "routine", "motivo": "ok"}'),
+            {"esito": "routine", "motivo": "ok"},
+        )
+
+    def test_estrai_primo_oggetto_json_con_prosa_attorno(self) -> None:
+        testo = 'Ecco il risultato:\n{"sintesi": "fatto", "conflitto": null}\nSpero sia utile.'
+        self.assertEqual(
+            litellm.estrai_primo_oggetto_json(testo),
+            {"sintesi": "fatto", "conflitto": None},
+        )
+
+    def test_estrai_primo_oggetto_json_annidato(self) -> None:
+        """Guardrail di sicurezza (revisione esterna, 2026-08-25): il vecchio pattern
+        index('{')...rindex('}') si rompeva con oggetti annidati o graffe nel testo
+        dopo il JSON - qui una graffa di chiusura nella prosa seguente non deve
+        far includere testo spurio nell'oggetto estratto."""
+        testo = '{"esito": "escalation", "dettagli": {"riga": 12, "colonna": {"da": 1, "a": 5}}} testo dopo con una } graffa spuria'
+        self.assertEqual(
+            litellm.estrai_primo_oggetto_json(testo),
+            {"esito": "escalation", "dettagli": {"riga": 12, "colonna": {"da": 1, "a": 5}}},
+        )
+
+    def test_estrai_primo_oggetto_json_graffa_dentro_stringa(self) -> None:
+        testo = '{"motivo": "trovato un blocco { non chiuso } nel codice"}'
+        self.assertEqual(
+            litellm.estrai_primo_oggetto_json(testo),
+            {"motivo": "trovato un blocco { non chiuso } nel codice"},
+        )
+
+    def test_estrai_primo_oggetto_json_senza_graffe_solleva(self) -> None:
+        with self.assertRaises(ValueError):
+            litellm.estrai_primo_oggetto_json("nessun json qui")
+
+    def test_estrai_primo_oggetto_json_malformato_solleva(self) -> None:
+        with self.assertRaises(ValueError):
+            litellm.estrai_primo_oggetto_json("prefisso {non e' json valido")
+
     def test_completamento_locale_forza_costo_zero_misurato_e_provider_locale(self) -> None:
         """L'inferenza locale non ha un costo API da stimare: e' un fatto noto (zero),
         non un'ipotesi. Verifica anche che punti di default all'endpoint llama-server
@@ -116,6 +155,24 @@ class LiteLLMAdapterTest(unittest.TestCase):
         self.assertEqual(kwargs["api_base"], litellm.API_BASE_LOCALE_PREDEFINITO)
         self.assertEqual(kwargs["api_key"], "non-serve")
         self.assertEqual(kwargs["model"], litellm.MODELLO_LOCALE_PREDEFINITO)
+
+    def test_completamento_applica_timeout_di_default(self) -> None:
+        """Guardrail M2 (revisione sicurezza, 2026-08-25): senza un timeout di
+        default, litellm.completion() puo' restare appesa indefinitamente."""
+        with patch("litellm.completion", return_value=RispostaFinta()) as mock_completion:
+            litellm.completamento(modello="openai/gpt-4o-mini", messaggi=[{"role": "user", "content": "ciao"}])
+
+        _, kwargs = mock_completion.call_args
+        self.assertEqual(kwargs["timeout"], litellm.TIMEOUT_SECONDI_PREDEFINITO)
+
+    def test_completamento_rispetta_timeout_esplicito_del_chiamante(self) -> None:
+        with patch("litellm.completion", return_value=RispostaFinta()) as mock_completion:
+            litellm.completamento(
+                modello="openai/gpt-4o-mini", messaggi=[{"role": "user", "content": "ciao"}], timeout=5.0,
+            )
+
+        _, kwargs = mock_completion.call_args
+        self.assertEqual(kwargs["timeout"], 5.0)
 
 
 if __name__ == "__main__":

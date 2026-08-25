@@ -147,9 +147,7 @@ def valuta_thread(nome: str, messaggi: list[dict[str, Any]], modello: str | None
 
     testo = litellm.testo_da_risposta(risposta)
     try:
-        inizio = testo.index("{")
-        fine = testo.rindex("}") + 1
-        dati = json.loads(testo[inizio:fine])
+        dati = litellm.estrai_primo_oggetto_json(testo)
         richieste = {"sintesi", "prossimo_destinatario", "conflitto"}
         mancanti = richieste - set(dati)
         if mancanti:

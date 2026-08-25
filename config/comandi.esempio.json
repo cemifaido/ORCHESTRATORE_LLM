@@ -43,7 +43,7 @@
       "descrizione": "Test Servizi (pytest)",
       "cartella": ".",
       "argomenti": [
-        ".venv/Scripts/python.exe",
+        "python",
         "-m",
         "pytest",
         "tests",
@@ -82,7 +82,7 @@
       "descrizione": "Lint (ruff check)",
       "cartella": ".",
       "argomenti": [
-        ".venv/Scripts/python.exe",
+        "python",
         "-m",
         "ruff",
         "check",
@@ -95,7 +95,7 @@
       "descrizione": "Type check (mypy)",
       "cartella": ".",
       "argomenti": [
-        ".venv/Scripts/python.exe",
+        "python",
         "-m",
         "mypy",
         "."
@@ -107,7 +107,7 @@
       "descrizione": "Complessita (xenon)",
       "cartella": ".",
       "argomenti": [
-        ".venv/Scripts/python.exe",
+        "python",
         "-m",
         "xenon",
         "--max-absolute", "C",

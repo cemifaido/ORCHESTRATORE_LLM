@@ -94,15 +94,35 @@ class Capoturno:
         agente_suggerito = info_routing.get("agente_suggerito", "umano")
 
         if info_routing.get("serve_umano_prima"):
+            messaggio_blocco = (
+                f"Esecuzione interrotta: il compito ha rischio '{rischio}' o richiede l'agente umano. "
+                "Il motore sincrono non può procedere senza un verdetto umano esplicito."
+            )
             self._notifica(
                 da="locale",
                 a="umano",
                 agente_attivo="umano",
-                messaggio=f"Attesa approvazione per rischio {rischio} o agente Umano richiesto.",
+                messaggio=messaggio_blocco,
                 esito="in_corso"
             )
-            # In un workflow reale sincrono qui ci si fermerebbe.
-            # Per il nostro motore di base, notifichiamo e proseguiamo assumendo il via libera.
+            registro.aggiungi_evento(self.registro_percorso, {
+                "versione_schema": 1,
+                "id_evento": str(uuid.uuid4()),
+                "timestamp": registro.adesso_utc(),
+                "id_compito": id_compito,
+                "agente": "umano",
+                "tipo_compito": tipo_compito,
+                "stato": "in_corso",
+                "esito_gate": "non_eseguito",
+                "verdetto_umano": "non_revisionato",
+                "costo_stimato_usd": 0.0,
+                "origine_costo": "stimato",
+                "latenza_ms": 0,
+                "regole_incluse": [],
+                "file_modificati": [],
+                "note": messaggio_blocco,
+            })
+            return False
 
         agente_corrente = agente_suggerito
         latenze: dict[str, int] = {}

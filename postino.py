@@ -6,7 +6,7 @@ import hashlib
 import json
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -231,15 +231,30 @@ def prompt_revisione(agente: str, thread_id: str) -> str:
     )
 
 
+def _e_di_oggi(quando: str, oggi: date) -> bool:
+    """Confronto semantico sulla data, non un prefisso di stringa (revisione di
+    sicurezza, 2026-08-25, L4): 'quando'.startswith(oggi.isoformat()) e' un
+    confronto di stringa fragile su un valore che e' concettualmente una data,
+    non testo libero - un fromisoformat()+confronto .date() e' corretto per
+    costruzione, non per coincidenza di formattazione. Un timestamp non
+    parsabile (corrotto/di un formato diverso) si conta comunque come "di
+    oggi": stesso principio fail-closed del resto del modulo, non si
+    sotto-conta mai il budget per un dato illeggibile."""
+    try:
+        return datetime.fromisoformat(quando).date() == oggi
+    except ValueError:
+        return True
+
+
 def _budget_headless_esaurito(invii: list[dict[str, Any]], ora: datetime, limiti: dict[str, int]) -> bool:
     """Il budget giornaliero conta SOLO il canale headless (decisione Codex al
     subentro): i deep-link aprono un pannello all'umano, non consumano quota
     provider. Un record senza 'canale' e' storico pre-separazione: si conta
     come headless per prudenza."""
-    oggi = ora.date().isoformat()
+    oggi = ora.date()
     odierni_headless = [
         i for i in invii
-        if i.get("quando", "").startswith(oggi) and i.get("canale", "headless") == "headless"
+        if _e_di_oggi(i.get("quando", ""), oggi) and i.get("canale", "headless") == "headless"
     ]
     return len(odierni_headless) >= limiti["max_invii_giorno"]
 

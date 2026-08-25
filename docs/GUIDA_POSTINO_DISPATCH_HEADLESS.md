@@ -232,13 +232,15 @@ automatico.
   invariati — la modalità revisione consuma comunque quota e resta soggetta
   al debounce per coppia agente+thread, evita solo il blocco per "troppi
   turni senza un umano".
-- **Non ha ancora un pulsante o un comando CLI dedicato**: essendo
-  volutamente "a richiesta" e non automatica, oggi si invoca chiamando
-  `postino.dispatch(...)` direttamente (es. da un interprete Python o da
-  un piccolo script usa-e-getta) — non c'è un rischio di uso accidentale dal
-  watcher, che chiama sempre e solo `modo="routine"` di default. Un
-  trigger dedicato (pulsante dashboard o sotto-comando) resta un possibile
-  passo successivo, non ancora fatto perché non richiesto.
+- **Ha un pulsante dedicato in dashboard** (dal 2026-08-25): nel dettaglio di
+  un thread del pannello Bacheca, "🔎 Revisione da {agente}" per ciascuno dei
+  tre agenti — chiama `POST /api/bacheca/postino/revisione`
+  (`{progetto_id, agente, thread_id}`), che invoca sempre e solo
+  `postino.dispatch(..., modo="revisione")`, mai il default `"routine"`. Il
+  watcher automatico continua a chiamare sempre e solo `modo="routine"` di
+  default: nessun rischio che la modalità revisione parta da sola. Resta
+  comunque invocabile anche direttamente da codice/script per chi preferisce
+  quella via.
 
 ## Controllo automatico degli aggiornamenti delle CLI
 

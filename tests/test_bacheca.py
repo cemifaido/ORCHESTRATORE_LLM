@@ -558,6 +558,30 @@ class BachecaTest(unittest.TestCase):
         self.assertIn("non interpretabile", risultato["errore"])
 
     @patch("bacheca.litellm.completamento_locale")
+    def test_sintetizza_thread_delimita_il_contenuto_non_fidato(self, mock_completamento: MagicMock) -> None:
+        """Guardrail di sicurezza (revisione esterna, 2026-08-25, M4): il testo del
+        thread deve arrivare al modello racchiuso fra delimitatori espliciti, non
+        semplicemente concatenato al prompt."""
+        mock_completamento.return_value = (
+            _risposta_con_testo('{"sintesi": "ok", "conflitto": null}'), _misurazione_finta(),
+        )
+        richiesta = self.messaggio_valido()
+        bacheca.sintetizza_thread([richiesta], richiesta["thread_id"])
+
+        messaggi_inviati = mock_completamento.call_args.kwargs["messaggi"]
+        ultimo_turno_utente = messaggi_inviati[-1]["content"]
+        self.assertIn("<<<INIZIO_THREAD>>>", ultimo_turno_utente)
+        self.assertIn("<<<FINE_THREAD>>>", ultimo_turno_utente)
+        self.assertIn(richiesta["testo"], ultimo_turno_utente)
+
+    def test_formatta_thread_per_dispatcher_tronca_oltre_il_limite(self) -> None:
+        richiesta = self.messaggio_valido()
+        richiesta["testo"] = "x" * (bacheca.LIMITE_CARATTERI_THREAD_PROMPT + 500)
+        testo = bacheca._formatta_thread_per_dispatcher([richiesta])
+        self.assertLessEqual(len(testo), bacheca.LIMITE_CARATTERI_THREAD_PROMPT + len("\n...[thread troncato]...") + 1)
+        self.assertIn("[thread troncato]", testo)
+
+    @patch("bacheca.litellm.completamento_locale")
     def test_comando_sintetizza_scrive_segnalazione_conflitto(self, mock_completamento: MagicMock) -> None:
         mock_completamento.return_value = (
             _risposta_con_testo('{"sintesi": "Esiti opposti.", "conflitto": "Claude vs Codex sullo stesso test."}'),

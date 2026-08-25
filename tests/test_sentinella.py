@@ -193,6 +193,35 @@ class SentinellaTest(unittest.TestCase):
             self.assertEqual(eventi[0]["metadati"]["comando"], "test_servizi")
             self.assertEqual(eventi[0]["metadati"]["esito_gate_collegato"], "superato")
 
+    def test_redigi_segreti_in_log_output(self) -> None:
+        """Guardrail L1 (revisione sicurezza, 2026-08-25): chiavi API e segreti
+        devono essere mascherati prima di essere scritti su disco nei file di log."""
+        output_con_segreti = (
+            "Avvio test...\n"
+            "OPENAI_API_KEY=sk-1234567890abcdefghijklmnopqrstuvwxyz\n"
+            "Authorization: Bearer my_secret_token_123456789\n"
+            "apiKey: 'AIzaSyD-abc1234567890abcdef1234567890abc'\n"
+            "Tutto ok."
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            metadati = sentinella.salva_log_output("evt_segreto", output_con_segreti, Path(tmp))
+            contenuto_salvato = Path(metadati["log_output"]).read_text(encoding="utf-8")
+            self.assertNotIn("sk-1234567890abcdefghijklmnopqrstuvwxyz", contenuto_salvato)
+            self.assertNotIn("my_secret_token_123456789", contenuto_salvato)
+            self.assertNotIn("AIzaSyD-abc1234567890abcdef1234567890abc", contenuto_salvato)
+            self.assertIn("[REDACTED_SECRET]", contenuto_salvato)
+
+    def test_verifica_connessione_rifiuta_host_esterni_ssrf(self) -> None:
+        """Guardrail M5 (revisione sicurezza, 2026-08-25): verifica_connessione
+        deve rifiutare host esterni e consentire solo host locali (loopback)."""
+        self.assertFalse(sentinella.verifica_connessione("192.168.1.1:8080"))
+        self.assertFalse(sentinella.verifica_connessione("http://example.com:80"))
+        self.assertFalse(sentinella.verifica_connessione("http://10.0.0.1:5000"))
+        self.assertTrue(sentinella._is_host_locale("localhost"))
+        self.assertTrue(sentinella._is_host_locale("127.0.0.1"))
+        self.assertTrue(sentinella._is_host_locale("::1"))
+        self.assertFalse(sentinella._is_host_locale("8.8.8.8"))
+
 
 if __name__ == "__main__":
     unittest.main()

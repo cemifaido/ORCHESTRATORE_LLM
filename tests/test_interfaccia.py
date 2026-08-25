@@ -5,7 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import interfaccia
 import bacheca
@@ -729,6 +729,40 @@ class PostinoHeadlessTest(unittest.TestCase):
             self.assertIsInstance(c["interazioni"], int)
 
 
+class PostinoRevisioneEndpointTest(unittest.TestCase):
+    """Pulsante 'chiedi una revisione' della bacheca (docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md
+    #modalita-revisione): sempre modo='revisione' esplicito, mai il default
+    'routine' del watcher automatico - postino.dispatch va sempre mockato."""
+
+    def test_richiede_dispatch_in_modalita_revisione(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            progetti = [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
+            with (
+                patch.object(interfaccia, "leggi_progetti", return_value=progetti),
+                patch.object(interfaccia.postino, "dispatch", return_value={"esito": "inviato"}) as dispatch_mock,
+            ):
+                payload = interfaccia.PostinoRevisioneInput(
+                    progetto_id="test_proj", agente="codex", thread_id="t-1",
+                )
+                risultato = interfaccia.richiedi_revisione_postino(payload)
+
+        self.assertEqual(risultato, {"esito": "inviato"})
+        dispatch_mock.assert_called_once_with(p_path, "codex", "t-1", modo="revisione")
+
+    def test_rifiuta_agente_non_valido(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            progetti = [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                payload = interfaccia.PostinoRevisioneInput(
+                    progetto_id="test_proj", agente="locale", thread_id="t-1",
+                )
+                with self.assertRaises(interfaccia.HTTPException) as ctx:
+                    interfaccia.richiedi_revisione_postino(payload)
+        self.assertEqual(ctx.exception.status_code, 400)
+
+
 class InterfacciaI18nTest(unittest.TestCase):
     def test_interfaccia_html_contiene_selettore_lingua_e_dizionari_i18n(self) -> None:
         """Verifica che interfaccia.html/static/interfaccia.js contengano lo
@@ -793,6 +827,36 @@ class AutenticazioneBindEspostoTest(unittest.TestCase):
         self.assertEqual(senza_chiave.status_code, 401)
         self.assertEqual(chiave_sbagliata.status_code, 401)
         self.assertEqual(chiave_giusta.status_code, 200)
+
+
+class GeneraPromptRisveglioLLMTest(unittest.TestCase):
+    """Guardrail di sicurezza (revisione esterna, 2026-08-25, M4): la cronologia
+    del thread e' contenuto non fidato che finisce nel prompt e il "prompt"
+    generato in risposta finisce copiato negli appunti dell'utente - deve
+    arrivare al modello racchiuso fra delimitatori espliciti."""
+
+    @patch("adattatori.litellm.completamento_locale")
+    def test_delimita_il_contenuto_non_fidato(self, mock_completamento: MagicMock) -> None:
+        from adattatori import litellm as litellm_mod
+
+        mock_completamento.return_value = (
+            '{"agente": "claude", "prompt": "vai"}',
+            litellm_mod.MisurazioneLiteLLM(
+                modello="x", provider="locale", costo_usd=0.0,
+                token_prompt=1, token_completion=1, token_totali=2,
+            ),
+        )
+        cronologia = [
+            {"mittente": "codex", "destinatari": ["claude"], "tipo": "richiesta", "testo": "fai qualcosa"}
+        ]
+
+        interfaccia._genera_prompt_risveglio_con_llm("claude", cronologia)
+
+        messaggi_inviati = mock_completamento.call_args.kwargs["messaggi"]
+        contenuto = messaggi_inviati[-1]["content"]
+        self.assertIn("<<<INIZIO_CRONOLOGIA>>>", contenuto)
+        self.assertIn("<<<FINE_CRONOLOGIA>>>", contenuto)
+        self.assertIn("fai qualcosa", contenuto)
 
 
 if __name__ == "__main__":

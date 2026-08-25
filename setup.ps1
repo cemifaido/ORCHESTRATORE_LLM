@@ -8,4 +8,8 @@ if (Get-Command py -ErrorAction SilentlyContinue) {
     $pythonCmd = "py -3"
 }
 
-Invoke-Expression "$pythonCmd setup_wizard.py $args"
+if ($pythonCmd -eq "py -3") {
+    & py -3 setup_wizard.py @args
+} else {
+    & python setup_wizard.py @args
+}

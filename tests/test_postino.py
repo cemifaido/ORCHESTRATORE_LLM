@@ -88,6 +88,21 @@ class PostinoPolicyTest(unittest.TestCase):
                 {"esito": "bloccato", "motivo": "budget_giornaliero"},
             )
 
+    def test_e_di_oggi_confronto_semantico_non_prefisso_di_stringa(self) -> None:
+        """Guardrail L4 (revisione sicurezza, 2026-08-25): un confronto sulla
+        data vera, non su un prefisso di stringa ISO."""
+        oggi = datetime(2026, 8, 25, tzinfo=timezone.utc).date()
+        self.assertTrue(postino._e_di_oggi("2026-08-25T09:00:00+00:00", oggi))
+        self.assertTrue(postino._e_di_oggi("2026-08-25T09:00:00.123456+00:00", oggi))
+        self.assertFalse(postino._e_di_oggi("2026-08-24T23:59:59+00:00", oggi))
+
+    def test_e_di_oggi_timestamp_illeggibile_conta_come_oggi(self) -> None:
+        """Fail-closed: un timestamp non parsabile non deve mai far sotto-contare
+        il budget, quindi si conta come 'di oggi'."""
+        oggi = datetime(2026, 8, 25, tzinfo=timezone.utc).date()
+        self.assertTrue(postino._e_di_oggi("non-un-timestamp", oggi))
+        self.assertTrue(postino._e_di_oggi("", oggi))
+
     def test_tetto_thread_vale_per_tutti_i_canali(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             radice = _radice_attiva(tmp)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import importlib
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -83,6 +84,28 @@ def testo_da_risposta(risposta: Any) -> str:
     return ""
 
 
+def estrai_primo_oggetto_json(testo: str) -> dict[str, Any]:
+    """Estrae il primo oggetto JSON dal testo di un modello, tollerando prosa
+    prima/dopo (i modelli locali a volte aggiungono testo attorno al JSON
+    richiesto anche quando il prompt lo vieta esplicitamente).
+
+    Usa json.JSONDecoder().raw_decode() invece del pattern ingenuo
+    testo.index('{')...testo.rindex('}'): quel pattern si rompe con oggetti
+    annidati o testo dopo il JSON che contiene a sua volta una graffa (l'ultima
+    '}' del testo non e' detto sia quella dell'oggetto giusto) - bug reale
+    segnalato in revisione di sicurezza, 2026-08-25. raw_decode() e' il parser
+    JSON vero: rispetta le graffe dentro le stringhe, l'annidamento, e si
+    ferma al primo valore completo ignorando cosa viene dopo.
+
+    Solleva ValueError se non trova nessuna '{' o se il valore trovato non e'
+    un oggetto (es. il modello ha risposto con un array o uno scalare)."""
+    inizio = testo.index("{")
+    valore, _fine = json.JSONDecoder().raw_decode(testo, inizio)
+    if not isinstance(valore, dict):
+        raise ValueError(f"il valore JSON trovato non e' un oggetto: {type(valore).__name__}")
+    return valore
+
+
 def costo_risposta(risposta: Any, modello: str) -> float | None:
     """Legge il costo già calcolato da LiteLLM o lo calcola se la libreria è disponibile."""
     costo = _float_o_nullo(_campo(risposta, "response_cost"))
@@ -137,6 +160,9 @@ def arricchisci_evento(evento: dict[str, Any], misurazione: MisurazioneLiteLLM) 
     return arricchito
 
 
+TIMEOUT_SECONDI_PREDEFINITO = 60.0
+
+
 def completamento(
     *,
     modello: str,
@@ -148,12 +174,21 @@ def completamento(
 
     La dipendenza è importata solo qui: il resto del framework resta avviabile senza
     `pip install litellm`.
+
+    Timeout di default (guardrail M2, revisione sicurezza 2026-08-25):
+    litellm.completion() non ha un timeout implicito - senza uno esplicito una
+    chiamata puo' restare appesa indefinitamente (rete lenta, provider giu',
+    llama-server locale bloccato). 'timeout' e' il parametro reale supportato
+    da litellm.completion() (verificato via inspect.signature, non assunto per
+    analogia con 'request_timeout' di altre SDK). setdefault: se il chiamante
+    lo passa gia' esplicitamente in **parametri, quel valore vince sempre.
     """
     try:
         litellm = importlib.import_module("litellm")
     except ImportError as errore:
         raise LiteLLMNonConfigurato("Installa LiteLLM solo nei progetti che usano questo adapter.") from errore
 
+    parametri.setdefault("timeout", TIMEOUT_SECONDI_PREDEFINITO)
     risposta = litellm.completion(model=modello, messages=messaggi, **parametri)
     return risposta, estrai_misurazione(risposta, modello=modello, provider=provider)
 

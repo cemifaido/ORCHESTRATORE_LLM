@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -47,18 +48,57 @@ def tronca(testo: str, limite: int) -> str:
     return testo[:limite] + "\n...[output troncato]..."
 
 
+HOST_LOCALI_NOTI = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+PATTERN_SEGRETI = [
+    re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
+    re.compile(r"AIza[0-9A-Za-z\-_]{30,}"),
+    re.compile(r"(?i)(bearer)\s+([A-Za-z0-9_\-\.]{12,})"),
+    re.compile(r"(?i)(api[_-]?key|token|secret|password|auth[_-]?token)\s*[:=]\s*['\"]?([A-Za-z0-9_\-\.]{12,})['\"]?"),
+]
+
+
+def redigi_segreti(testo: str) -> str:
+    """Redige pattern che sembrano chiavi, token o segreti prima di salvare il log
+    (guardrail L1, revisione sicurezza 2026-08-25)."""
+    risultato = testo
+    for pattern in PATTERN_SEGRETI:
+        def _rimpiazza(m: re.Match) -> str:
+            if m.lastindex and m.lastindex >= 2:
+                valore = m.group(2)
+                return m.group(0).replace(valore, "[REDACTED_SECRET]")
+            return "[REDACTED_SECRET]"
+        risultato = pattern.sub(_rimpiazza, risultato)
+    return risultato
+
+
+def _is_host_locale(host: str) -> bool:
+    """Verifica se l'host e' locale (loopback). Restringe le sonde di rete TCP a localhost
+    per prevenire SSRF / port scanning di rete interna tramite comandi.json malevoli
+    (guardrail M5, revisione sicurezza 2026-08-25)."""
+    if host.lower() in HOST_LOCALI_NOTI:
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_loopback or ip.is_unspecified
+    except ValueError:
+        return False
+
+
 def salva_log_output(id_evento: str, output: str, cartella_log: Path = PERCORSO_LOG_PREDEFINITO) -> dict:
     cartella_log.mkdir(parents=True, exist_ok=True)
     percorso = cartella_log / f"{id_evento}.log"
-    percorso.write_text(output, encoding="utf-8", newline="\n")
+    output_redatto = redigi_segreti(output)
+    percorso.write_text(output_redatto, encoding="utf-8", newline="\n")
     return {
         "log_output": str(percorso),
-        "sha256_output": hashlib.sha256(output.encode("utf-8")).hexdigest(),
-        "estratto_output": tronca(output, 2000),
+        "sha256_output": hashlib.sha256(output_redatto.encode("utf-8")).hexdigest(),
+        "estratto_output": tronca(output_redatto, 2000),
     }
 
 
 def verifica_connessione(indirizzo: str) -> bool:
+    """Sonda (TCP connect) la disponibilita' di un servizio locale. Rifiuta host
+    esterni per prevenire port scanning / SSRF."""
     try:
         if indirizzo.startswith("http://") or indirizzo.startswith("https://"):
             parsed = urlparse(indirizzo)
@@ -70,6 +110,9 @@ def verifica_connessione(indirizzo: str) -> bool:
         else:
             host = indirizzo
             port = 80
+
+        if not _is_host_locale(host):
+            return False
 
         with socket.create_connection((host, port), timeout=2.0):
             return True
@@ -258,6 +301,12 @@ def classifica_con_guardia_locale(esito: str, codice: int, output: str, contesto
 
 
 def main() -> int:
+    # L7 risolto (2026-08-25): print() su un terminale Windows non-UTF-8
+    # sostituisce silenziosamente gli accenti - i dati stessi sono sempre
+    # stati corretti (vedi il commento esteso in triage_locale.py:main() e
+    # docs/RFC_BACHECA_MULTIAGENTE.md §6.4).
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="Sentinella deterministica: esegue solo comandi whitelistati")
     parser.add_argument("comando")
     parser.add_argument("--config", default=str(PERCORSO_COMANDI_PREDEFINITO))

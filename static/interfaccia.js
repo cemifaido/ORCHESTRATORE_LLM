@@ -160,6 +160,10 @@
         thread_replay_completed: "📬 REPLAY DEL THREAD COMPLETATO",
         thread_loading: "Caricamento thread {id}...",
         thread_load_error: "Impossibile caricare la cronologia del thread.",
+        revisione_label: "Chiedi una revisione (sola lettura: git diff/log, test, lint):",
+        revisione_btn: "🔎 Revisione da {agente}",
+        revisione_in_corso: "Richiesta di revisione a {agente} in corso...",
+        revisione_errore: "Errore: {messaggio}",
         wake_prompt_copied: "Prompt per {agente} copiato negli appunti. Se la chat si apre vuota, incolla e invia.",
         wake_copy_fail: "Apro {agente}, ma non sono riuscito a copiare il prompt negli appunti.",
         cmd_copied: "Comando copiato: ",
@@ -350,6 +354,10 @@
         thread_replay_completed: "📬 THREAD REPLAY COMPLETED",
         thread_loading: "Loading thread {id}...",
         thread_load_error: "Unable to load thread history.",
+        revisione_label: "Request a review (read-only: git diff/log, tests, lint):",
+        revisione_btn: "🔎 Review from {agente}",
+        revisione_in_corso: "Requesting a review from {agente}...",
+        revisione_errore: "Error: {messaggio}",
         wake_prompt_copied: "Prompt for {agente} copied to clipboard. If chat opens empty, paste and send.",
         wake_copy_fail: "Opening {agente}, but failed to copy prompt to clipboard.",
         cmd_copied: "Command copied: ",
@@ -1634,9 +1642,48 @@
             (${escapeHtml(m.tipo)}): ${escapeHtml(m.testo)}
           </div>
         `).join("");
-        box.innerHTML = `<div class="handoff-console">${righe}</div>`;
+        const pulsantiRevisione = ["claude", "codex", "gemini"].map(ag => `
+          <button type="button" class="btn bacheca-revisione-btn" data-agente="${ag}"
+                  data-progetto="${escapeHtml(progetto_id)}" data-thread="${escapeHtml(thread_id)}"
+                  style="background: rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.4); color:#c4b5fd; padding:0.3rem 0.7rem; font-size:0.78rem;">
+            ${t("revisione_btn", { agente: ag })}
+          </button>
+        `).join("");
+        box.innerHTML = `
+          <div class="handoff-console">${righe}</div>
+          <div style="margin-top:0.7rem; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+            <span style="font-size:0.78rem; color:var(--text-muted);">${t("revisione_label")}</span>
+            ${pulsantiRevisione}
+          </div>
+          <div id="bachecaRevisioneEsito" style="margin-top:0.4rem; font-size:0.8rem; color:var(--text-muted);"></div>
+        `;
+        box.querySelectorAll(".bacheca-revisione-btn").forEach(btn => {
+          btn.addEventListener("click", () => richiediRevisionePostino(
+            btn.dataset.progetto, btn.dataset.agente, btn.dataset.thread
+          ));
+        });
       } catch (err) {
         box.innerHTML = `<div class="handoff-console"><div class="handoff-msg fail">${t("thread_load_error")}</div></div>`;
+      }
+    }
+
+    async function richiediRevisionePostino(progetto_id, agente, thread_id) {
+      const esito = document.getElementById("bachecaRevisioneEsito");
+      if (esito) esito.textContent = t("revisione_in_corso", { agente });
+      try {
+        const res = await fetch("/api/bacheca/postino/revisione", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ progetto_id, agente, thread_id }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || data.errore || data.motivo || "richiesta fallita");
+        if (esito) {
+          const dettaglio = data.motivo ? ` (${escapeHtml(data.motivo)})` : "";
+          esito.textContent = `${escapeHtml(data.esito)}${dettaglio}`;
+        }
+      } catch (err) {
+        if (esito) esito.textContent = t("revisione_errore", { messaggio: err.message });
       }
     }
 

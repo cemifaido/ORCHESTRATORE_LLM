@@ -126,6 +126,32 @@ class CapoturnoTest(unittest.TestCase):
         self.assertIn("timeout", eventi[0]["note"].lower())
 
     @patch("adattatori.litellm.completamento")
+    def test_rischio_alto_blocca_esecuzione_immediatamente(
+        self, mock_completamento: MagicMock
+    ) -> None:
+        """Guardrail L3 (revisione sicurezza, 2026-08-25): compiti con rischio='alto'
+        devono fermarsi con False senza chiamare alcun agente LLM."""
+        c = capoturno.Capoturno(
+            progetto_id="test_proj",
+            progetto_percorso=str(self.progetto_path),
+            registro_percorso=str(self.registro_file),
+        )
+        esito = c.esegui_compito(
+            id_compito="t-rischio-alto",
+            tipo_compito="servizi",
+            compito_prompt="fai qualcosa di rischioso",
+            file_target="critico.py",
+            rischio="alto",
+        )
+        self.assertFalse(esito)
+        mock_completamento.assert_not_called()
+        eventi = registro.leggi_eventi(self.registro_file)
+        self.assertEqual(len(eventi), 1)
+        self.assertEqual(eventi[0]["stato"], "in_corso")
+        self.assertEqual(eventi[0]["agente"], "umano")
+        self.assertIn("rischio", eventi[0]["note"].lower())
+
+    @patch("adattatori.litellm.completamento")
     @patch("subprocess.run")
     def test_esegui_compito_con_risposta_litellm_reale_non_stringa(
         self, mock_run: MagicMock, mock_completamento: MagicMock

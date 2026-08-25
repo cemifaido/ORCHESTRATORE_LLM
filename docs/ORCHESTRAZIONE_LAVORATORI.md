@@ -181,11 +181,16 @@ dell'umano è un fatto operativo quanto il lavoro dell'agente, non va perso. Non
 per ogni messaggio (sarebbe rumore) — solo per un'approvazione concreta a un'azione con
 effetto reale. Dettagli pratici (comando esatto) in `CLAUDE.md`/`GEMINI.md`/`AGENTS.md`.
 
-**Limite noto**: il modello locale (llama-server, quantizzazione Q3_K_M) a volte genera
-un carattere accentato come sequenza UTF-8 malformata (es. "è" → `�`), probabilmente per
-un token spezzato male in fase di generazione. Non altera mai l'esito
-`routine`/`escalation`, solo occasionalmente il testo libero del campo `motivo`. Non
-ancora investigato a fondo: non è un bug nel codice dell'orchestratore.
+**Chiuso (2026-08-25)**: il carattere accentato che appariva come `�` (es. "è" → `�`)
+non era mai un token spezzato dal modello né un dato corrotto — verificato byte per
+byte end-to-end (risposta HTTP di llama-server, testo estratto da litellm, scrittura e
+rilettura su `messaggi.jsonl`: tutti UTF-8 corretto). La causa reale era `print()` su
+un terminale Windows con codepage non-UTF-8 (`cp1252`), che sostituisce in silenzio i
+caratteri non rappresentabili — un default della console di Windows, non un bug
+dell'orchestratore né del modello. Fix: `sys.stdout.reconfigure(encoding="utf-8",
+errors="replace")` a inizio dei `main()` di `triage_locale.py`/`sentinella.py`/
+`bacheca.py`. Dettagli e riproduzione completa in
+`docs/RFC_BACHECA_MULTIAGENTE.md` §6.4.
 
 ## Capoturno
 
