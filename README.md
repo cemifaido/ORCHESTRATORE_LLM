@@ -22,8 +22,28 @@ Il principio guida è semplice:
 - `registro.py` — appende e valida (con `jsonschema`) eventi nel registro JSONL (`eventi.jsonl`).
 - `sentinella.py` — esegue solo comandi dichiarati in whitelist e registra l'esito del quality gate.
 - `triage_locale.py` — guardia automatica locale (llama-server) per classificare output di test e build senza consumare token cloud.
+- `setup_wizard.py` / `setup.ps1` — wizard interattivo per la configurazione guidata dell'ambiente, installazione dipendenze e rilevamento modulare delle risorse (funziona con qualsiasi sottoinsieme di agenti, con o senza GPU).
 - `capoturno.py` — motore di orchestrazione: instrada, gestisce patch e fallback automatico.
 - `verifica_aggiornamenti_cli.py` — controllo periodico delle versioni delle CLI (claude/codex/agy) con sintesi delle note di rilascio tramite LLM locale e notifica in bacheca.
+
+---
+
+## Installazione & Configurazione Guidata (Setup Wizard)
+
+Al primo utilizzo (oppure quando si desidera riconfigurare porte, percorsi o agenti abilitati), eseguire il wizard di setup interattivo:
+
+```powershell
+.\setup.ps1
+```
+
+oppure:
+
+```powershell
+python setup_wizard.py
+```
+
+> [!TIP]
+> **Massima modularità**: Se il computer non ha una scheda video (GPU) dedicata o non ha installato uno degli agenti (`claude`, `codex`, `gemini`), il wizard adatta la configurazione e il sistema funzionerà regolarmente con le sole risorse disponibili (eseguendo triage deterministico senza errori).
 
 ---
 

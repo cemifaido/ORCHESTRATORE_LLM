@@ -16,10 +16,22 @@ import uvicorn
 
 app = FastAPI(title="Orchestratore LLM — Dashboard")
 
-# Tutti i percorsi dell'orchestratore sono relativi a questo file, non alla cwd del
-# processo: interfaccia.py deve funzionare anche se lanciato da una cwd diversa
-# (es. un servizio, un task scheduler, un IDE con working directory non impostata).
 RADICE = Path(__file__).resolve().parent
+
+# Caricamento configurazione da .env se presente
+_file_env = RADICE / ".env"
+if _file_env.exists():
+    try:
+        for _riga in _file_env.read_text(encoding="utf-8").splitlines():
+            _riga = _riga.strip()
+            if not _riga or _riga.startswith("#") or "=" not in _riga:
+                continue
+            _k, _v = _riga.split("=", 1)
+            _k, _v = _k.strip(), _v.strip()
+            if _k and _k not in os.environ:
+                os.environ[_k] = _v
+    except Exception:
+        pass
 
 PERCORSO_PROGETTI = RADICE / "dati_locali" / "progetti.json"
 PERCORSO_HTML = RADICE / "interfaccia.html"

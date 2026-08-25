@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import uuid
@@ -39,6 +40,13 @@ def classifica(output: str, contesto: str = "") -> dict[str, Any]:
     mai un possibile problema dietro un parsing fallito. Include sempre 'token_totali'
     (None se la chiamata stessa e' fallita) per poter stimare in seguito, con dati
     reali, quanto sarebbe costato lo stesso controllo su un modello a pagamento."""
+    # Supporto modalità senza GPU / senza LLM locale
+    if os.environ.get("LLM_LOCALE_ABILITATO", "true").lower() in ("false", "0", "no", "off"):
+        out_low = output.lower()
+        if "fail" in out_low or "error" in out_low or "syntaxerror" in out_low:
+            return {"esito": "escalation", "motivo": "segnalazione fallimento (modalità deterministica, LLM locale disabilitato)", "token_totali": 0}
+        return {"esito": "routine", "motivo": "output privo di errori (modalità deterministica, LLM locale disabilitato)", "token_totali": 0}
+
     messaggi = [
         {"role": "system", "content": PROMPT_SISTEMA},
         {"role": "user", "content": f"Contesto: {contesto}\n\nOutput da classificare:\n{output[:4000]}"},
