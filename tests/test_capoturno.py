@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -56,6 +57,73 @@ class CapoturnoTest(unittest.TestCase):
         self.assertEqual(len(eventi), 1)
         self.assertEqual(eventi[0]["stato"], "passato")
         self.assertEqual(eventi[0]["esito_gate"], "superato")
+
+    @patch("adattatori.litellm.completamento")
+    def test_esegui_compito_rifiuta_file_target_fuori_dal_progetto(
+        self, mock_completamento: MagicMock
+    ) -> None:
+        """Guardrail di sicurezza (revisione esterna, 2026-08-25): file_target
+        arriva da un prompt/form, mai da fidarsi - senza contenimento un
+        '../fuori.py' scriverebbe fuori dalla cartella del progetto."""
+        c = capoturno.Capoturno(
+            progetto_id="test_proj",
+            progetto_percorso=str(self.progetto_path),
+            registro_percorso=str(self.registro_file),
+        )
+
+        esito = c.esegui_compito(
+            id_compito="t-traversal",
+            tipo_compito="servizi",
+            compito_prompt="qualsiasi",
+            file_target="../fuori.py",
+        )
+
+        self.assertFalse(esito)
+        mock_completamento.assert_not_called()
+        self.assertFalse((self.progetto_path.parent / "fuori.py").exists())
+        eventi = registro.leggi_eventi(self.registro_file)
+        self.assertEqual(len(eventi), 1)
+        self.assertEqual(eventi[0]["stato"], "errore_ambiente")
+        self.assertEqual(eventi[0]["esito_gate"], "non_eseguito")
+
+    @patch("adattatori.litellm.completamento")
+    @patch("subprocess.run")
+    def test_gate_in_timeout_viene_trattato_come_fallito(
+        self, mock_run: MagicMock, mock_completamento: MagicMock
+    ) -> None:
+        """Guardrail di sicurezza (revisione esterna, 2026-08-25): senza un
+        timeout sul subprocess del gate, un gate bloccato appende il processo
+        per sempre invece di essere trattato come un fallimento normale."""
+        mock_completamento.return_value = (
+            "```python\ndef saluta():\n    print('ciao')\n```",
+            litellm.MisurazioneLiteLLM(
+                modello="openai/gpt-4o-mini", provider="openai", costo_usd=0.0,
+                token_prompt=1, token_completion=1, token_totali=2,
+            ),
+        )
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="sentinella", timeout=capoturno.TIMEOUT_GATE_SECONDI)
+
+        c = capoturno.Capoturno(
+            progetto_id="test_proj",
+            progetto_percorso=str(self.progetto_path),
+            registro_percorso=str(self.registro_file),
+        )
+        c.limite_rework = 0
+
+        esito = c.esegui_compito(
+            id_compito="t-timeout",
+            tipo_compito="servizi",
+            compito_prompt="qualsiasi",
+            file_target="funzione.py",
+        )
+
+        self.assertFalse(esito)
+        mock_run.assert_called_once()
+        self.assertIn("timeout", mock_run.call_args.kwargs)
+        eventi = registro.leggi_eventi(self.registro_file)
+        self.assertEqual(len(eventi), 1)
+        self.assertEqual(eventi[0]["stato"], "fallito")
+        self.assertIn("timeout", eventi[0]["note"].lower())
 
     @patch("adattatori.litellm.completamento")
     @patch("subprocess.run")

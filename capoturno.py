@@ -26,6 +26,7 @@ from adattatori import litellm
 import instrada
 
 SCRIPT_SENTINELLA_CENTRALE = RADICE / "sentinella.py"
+TIMEOUT_GATE_SECONDI = 180
 
 
 def _scegli_modello_per_agente(agente: str) -> str:
@@ -110,6 +111,23 @@ class Capoturno:
         ultimo_errore = ""
 
         file_completo_target = self.progetto_percorso / file_target
+        if not file_completo_target.resolve().is_relative_to(self.progetto_percorso):
+            # file_target arriva da un prompt/form, mai da fidarsi: senza questo
+            # controllo un "../../fuori.py" scrive fuori dalla cartella del
+            # progetto (bug reale trovato in revisione di sicurezza, 2026-08-25).
+            messaggio_errore = f"file_target esce dalla cartella del progetto: '{file_target}'."
+            self._notifica(
+                da="umano", a="locale", agente_attivo="locale",
+                messaggio=messaggio_errore, esito="ambiente_errore",
+            )
+            registro.aggiungi_evento(self.registro_percorso, {
+                "versione_schema": 1, "id_evento": str(uuid.uuid4()), "timestamp": registro.adesso_utc(),
+                "id_compito": id_compito, "agente": "locale", "tipo_compito": tipo_compito,
+                "stato": "errore_ambiente", "esito_gate": "non_eseguito", "verdetto_umano": "non_revisionato",
+                "costo_stimato_usd": 0.0, "origine_costo": "stimato", "latenza_ms": 0,
+                "regole_incluse": [], "file_modificati": [], "note": messaggio_errore,
+            })
+            return False
         codice_originale = ""
         if file_completo_target.exists():
             codice_originale = file_completo_target.read_text(encoding="utf-8")
@@ -255,7 +273,24 @@ class Capoturno:
                 "--config", str(RADICE / "config" / "comandi.json"),
                 "--registro", str(self.registro_percorso),
             ]
-            res = subprocess.run(cmd, cwd=str(self.progetto_percorso), capture_output=True, text=True)
+            try:
+                res = subprocess.run(
+                    cmd, cwd=str(self.progetto_percorso), capture_output=True, text=True,
+                    timeout=TIMEOUT_GATE_SECONDI,
+                )
+            except subprocess.TimeoutExpired:
+                # Senza timeout un gate bloccato appende il processo per sempre
+                # (bug reale trovato in revisione di sicurezza, 2026-08-25):
+                # trattato come un gate fallito, stesso percorso di rework.
+                ultimo_errore = f"Quality gate scaduto oltre il timeout di {TIMEOUT_GATE_SECONDI}s."
+                rework_effettuato += 1
+                self._notifica(
+                    da="locale", a=agente_corrente, agente_attivo=agente_corrente,
+                    messaggio=f"Quality gate in TIMEOUT. Richiedo correzione (Tentativo rework {rework_effettuato}/{self.limite_rework}).",
+                    esito="fallito",
+                )
+                codice_originale = codice_proposto
+                continue
 
             if res.returncode == 0:
                 # Successo! Registra l'evento

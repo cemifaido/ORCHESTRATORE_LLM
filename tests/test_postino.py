@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -32,7 +32,7 @@ def _invio(
     minuti_fa: int, *, agente: str = "codex", thread_id: str = "t-postino",
     canale: str = "headless", modo: str | None = None,
 ) -> dict:
-    quando = (datetime.now(UTC) - timedelta(minutes=minuti_fa)).isoformat()
+    quando = (datetime.now(timezone.utc) - timedelta(minutes=minuti_fa)).isoformat()
     return {"quando": quando, "agente": agente, "thread_id": thread_id, "canale": canale, "modo": modo, "codice": 0}
 
 
@@ -116,12 +116,12 @@ class PostinoPolicyTest(unittest.TestCase):
     def test_debounce_per_coppia_agente_thread(self) -> None:
         stato = {"versione_schema": 1, "invii": [_invio(1, agente="claude")]}
         motivo = postino._motivo_blocco(
-            stato, "claude", "t-postino", datetime.now(UTC), postino.LIMITI_PREDEFINITI
+            stato, "claude", "t-postino", datetime.now(timezone.utc), postino.LIMITI_PREDEFINITI
         )
         self.assertEqual(motivo, "debounce")
         # stesso thread, agente diverso: niente debounce (e sotto il tetto giri)
         motivo = postino._motivo_blocco(
-            stato, "codex", "t-postino", datetime.now(UTC), postino.LIMITI_PREDEFINITI
+            stato, "codex", "t-postino", datetime.now(timezone.utc), postino.LIMITI_PREDEFINITI
         )
         self.assertIsNone(motivo)
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import secrets
 import sys
 import json
 import shutil
@@ -9,14 +10,19 @@ import time
 from math import ceil
 import asyncio
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 
 app = FastAPI(title="Orchestratore LLM — Dashboard")
 
 RADICE = Path(__file__).resolve().parent
+# CSS/JS di interfaccia.html vivono qui come file statici (estratti dal
+# monolite inline, revisione di sicurezza 2026-08-25, L5): interfaccia.html
+# resta lo scheletro HTML, questi due i contenuti serviti da /static/*.
+app.mount("/static", StaticFiles(directory=RADICE / "static"), name="static")
 
 # Caricamento configurazione da .env se presente
 _file_env = RADICE / ".env"
@@ -39,6 +45,41 @@ SCRIPT_SENTINELLA_CENTRALE = RADICE / "sentinella.py"
 SCRIPT_INTERFACCIA = RADICE / "interfaccia.py"
 HOST_DASHBOARD = os.environ.get("ORCHESTRATORE_HOST", "127.0.0.1")
 PORTA_DASHBOARD = int(os.environ.get("ORCHESTRATORE_PORTA", "8095"))
+CHIAVE_API_DASHBOARD = os.environ.get("ORCHESTRATORE_API_KEY", "")
+_INDIRIZZI_LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+
+
+def _bind_e_loopback(host: str) -> bool:
+    return host in _INDIRIZZI_LOOPBACK
+
+
+if not _bind_e_loopback(HOST_DASHBOARD) and not CHIAVE_API_DASHBOARD:
+    # Fail-closed, stesso principio del resto del progetto (opt-in esplicito,
+    # kill switch di postino): un bind non-loopback senza chiave condivisa
+    # espone senza autenticazione ogni route che muta stato - registrazione
+    # progetti, comandi sentinella, dispatch headless, riavvio del processo
+    # (bug reale trovato in revisione di sicurezza, 2026-08-25). Si rifiuta di
+    # avviarsi invece di partire esposta e silenziosa.
+    sys.exit(
+        f"ORCHESTRATORE_HOST e' impostato a un indirizzo non-loopback ('{HOST_DASHBOARD}') "
+        "ma manca ORCHESTRATORE_API_KEY: la dashboard si rifiuta di avviarsi senza una "
+        "chiave condivisa esplicita. Imposta ORCHESTRATORE_API_KEY oppure torna a un bind "
+        "loopback (127.0.0.1/localhost)."
+    )
+
+
+@app.middleware("http")
+async def _richiedi_chiave_su_bind_esposto(request: Request, call_next):
+    """Nessun controllo extra sul bind di default (loopback, solo l'utente
+    locale puo' raggiungerlo). Su un bind non-loopback (opt-in esplicito
+    sopra) ogni richiesta deve presentare la chiave configurata nell'header
+    X-Orchestratore-Key - confronto a tempo costante per non aprire un side
+    channel timing sulla chiave stessa."""
+    if not _bind_e_loopback(HOST_DASHBOARD):
+        fornita = request.headers.get("X-Orchestratore-Key", "")
+        if not secrets.compare_digest(fornita, CHIAVE_API_DASHBOARD):
+            return JSONResponse({"errore": "non autorizzato"}, status_code=401)
+    return await call_next(request)
 
 # Assicura caricamento moduli locali del framework
 sys.path.append(str(RADICE))

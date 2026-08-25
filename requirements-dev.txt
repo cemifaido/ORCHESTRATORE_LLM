@@ -3,3 +3,7 @@
 ruff
 mypy
 xenon
+# Richiesto da fastapi.testclient.TestClient (tests/test_interfaccia.py) - non
+# dichiarato prima, funzionava solo per chi lo aveva gia' installato per altri
+# motivi (bug reale trovato in revisione di sicurezza, 2026-08-25).
+httpx

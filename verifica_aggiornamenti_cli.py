@@ -89,6 +89,16 @@ def avvia_llama_leggero(
         raise FileNotFoundError(f"script di avvio llama non trovato: {script}")
     if not modello.exists():
         raise FileNotFoundError(f"modello gguf non trovato: {modello}")
+    # DETACHED_PROCESS/CREATE_NEW_PROCESS_GROUP esistono solo su subprocess di
+    # Windows - referenziarli incondizionatamente fa fallire con AttributeError
+    # su POSIX (bug reale trovato in revisione di sicurezza, 2026-08-25).
+    # start_new_session e' l'equivalente POSIX per staccare il processo dalla
+    # sessione del chiamante.
+    kwargs_piattaforma: dict[str, Any] = (
+        {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
+        if os.name == "nt"
+        else {"start_new_session": True}
+    )
     avvia_processo(
         [
             "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script),
@@ -97,7 +107,7 @@ def avvia_llama_leggero(
         ],
         cwd=str(script.parent),
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+        **kwargs_piattaforma,
     )
     scadenza = time.monotonic() + timeout_avvio_secondi
     while time.monotonic() < scadenza:

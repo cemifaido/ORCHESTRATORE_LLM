@@ -310,6 +310,21 @@ Nei progetti integrati prima di questo cambiamento possono restare copie storich
 
 Avvio quotidiano consigliato: `.\avvia_dashboard.ps1` (non avvia una seconda copia se la dashboard è già attiva sulla porta, poi apre il browser).
 
+**Struttura dei file** (dal 2026-08-25, revisione di sicurezza — `interfaccia.html`
+era un monolite di ~3391 righe, L5 del rilievo): `interfaccia.html` resta solo lo
+scheletro HTML; CSS e JS vivono in `static/interfaccia.css` e `static/interfaccia.js`,
+serviti da FastAPI via `app.mount("/static", ...)`. Estrazione pura (nessuna riga
+di logica modificata), verificata con la suite di test, `node --check` sul JS e un
+avvio reale della dashboard. Se modifichi lo stile o il comportamento della
+dashboard, i file da toccare sono questi due, non più `interfaccia.html`.
+
+**Autenticazione su bind non-loopback** (stesso giorno, C1 del rilievo): per
+default (`ORCHESTRATORE_HOST=127.0.0.1`) nessun cambiamento, nessuna chiave
+richiesta. Se `ORCHESTRATORE_HOST` viene impostato a un indirizzo non-loopback,
+il processo si rifiuta di avviarsi finché non è impostata anche
+`ORCHESTRATORE_API_KEY`: con la chiave impostata, ogni richiesta deve presentare
+l'header `X-Orchestratore-Key` con lo stesso valore.
+
 Il server `interfaccia.py` (FastAPI/Uvicorn, porta `8095`) offre un'interfaccia di monitoraggio visiva ad alto impatto grafico (dark theme, glassmorphic layout) basata su:
 - **Grafici Chart.js**: Visualizzazione di esecuzioni/rework e ripartizione del tempo LLM cumulato per ogni lavoratore.
 - **Selettore Progetti**: Form per inserire il percorso assoluto e nome di una nuova cartella per effettuarne l'integrazione ed il monitoraggio automatico.

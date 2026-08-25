@@ -731,17 +731,23 @@ class PostinoHeadlessTest(unittest.TestCase):
 
 class InterfacciaI18nTest(unittest.TestCase):
     def test_interfaccia_html_contiene_selettore_lingua_e_dizionari_i18n(self) -> None:
-        """Verifica che interfaccia.html contenga lo switcher lingua IT/EN e il dizionario i18n."""
+        """Verifica che interfaccia.html/static/interfaccia.js contengano lo
+        switcher lingua IT/EN e il dizionario i18n. HTML e JS separati dal
+        2026-08-25 (revisione di sicurezza, L5 - monolite spezzato in file
+        statici), quindi le asserzioni sono divise di conseguenza."""
         self.assertTrue(interfaccia.PERCORSO_HTML.exists())
         html = interfaccia.PERCORSO_HTML.read_text(encoding="utf-8")
         self.assertIn("lang-switcher", html)
         self.assertIn("langItBtn", html)
         self.assertIn("langEnBtn", html)
         self.assertIn("impostaLingua", html)
-        self.assertIn("const I18N =", html)
         self.assertIn("header_title", html)
-        self.assertIn("LLM Orchestrator", html)
         self.assertIn("Orchestratore LLM", html)
+
+        js = (interfaccia.RADICE / "static" / "interfaccia.js").read_text(encoding="utf-8")
+        self.assertIn("const I18N =", js)
+        self.assertIn("header_title", js)
+        self.assertIn("LLM Orchestrator", js)
 
     def test_readme_bilingue_presente(self) -> None:
         """Verifica che README.md e README_EN.md siano coerenti e collegati tra loro."""
@@ -751,6 +757,42 @@ class InterfacciaI18nTest(unittest.TestCase):
         self.assertTrue(readme_en.exists())
         self.assertIn("README_EN.md", readme_it.read_text(encoding="utf-8"))
         self.assertIn("README.md", readme_en.read_text(encoding="utf-8"))
+
+
+class AutenticazioneBindEspostoTest(unittest.TestCase):
+    """Guardrail di sicurezza (revisione esterna, 2026-08-25): un bind
+    non-loopback senza chiave condivisa non deve mai esporre le route che
+    mutano stato — vedi commento in interfaccia.py accanto al middleware."""
+
+    def test_bind_e_loopback_riconosce_gli_indirizzi_locali(self) -> None:
+        self.assertTrue(interfaccia._bind_e_loopback("127.0.0.1"))
+        self.assertTrue(interfaccia._bind_e_loopback("localhost"))
+        self.assertTrue(interfaccia._bind_e_loopback("::1"))
+        self.assertFalse(interfaccia._bind_e_loopback("0.0.0.0"))
+        self.assertFalse(interfaccia._bind_e_loopback("192.168.1.10"))
+
+    def test_bind_loopback_non_richiede_alcuna_chiave(self) -> None:
+        from fastapi.testclient import TestClient
+
+        with patch.object(interfaccia, "HOST_DASHBOARD", "127.0.0.1"):
+            client = TestClient(interfaccia.app)
+            res = client.get("/")
+        self.assertEqual(res.status_code, 200)
+
+    def test_bind_esposto_rifiuta_senza_chiave_corretta(self) -> None:
+        from fastapi.testclient import TestClient
+
+        with (
+            patch.object(interfaccia, "HOST_DASHBOARD", "0.0.0.0"),
+            patch.object(interfaccia, "CHIAVE_API_DASHBOARD", "segreta"),
+        ):
+            client = TestClient(interfaccia.app)
+            senza_chiave = client.get("/")
+            chiave_sbagliata = client.get("/", headers={"X-Orchestratore-Key": "no"})
+            chiave_giusta = client.get("/", headers={"X-Orchestratore-Key": "segreta"})
+        self.assertEqual(senza_chiave.status_code, 401)
+        self.assertEqual(chiave_sbagliata.status_code, 401)
+        self.assertEqual(chiave_giusta.status_code, 200)
 
 
 if __name__ == "__main__":

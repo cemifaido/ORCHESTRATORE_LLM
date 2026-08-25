@@ -77,7 +77,7 @@ def verifica_connessione(indirizzo: str) -> bool:
         return False
 
 
-def esegui(nome: str, comandi: dict) -> tuple[str, int, int, str]:
+def esegui(nome: str, comandi: dict, *, radice_progetto: Path | None = None) -> tuple[str, int, int, str]:
     if nome not in comandi:
         raise ValueError(f"comando non ammesso: {nome}")
     configurazione = comandi[nome]
@@ -97,6 +97,12 @@ def esegui(nome: str, comandi: dict) -> tuple[str, int, int, str]:
     if not isinstance(argomenti, list) or not argomenti:
         raise ValueError(f"argomenti non validi per comando {nome}")
     cartella = Path(configurazione.get("cartella", ".")).resolve()
+    if radice_progetto is not None and not cartella.is_relative_to(radice_progetto.resolve()):
+        # comandi.json e' trattato come dato di configurazione del progetto, ma
+        # non e' firmato/verificato: senza questo controllo un file malevolo
+        # potrebbe far girare comandi arbitrari fuori dalla cartella del
+        # progetto (bug reale trovato in revisione di sicurezza, 2026-08-25).
+        raise ValueError(f"cartella fuori dalla radice del progetto: {cartella}")
     timeout = int(configurazione.get("timeout_secondi", 60))
     limite_output = int(configurazione.get("limite_output_caratteri", 20000))
 
@@ -265,8 +271,13 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        comandi = carica_comandi(Path(args.config))
-        esito, codice, latenza_ms, output = esegui(args.comando, comandi)
+        percorso_config = Path(args.config).resolve()
+        comandi = carica_comandi(percorso_config)
+        # config/comandi.json vive sempre dentro <progetto>/config/ per
+        # convenzione del progetto (vedi docs/ORCHESTRAZIONE_LAVORATORI.md):
+        # risalire due livelli da' la radice del progetto target.
+        radice_progetto = percorso_config.parent.parent
+        esito, codice, latenza_ms, output = esegui(args.comando, comandi, radice_progetto=radice_progetto)
     except Exception as errore:
         print(f"errore sentinella: {errore}", file=sys.stderr)
         return 2

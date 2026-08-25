@@ -43,6 +43,55 @@ class SentinellaTest(unittest.TestCase):
             self.assertNotIn("output", metadati)
             self.assertTrue(Path(metadati["log_output"]).exists())
 
+    def test_rifiuta_cartella_fuori_dalla_radice_del_progetto(self) -> None:
+        """Guardrail di sicurezza (revisione esterna, 2026-08-25): comandi.json
+        non e' firmato, quindi 'cartella' va sempre verificata contro la radice
+        del progetto quando la si conosce - senza questo un comandi.json
+        malevolo potrebbe far girare comandi arbitrari fuori dal progetto."""
+        with tempfile.TemporaryDirectory() as radice, tempfile.TemporaryDirectory() as fuori:
+            comando = {
+                "prova": {
+                    "cartella": fuori,
+                    "argomenti": ["python", "-c", "print('ok')"],
+                    "timeout_secondi": 10,
+                    "limite_output_caratteri": 1000,
+                }
+            }
+            with self.assertRaises(ValueError):
+                sentinella.esegui("prova", comando, radice_progetto=Path(radice))
+
+    def test_accetta_cartella_dentro_la_radice_del_progetto(self) -> None:
+        with tempfile.TemporaryDirectory() as radice:
+            comando = {
+                "prova": {
+                    "cartella": radice,
+                    "argomenti": ["python", "-c", "print('ok')"],
+                    "timeout_secondi": 10,
+                    "limite_output_caratteri": 1000,
+                }
+            }
+            esito, codice, _latenza, _output = sentinella.esegui(
+                "prova", comando, radice_progetto=Path(radice)
+            )
+            self.assertEqual(esito, "superato")
+            self.assertEqual(codice, 0)
+
+    def test_senza_radice_progetto_nessun_controllo_di_contenimento(self) -> None:
+        """Compatibilita' con i chiamanti che non conoscono ancora la radice:
+        radice_progetto=None (default) non applica il controllo."""
+        with tempfile.TemporaryDirectory() as fuori:
+            comando = {
+                "prova": {
+                    "cartella": fuori,
+                    "argomenti": ["python", "-c", "print('ok')"],
+                    "timeout_secondi": 10,
+                    "limite_output_caratteri": 1000,
+                }
+            }
+            esito, codice, _latenza, _output = sentinella.esegui("prova", comando)
+            self.assertEqual(esito, "superato")
+            self.assertEqual(codice, 0)
+
     def test_verifica_connessione_risorsa_raggiungibile(self) -> None:
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.bind(("127.0.0.1", 0))
