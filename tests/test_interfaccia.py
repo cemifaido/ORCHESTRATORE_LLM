@@ -711,5 +711,24 @@ class PostinoHeadlessTest(unittest.TestCase):
             risveglio_os.assert_called_once()
 
 
+    def test_api_commit_lista_con_interazioni(self) -> None:
+        """Verifica che /api/commit/lista ritorni la lista dei commit con il campo interazioni."""
+        from fastapi.testclient import TestClient
+        client = TestClient(interfaccia.app)
+        res = client.get("/api/commit/lista?progetto_id=orchestratore&limite=3")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("commit", data)
+        self.assertGreaterEqual(len(data["commit"]), 1)
+        for c in data["commit"]:
+            self.assertIn("hash", c)
+            self.assertIn("data", c)
+            self.assertIn("autore", c)
+            self.assertIn("messaggio", c)
+            self.assertIn("interazioni", c)
+            self.assertIsInstance(c["interazioni"], int)
+
+
 if __name__ == "__main__":
     unittest.main()
+

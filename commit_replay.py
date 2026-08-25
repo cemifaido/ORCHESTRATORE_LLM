@@ -54,23 +54,50 @@ def _timestamp_commit(percorso_repo: Path, riferimento: str) -> str | None:
     return risultato.stdout.strip() or None
 
 
-def lista_commit(percorso_repo: Path, limite: int = 20) -> list[dict[str, str]]:
+def lista_commit(
+    percorso_repo: Path, limite: int = 20, percorso_registro: Path | None = None
+) -> list[dict[str, Any]]:
     # encoding="utf-8" esplicito: su Windows subprocess.run(text=True) userebbe la
-    # codifica di default della console (spesso cp1252), mangliando em-dash e accenti
-    # nei messaggi di commit.
+    # codifica di default della console (spesso cp1252), mangiando em-dash e accenti
+    # nei messaggi di commit. Richiediamo limite + 1 per determinare la finestra
+    # del commit piu' vecchio della lista in un'unica chiamata git log.
     risultato = subprocess.run(
-        ["git", "log", f"-{limite}", "--format=%H|%cI|%an|%s"],
+        ["git", "log", f"-{limite + 1}", "--format=%H|%cI|%an|%s"],
         cwd=percorso_repo, capture_output=True, text=True, encoding="utf-8", timeout=10,
     )
     if risultato.returncode != 0:
         raise ValueError(f"impossibile leggere git log: {risultato.stderr.strip()}")
-    commit = []
+    tutti_commit: list[dict[str, Any]] = []
     for riga in risultato.stdout.strip().splitlines():
         if not riga:
             continue
         hash_commit, data, autore, messaggio = riga.split("|", 3)
-        commit.append({"hash": hash_commit, "data": data, "autore": autore, "messaggio": messaggio})
-    return commit
+        tutti_commit.append({"hash": hash_commit, "data": data, "autore": autore, "messaggio": messaggio})
+
+    if percorso_registro is None:
+        p_reg_default = percorso_repo / "dati_locali" / "orchestrazione" / "eventi.jsonl"
+        if p_reg_default.exists():
+            percorso_registro = p_reg_default
+
+    eventi = []
+    if percorso_registro is not None and percorso_registro.exists():
+        eventi = registro.leggi_eventi(percorso_registro)
+
+    dt_eventi = [_a_utc(e["timestamp"]) for e in eventi if e.get("timestamp")]
+
+    commit_risultato: list[dict[str, Any]] = []
+    num_da_restituire = min(limite, len(tutti_commit))
+    for i in range(num_da_restituire):
+        c = dict(tutti_commit[i])
+        fine = _a_utc(c["data"])
+        if i + 1 < len(tutti_commit):
+            inizio = _a_utc(tutti_commit[i + 1]["data"])
+        else:
+            inizio = datetime(1970, 1, 1, tzinfo=timezone.utc)
+        cnt = sum(1 for dt in dt_eventi if inizio < dt <= fine)
+        c["interazioni"] = cnt
+        commit_risultato.append(c)
+    return commit_risultato
 
 
 def finestra_temporale_commit(percorso_repo: Path, hash_commit: str) -> tuple[datetime, datetime]:

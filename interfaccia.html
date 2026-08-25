@@ -524,6 +524,7 @@
     .handoff-line.active-claude { stroke: var(--color-claude); filter: drop-shadow(0 0 6px var(--color-claude)); }
     .handoff-line.active-codex { stroke: var(--color-codex); filter: drop-shadow(0 0 6px var(--color-codex)); }
     .handoff-line.active-locale { stroke: var(--color-locale); filter: drop-shadow(0 0 6px var(--color-locale)); }
+    .handoff-line.active-sistema { stroke: var(--color-sistema); filter: drop-shadow(0 0 6px var(--color-sistema)); }
 
     .handoff-line.active-fail {
       stroke: var(--accent-rose) !important;
@@ -543,6 +544,7 @@
       --color-claude: #ff6b00;
       --color-codex: #bd00ff;
       --color-locale: #94a3b8;
+      --color-sistema: #38bdf8;
     }
 
     /* Nodi degli Agenti */
@@ -561,6 +563,7 @@
     #node_claude circle:not(.node-ring) { stroke: rgba(255, 107, 0, 0.35); fill: rgba(255, 107, 0, 0.04); }
     #node_codex circle:not(.node-ring) { stroke: rgba(189, 0, 255, 0.35); fill: rgba(189, 0, 255, 0.04); }
     #node_locale circle:not(.node-ring) { stroke: rgba(148, 163, 184, 0.35); fill: rgba(148, 163, 184, 0.04); }
+    #node_sistema circle:not(.node-ring) { stroke: rgba(56, 189, 248, 0.35); fill: rgba(56, 189, 248, 0.04); }
 
     /* Lettera centrale del nodo */
     .agent-icon {
@@ -599,6 +602,7 @@
     #node_claude .node-ring { stroke: rgba(255, 107, 0, 0.25); }
     #node_codex .node-ring { stroke: rgba(189, 0, 255, 0.25); }
     #node_locale .node-ring { stroke: rgba(148, 163, 184, 0.25); }
+    #node_sistema .node-ring { stroke: rgba(56, 189, 248, 0.25); }
 
     /* Stili Attivi per Nodi */
     .agent-node.active {
@@ -631,18 +635,21 @@
     .agent-node#node_claude.active circle:not(.node-ring) { fill: rgba(255, 107, 0, 0.15); stroke: var(--color-claude); filter: drop-shadow(0 0 8px var(--color-claude)); }
     .agent-node#node_codex.active circle:not(.node-ring) { fill: rgba(189, 0, 255, 0.15); stroke: var(--color-codex); filter: drop-shadow(0 0 8px var(--color-codex)); }
     .agent-node#node_locale.active circle:not(.node-ring) { fill: rgba(148, 163, 184, 0.15); stroke: var(--color-locale); filter: drop-shadow(0 0 8px var(--color-locale)); }
+    .agent-node#node_sistema.active circle:not(.node-ring) { fill: rgba(56, 189, 248, 0.15); stroke: var(--color-sistema); filter: drop-shadow(0 0 8px var(--color-sistema)); }
 
     .agent-node#node_umano.active .node-ring { stroke: var(--color-umano); filter: drop-shadow(0 0 6px var(--color-umano)); }
     .agent-node#node_gemini.active .node-ring { stroke: var(--color-gemini); filter: drop-shadow(0 0 6px var(--color-gemini)); }
     .agent-node#node_claude.active .node-ring { stroke: var(--color-claude); filter: drop-shadow(0 0 6px var(--color-claude)); }
     .agent-node#node_codex.active .node-ring { stroke: var(--color-codex); filter: drop-shadow(0 0 6px var(--color-codex)); }
     .agent-node#node_locale.active .node-ring { stroke: var(--color-locale); filter: drop-shadow(0 0 6px var(--color-locale)); }
+    .agent-node#node_sistema.active .node-ring { stroke: var(--color-sistema); filter: drop-shadow(0 0 6px var(--color-sistema)); }
 
     .agent-node#node_umano.active .agent-icon { text-shadow: 0 0 4px var(--color-umano); }
     .agent-node#node_gemini.active .agent-icon { text-shadow: 0 0 4px var(--color-gemini); }
     .agent-node#node_claude.active .agent-icon { text-shadow: 0 0 4px var(--color-claude); }
     .agent-node#node_codex.active .agent-icon { text-shadow: 0 0 4px var(--color-codex); }
     .agent-node#node_locale.active .agent-icon { text-shadow: 0 0 4px var(--color-locale); }
+    .agent-node#node_sistema.active .agent-icon { text-shadow: 0 0 4px var(--color-sistema); }
 
     /* Override di successo ed errore con colori pieni */
     .agent-node.active-success circle:not(.node-ring) {
@@ -723,16 +730,88 @@
     }
 
     .commit-card-msg {
-      font-size: 0.88rem;
+      font-size: 0.9rem;
       font-weight: 600;
       color: var(--text-main);
-      margin-bottom: 0.25rem;
-      line-height: 1.3;
+      margin: 0.4rem 0;
+      line-height: 1.45;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
 
     .commit-card-meta {
       font-size: 0.72rem;
       color: var(--text-muted);
+    }
+
+    /* Custom Commit Picker (Supporto Multi-Riga & Interazioni) */
+    .custom-commit-picker {
+      position: relative;
+      flex: 1;
+      min-width: 320px;
+    }
+
+    .custom-commit-trigger {
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      padding: 0.55rem 0.85rem;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.6rem;
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    }
+
+    .custom-commit-trigger:hover, .custom-commit-trigger:focus {
+      border-color: rgba(139, 92, 246, 0.5);
+      background: rgba(15, 23, 42, 0.9);
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+    }
+
+    .custom-commit-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      max-height: 380px;
+      overflow-y: auto;
+      background: #090e1e;
+      border: 1px solid rgba(139, 92, 246, 0.35);
+      border-radius: 8px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+
+    .custom-commit-dropdown.open {
+      display: block;
+      animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .custom-commit-item {
+      padding: 0.65rem 0.85rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .custom-commit-item:last-child {
+      border-bottom: none;
+    }
+
+    .custom-commit-item:hover {
+      background: rgba(139, 92, 246, 0.15);
+    }
+
+    .custom-commit-item.selected {
+      background: rgba(139, 92, 246, 0.22);
+      border-left: 3px solid #a78bfa;
     }
 
     /* Console di Cooperazione stile Cyberpunk/Matrix */
@@ -1175,9 +1254,23 @@
 
           <!-- Replay di un commit reale (dati storici, nessuna chiamata dal vivo) -->
           <div style="width: 100%; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem; margin-top: 1rem; display:flex; gap:0.8rem; align-items:center; flex-wrap:wrap;">
-            <label for="commitSelect" style="white-space:nowrap;">Rivivi un commit reale:</label>
-            <select id="commitSelect" style="min-width:280px; flex:1;"></select>
-            <button id="replayCommitBtn" class="btn" style="background: rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.4); color:#c4b5fd;">🎬 Riproduci</button>
+            <label for="commitSelect" style="white-space:nowrap; font-weight:600;">Rivivi un commit reale:</label>
+            <div class="custom-commit-picker" id="customCommitPicker">
+              <div class="custom-commit-trigger" id="customCommitTrigger" tabindex="0">
+                <div id="customCommitTriggerContent" style="flex:1; min-width:0;">
+                  <div style="font-size:0.75rem; color:var(--text-muted); display:flex; gap:0.5rem; align-items:center;">
+                    <span id="triggerBadge" class="tag-badge" style="background:rgba(139,92,246,0.2); color:#c4b5fd; font-size:0.72rem; padding:0.1rem 0.45rem; border-radius:4px; font-weight:600;"></span>
+                    <span id="triggerDate"></span>
+                    <span id="triggerHash" style="font-family:'Fira Code',monospace; color:#a78bfa;"></span>
+                  </div>
+                  <div id="triggerTitle" style="font-size:0.86rem; font-weight:600; color:var(--text-main); margin-top:0.25rem; white-space:normal; line-height:1.35; word-break:break-word;"></div>
+                </div>
+                <span style="color:var(--text-muted); font-size:0.8rem; margin-left:0.5rem;">▼</span>
+              </div>
+              <div class="custom-commit-dropdown" id="customCommitDropdown"></div>
+              <select id="commitSelect" style="display:none;"></select>
+            </div>
+            <button id="replayCommitBtn" class="btn" style="background: rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.4); color:#c4b5fd; height:fit-content; align-self:center;">🎬 Riproduci</button>
           </div>
           <!-- Git Commit Info Card (Visualizzatore Metadati) -->
           <div id="commitCard" class="commit-card">
@@ -1186,6 +1279,7 @@
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="display:inline-block; vertical-align:middle; margin-bottom:1px; margin-right:3px;"><path d="M5 3.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zm0 2.122a2.25 2.25 0 1 0-1.5 0v5.256a2.251 2.251 0 1 0 1.5 0V5.372zm8-.122a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zM11.5 7.5a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5zM5 11.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zm8 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0z"></path></svg>
                 <span id="commitHashVal"></span>
               </span>
+              <span id="commitInterazioniBadge" class="tag-badge" style="font-size:0.75rem; background:rgba(139,92,246,0.18); color:#c4b5fd; border:1px solid rgba(139,92,246,0.4); padding:0.15rem 0.5rem; border-radius:4px; font-weight:600; display:inline-flex; align-items:center; gap:0.3rem;"></span>
               <span class="commit-card-meta" id="commitDateVal"></span>
             </div>
             <div class="commit-card-msg" id="commitMsgVal"></div>
@@ -1196,47 +1290,68 @@
         <!-- Area Diagramma Visuale (SVG) -->
         <div class="handoff-visual">
           <svg id="handoffSvg" viewBox="0 0 800 300">
-            <!-- Linee di collegamento animate -->
-            <path id="path_umano_gemini" d="M 120 135 Q 200 70 250 70" fill="none" class="handoff-line" />
-            <path id="path_gemini_claude" d="M 310 70 L 450 70" fill="none" class="handoff-line" />
-            <path id="path_claude_locale" d="M 450 85 L 310 215" fill="none" class="handoff-line" />
-            <path id="path_locale_umano" d="M 250 230 Q 150 220 120 165" fill="none" class="handoff-line" />
-            
-            <path id="path_locale_codex" d="M 310 230 L 450 230" fill="none" class="handoff-line" />
-            <path id="path_codex_claude" d="M 480 200 L 480 100" fill="none" class="handoff-line" />
-            <path id="path_claude_locale_diretto" d="M 450 85 L 310 215" fill="none" class="handoff-line" />
-            <path id="path_gemini_locale" d="M 280 102 L 280 198" fill="none" class="handoff-line" />
+            <!-- Linee di collegamento radiali con Gestore Squadra al centro -->
+            <path id="path_umano_sistema" d="M 162 150 L 368 150" fill="none" class="handoff-line" />
+            <path id="path_sistema_umano" d="M 368 150 L 162 150" fill="none" class="handoff-line" />
+            <path id="path_gemini_sistema" d="M 288 82 L 377 133" fill="none" class="handoff-line" />
+            <path id="path_sistema_gemini" d="M 377 133 L 288 82" fill="none" class="handoff-line" />
+            <path id="path_claude_sistema" d="M 512 82 L 423 133" fill="none" class="handoff-line" />
+            <path id="path_sistema_claude" d="M 423 133 L 512 82" fill="none" class="handoff-line" />
+            <path id="path_locale_sistema" d="M 288 218 L 377 167" fill="none" class="handoff-line" />
+            <path id="path_sistema_locale" d="M 377 167 L 288 218" fill="none" class="handoff-line" />
+            <path id="path_codex_sistema" d="M 512 218 L 423 167" fill="none" class="handoff-line" />
+            <path id="path_sistema_codex" d="M 423 167 L 512 218" fill="none" class="handoff-line" />
 
-            <!-- Nodi degli Agenti (con lettere interne ed etichette sotto) -->
-            <g id="node_umano" class="agent-node" style="transform-origin: 100px 150px;">
-              <circle cx="100" cy="150" r="32" />
-              <circle cx="100" cy="150" r="38" class="node-ring" />
-              <text x="100" y="157" class="agent-icon" style="fill: var(--color-umano);">H</text>
-              <text x="100" y="198" class="agent-label">Umano</text>
+            <!-- Linee di cooperazione perimetrali tra Agenti -->
+            <path id="path_umano_gemini" d="M 152 127 Q 195 65 233 65" fill="none" class="handoff-line" />
+            <path id="path_gemini_claude" d="M 297 65 L 503 65" fill="none" class="handoff-line" />
+            <path id="path_claude_codex" d="M 535 97 L 535 203" fill="none" class="handoff-line" />
+            <path id="path_codex_claude" d="M 535 203 L 535 97" fill="none" class="handoff-line" />
+            <path id="path_codex_locale" d="M 503 235 L 297 235" fill="none" class="handoff-line" />
+            <path id="path_locale_codex" d="M 297 235 L 503 235" fill="none" class="handoff-line" />
+            <path id="path_locale_umano" d="M 233 235 Q 195 235 152 173" fill="none" class="handoff-line" />
+            <path id="path_gemini_locale" d="M 265 97 L 265 203" fill="none" class="handoff-line" />
+            <path id="path_claude_locale" d="M 510 82 Q 400 210 297 230" fill="none" class="handoff-line" />
+            <path id="path_claude_locale_diretto" d="M 510 82 Q 400 210 297 230" fill="none" class="handoff-line" />
+
+            <!-- Nodi degli Agenti -->
+            <g id="node_umano" class="agent-node" style="transform-origin: 130px 150px;">
+              <circle cx="130" cy="150" r="32" />
+              <circle cx="130" cy="150" r="38" class="node-ring" />
+              <text x="130" y="157" class="agent-icon" style="fill: var(--color-umano);">H</text>
+              <text x="130" y="198" class="agent-label">Umano</text>
             </g>
-            <g id="node_gemini" class="agent-node" style="transform-origin: 280px 70px;">
-              <circle cx="280" cy="70" r="32" />
-              <circle cx="280" cy="70" r="38" class="node-ring" />
-              <text x="280" y="77" class="agent-icon" style="fill: var(--color-gemini);">G</text>
-              <text x="280" y="118" class="agent-label">Gemini</text>
+            <g id="node_gemini" class="agent-node" style="transform-origin: 265px 65px;">
+              <circle cx="265" cy="65" r="32" />
+              <circle cx="265" cy="65" r="38" class="node-ring" />
+              <text x="265" y="72" class="agent-icon" style="fill: var(--color-gemini);">G</text>
+              <text x="265" y="113" class="agent-label">Gemini</text>
             </g>
-            <g id="node_claude" class="agent-node" style="transform-origin: 480px 70px;">
-              <circle cx="480" cy="70" r="32" />
-              <circle cx="480" cy="70" r="38" class="node-ring" />
-              <text x="480" y="77" class="agent-icon" style="fill: var(--color-claude);">C</text>
-              <text x="480" y="118" class="agent-label">Claude</text>
+            <g id="node_claude" class="agent-node" style="transform-origin: 535px 65px;">
+              <circle cx="535" cy="65" r="32" />
+              <circle cx="535" cy="65" r="38" class="node-ring" />
+              <text x="535" y="72" class="agent-icon" style="fill: var(--color-claude);">C</text>
+              <text x="535" y="113" class="agent-label">Claude</text>
             </g>
-            <g id="node_codex" class="agent-node" style="transform-origin: 480px 230px;">
-              <circle cx="480" cy="230" r="32" />
-              <circle cx="480" cy="230" r="38" class="node-ring" />
-              <text x="480" y="237" class="agent-icon" style="fill: var(--color-codex);">CX</text>
-              <text x="480" y="278" class="agent-label">Codex</text>
+            <g id="node_codex" class="agent-node" style="transform-origin: 535px 235px;">
+              <circle cx="535" cy="235" r="32" />
+              <circle cx="535" cy="235" r="38" class="node-ring" />
+              <text x="535" y="242" class="agent-icon" style="fill: var(--color-codex);">CX</text>
+              <text x="535" y="283" class="agent-label">Codex</text>
             </g>
-            <g id="node_locale" class="agent-node" style="transform-origin: 280px 230px;">
-              <circle cx="280" cy="230" r="32" />
-              <circle cx="280" cy="230" r="38" class="node-ring" />
-              <text x="280" y="237" class="agent-icon" style="fill: var(--color-locale);">L</text>
-              <text x="280" y="278" class="agent-label">Locale</text>
+            <g id="node_locale" class="agent-node" style="transform-origin: 265px 235px;">
+              <circle cx="265" cy="235" r="32" />
+              <circle cx="265" cy="235" r="38" class="node-ring" />
+              <text x="265" y="242" class="agent-icon" style="fill: var(--color-locale);">L</text>
+              <text x="265" y="283" class="agent-label">Locale</text>
+            </g>
+
+            <!-- Nodo Centrale: Gestore Squadra (Sistema) -->
+            <g id="node_sistema" class="agent-node" style="transform-origin: 400px 150px;">
+              <circle cx="400" cy="150" r="34" />
+              <circle cx="400" cy="150" r="40" class="node-ring" />
+              <text x="400" y="156" class="agent-icon" style="fill: var(--color-sistema); font-size:16px;">GS</text>
+              <text x="400" y="198" class="agent-label" style="font-weight:700;">Gestore Squadra</text>
             </g>
           </svg>
         </div>
@@ -1476,6 +1591,14 @@
       // Replay di un commit reale
       caricaCommit();
       document.getElementById("realProjSelect").addEventListener("change", caricaCommit);
+      document.getElementById("commitSelect").addEventListener("change", aggiornaCommitCardSelezionato);
+      document.getElementById("customCommitTrigger")?.addEventListener("click", toggleCustomCommitDropdown);
+      document.addEventListener("click", (e) => {
+        const picker = document.getElementById("customCommitPicker");
+        if (picker && !picker.contains(e.target)) {
+          chiudiCustomCommitDropdown();
+        }
+      });
       document.getElementById("replayCommitBtn").addEventListener("click", avviaReplayCommit);
 
       // Bacheca multi-agente
@@ -1992,6 +2115,100 @@
       });
     }
 
+    function renderizzaCustomCommitPicker() {
+      const dropdown = document.getElementById("customCommitDropdown");
+      const commitSelect = document.getElementById("commitSelect");
+      if (!dropdown || !commitSelect) return;
+      dropdown.innerHTML = "";
+
+      if (commitCorrenti.length === 0) {
+        dropdown.innerHTML = '<div style="padding:0.8rem; color:var(--text-muted); text-align:center; font-size:0.8rem;">Nessun commit disponibile</div>';
+        return;
+      }
+
+      const hashSelezionato = commitSelect.value;
+
+      commitCorrenti.forEach(c => {
+        const item = document.createElement("div");
+        item.className = "custom-commit-item" + (c.hash === hashSelezionato ? " selected" : "");
+        item.setAttribute("data-hash", c.hash);
+        const n = Number(c.interazioni || 0);
+        const labelInt = n === 1 ? "1 interazione" : `${n} interazioni`;
+        const dataStr = c.data ? c.data.slice(0, 16).replace("T", " ") : "";
+        item.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.3rem;">
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+              <span class="tag-badge" style="background:rgba(139,92,246,0.18); color:#c4b5fd; font-size:0.72rem; padding:0.12rem 0.45rem; border-radius:4px; font-weight:600; border:1px solid rgba(139,92,246,0.35);">
+                ⚡ ${labelInt}
+              </span>
+              <span style="font-family:'Fira Code',monospace; font-size:0.75rem; color:#a78bfa; font-weight:600;">${c.hash.slice(0, 7)}</span>
+            </div>
+            <span style="font-size:0.72rem; color:var(--text-muted);">${escapeHtml(dataStr)}</span>
+          </div>
+          <div style="font-size:0.86rem; font-weight:600; color:var(--text-main); line-height:1.4; white-space:normal; word-break:break-word;">
+            ${escapeHtml(c.messaggio)}
+          </div>
+        `;
+        item.addEventListener("click", () => {
+          commitSelect.value = c.hash;
+          commitSelect.dispatchEvent(new Event("change"));
+          chiudiCustomCommitDropdown();
+        });
+        dropdown.appendChild(item);
+      });
+    }
+
+    function aggiornaCommitCardSelezionato() {
+      const commitSelect = document.getElementById("commitSelect");
+      const hash = commitSelect ? commitSelect.value : "";
+      if (!hash) {
+        document.getElementById("commitCard").style.display = "none";
+        const triggerTitle = document.getElementById("triggerTitle");
+        if (triggerTitle) triggerTitle.textContent = "Seleziona un commit...";
+        return;
+      }
+      const selectedCommit = commitCorrenti.find(c => c.hash === hash);
+      if (selectedCommit) {
+        document.getElementById("commitHashVal").textContent = selectedCommit.hash.slice(0, 7);
+        document.getElementById("commitDateVal").textContent = new Date(selectedCommit.data).toLocaleString();
+        document.getElementById("commitMsgVal").textContent = selectedCommit.messaggio;
+        document.getElementById("commitAuthorVal").textContent = `Autore: ${selectedCommit.autore}`;
+        const numInterazioni = Number(selectedCommit.interazioni || 0);
+        const labelInterazioni = numInterazioni === 1 ? "1 interazione collegata" : `${numInterazioni} interazioni collegate`;
+        const badgeEl = document.getElementById("commitInterazioniBadge");
+        if (badgeEl) {
+          badgeEl.textContent = `⚡ ${labelInterazioni}`;
+        }
+        document.getElementById("commitCard").style.display = "block";
+
+        // Aggiorna anche il trigger del custom picker
+        const tBadge = document.getElementById("triggerBadge");
+        const tDate = document.getElementById("triggerDate");
+        const tHash = document.getElementById("triggerHash");
+        const tTitle = document.getElementById("triggerTitle");
+        if (tBadge) tBadge.textContent = `⚡ ${numInterazioni} interazion${numInterazioni === 1 ? 'e' : 'i'}`;
+        if (tDate) tDate.textContent = selectedCommit.data ? selectedCommit.data.slice(0, 16).replace("T", " ") : "";
+        if (tHash) tHash.textContent = selectedCommit.hash.slice(0, 7);
+        if (tTitle) tTitle.textContent = selectedCommit.messaggio;
+
+        renderizzaCustomCommitPicker();
+      }
+    }
+
+    function toggleCustomCommitDropdown() {
+      const dropdown = document.getElementById("customCommitDropdown");
+      if (dropdown) {
+        dropdown.classList.toggle("open");
+      }
+    }
+
+    function chiudiCustomCommitDropdown() {
+      const dropdown = document.getElementById("customCommitDropdown");
+      if (dropdown) {
+        dropdown.classList.remove("open");
+      }
+    }
+
     async function caricaCommit() {
       const progetto_id = document.getElementById("realProjSelect").value || "orchestratore";
       const commitSelect = document.getElementById("commitSelect");
@@ -2003,17 +2220,25 @@
         commitCorrenti = data.commit || [];
         if (commitCorrenti.length === 0) {
           commitSelect.innerHTML = '<option value="">Nessun commit disponibile</option>';
+          document.getElementById("commitCard").style.display = "none";
+          renderizzaCustomCommitPicker();
           return;
         }
         commitCorrenti.forEach(c => {
           const opt = document.createElement("option");
           opt.value = c.hash;
-          opt.textContent = `${c.data.slice(0, 16)} — ${c.messaggio.slice(0, 60)}`;
+          const numInterazioni = Number(c.interazioni || 0);
+          const labelInterazioni = numInterazioni === 1 ? "1 interazione" : `${numInterazioni} interazioni`;
+          opt.textContent = `[${labelInterazioni}] ${c.data.slice(0, 16)} — ${c.messaggio}`;
+          opt.title = `${c.messaggio} (${labelInterazioni} collegate)`;
           commitSelect.appendChild(opt);
         });
+        aggiornaCommitCardSelezionato();
       } catch (err) {
         commitSelect.innerHTML = '<option value="">Impossibile caricare i commit</option>';
         commitCorrenti = [];
+        document.getElementById("commitCard").style.display = "none";
+        renderizzaCustomCommitPicker();
       }
     }
 
@@ -2452,14 +2677,7 @@
       document.getElementById("stopSimBtn").style.display = "inline-block";
 
       // Popola e mostra la Git Commit Card
-      const selectedCommit = commitCorrenti.find(c => c.hash === hash);
-      if (selectedCommit) {
-        document.getElementById("commitHashVal").textContent = selectedCommit.hash.slice(0, 7);
-        document.getElementById("commitDateVal").textContent = new Date(selectedCommit.data).toLocaleString();
-        document.getElementById("commitMsgVal").textContent = selectedCommit.messaggio;
-        document.getElementById("commitAuthorVal").textContent = `Autore: ${selectedCommit.autore}`;
-        document.getElementById("commitCard").style.display = "block";
-      }
+      aggiornaCommitCardSelezionato();
 
       logBox.innerHTML = `<div class="handoff-msg system"><b>[Sistema]</b> Recupero gli eventi reali del commit selezionato...<span class="terminal-cursor"></span></div>`;
 

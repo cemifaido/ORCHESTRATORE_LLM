@@ -36,6 +36,18 @@ class RepoGitRealeTest(unittest.TestCase):
             self.assertIn("data", c)
             self.assertIn("autore", c)
             self.assertIn("messaggio", c)
+            self.assertIn("interazioni", c)
+            self.assertIsInstance(c["interazioni"], int)
+            self.assertGreaterEqual(c["interazioni"], 0)
+
+    def test_lista_commit_con_registro_custom(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso_reg = Path(tmp) / "eventi.jsonl"
+            # Lista commit senza eventi nel registro temporaneo -> interazioni 0
+            commit = commit_replay.lista_commit(commit_replay.RADICE, limite=2, percorso_registro=percorso_reg)
+            self.assertGreaterEqual(len(commit), 1)
+            for c in commit:
+                self.assertEqual(c["interazioni"], 0)
 
     def test_finestra_temporale_head_e_coerente_col_commit_precedente(self) -> None:
         head = subprocess.run(

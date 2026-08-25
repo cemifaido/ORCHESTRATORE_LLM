@@ -4,6 +4,7 @@ Questo indice è il punto di ingresso per copiare o collegare la documentazione 
 
 ## Fondamenta
 
+- [Presentazione semplice](PRESENTAZIONE_SEMPLICE.md) — due pagine senza dettagli tecnici, a cosa serve e quali sono i vantaggi: il documento pensato per divulgare il progetto a chi non l'ha seguito.
 - [README](../README.md) — avvio rapido e componenti.
 - [Guida semplice alla bacheca multi-agente](GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md) — spiegazione per non specialisti di cosa fa la bacheca, a cosa serve e come usarla.
 - [Orchestrazione dei lavoratori](ORCHESTRAZIONE_LAVORATORI.md) — specifica operativa.

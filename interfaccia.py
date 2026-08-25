@@ -600,8 +600,10 @@ def lista_commit_progetto(progetto_id: str = "orchestratore", limite: int = 20):
     """Ultimi commit del progetto, per popolare il selettore di replay nel pannello
     Live Agent Handoff. Dati reali (git log), non una lista finta."""
     progetto = _progetto_o_404(progetto_id)
+    p_path = Path(progetto["percorso"])
+    p_reg = p_path / "dati_locali" / "orchestrazione" / "eventi.jsonl"
     try:
-        commit = commit_replay.lista_commit(Path(progetto["percorso"]), limite=limite)
+        commit = commit_replay.lista_commit(p_path, limite=limite, percorso_registro=p_reg)
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"progetto_id": progetto_id, "commit": commit}
