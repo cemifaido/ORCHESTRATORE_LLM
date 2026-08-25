@@ -186,24 +186,29 @@ def inizializza_progetti(radice_orchestratore: Path = RADICE, percorso_progetti:
     """Crea o aggiorna dati_locali/progetti.json registrando l'orchestratore."""
     dest = percorso_progetti or FILE_PROGETTI
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dati: dict[str, Any] = {"versione_schema": 1, "progetti": {}}
+    lista_progetti = []
 
     if dest.exists():
         try:
-            dati = json.loads(dest.read_text(encoding="utf-8"))
+            raw = json.loads(dest.read_text(encoding="utf-8")).get("progetti", [])
+            if isinstance(raw, list):
+                lista_progetti = raw
+            elif isinstance(raw, dict):
+                lista_progetti = [
+                    {"id": k, **v} if isinstance(v, dict) else {"id": k, "nome": k, "percorso": str(v)}
+                    for k, v in raw.items()
+                ]
         except Exception:
-            dati = {"versione_schema": 1, "progetti": {}}
+            lista_progetti = []
 
-    if "progetti" not in dati or not isinstance(dati["progetti"], dict):
-        dati["progetti"] = {}
-
-    if "orchestratore" not in dati["progetti"]:
-        dati["progetti"]["orchestratore"] = {
+    if not any(p.get("id") == "orchestratore" for p in lista_progetti if isinstance(p, dict)):
+        lista_progetti.insert(0, {
+            "id": "orchestratore",
             "nome": "Orchestratore Centrale",
             "percorso": str(radice_orchestratore),
-        }
+        })
 
-    dest.write_text(json.dumps(dati, ensure_ascii=False, indent=2), encoding="utf-8")
+    dest.write_text(json.dumps({"versione_schema": 1, "progetti": lista_progetti}, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def installa_hook_git() -> bool:
@@ -343,8 +348,12 @@ def _aggiungi_progetto_opzionale() -> None:
     if nome_p and path_p and Path(path_p).exists():
         try:
             dati_proj = json.loads(FILE_PROGETTI.read_text(encoding="utf-8"))
+            progetti = dati_proj.get("progetti", [])
             id_p = nome_p.lower().replace(" ", "_")
-            dati_proj["progetti"][id_p] = {"nome": nome_p, "percorso": path_p}
+            if isinstance(progetti, list):
+                progetti.append({"id": id_p, "nome": nome_p, "percorso": path_p})
+            elif isinstance(progetti, dict):
+                progetti[id_p] = {"nome": nome_p, "percorso": path_p}
             FILE_PROGETTI.write_text(json.dumps(dati_proj, ensure_ascii=False, indent=2), encoding="utf-8")
             print(f"{Colori.VERDE}✓ Progetto '{nome_p}' aggiunto a {FILE_PROGETTI}.{Colori.RESET}")
         except Exception as ex:

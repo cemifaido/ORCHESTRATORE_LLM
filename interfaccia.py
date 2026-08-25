@@ -141,7 +141,15 @@ def leggi_progetti() -> list[dict]:
         PERCORSO_PROGETTI.write_text(json.dumps(default_config, indent=2, ensure_ascii=False), encoding="utf-8")
         return default_config["progetti"]
     try:
-        return json.loads(PERCORSO_PROGETTI.read_text(encoding="utf-8")).get("progetti", [])
+        raw = json.loads(PERCORSO_PROGETTI.read_text(encoding="utf-8")).get("progetti", [])
+        if isinstance(raw, dict):
+            return [
+                {"id": k, **v} if isinstance(v, dict) else {"id": k, "nome": k, "percorso": str(v)}
+                for k, v in raw.items()
+            ]
+        elif isinstance(raw, list):
+            return raw
+        return []
     except Exception:
         return []
 

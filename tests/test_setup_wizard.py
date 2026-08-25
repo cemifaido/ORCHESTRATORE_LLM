@@ -58,7 +58,7 @@ class InizializzaProgettiTest(unittest.TestCase):
                 sw.inizializza_progetti(radice_orchestratore=Path(tmp))
                 self.assertTrue(file_proj.exists())
                 data = json.loads(file_proj.read_text(encoding="utf-8"))
-                self.assertIn("orchestratore", data["progetti"])
+                self.assertTrue(any(p.get("id") == "orchestratore" for p in data["progetti"]))
 
 
 class ModalitaAutomaticaTest(unittest.TestCase):
