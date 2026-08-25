@@ -48,7 +48,7 @@ def instrada(tipo: str, rischio: str, percorso: Path) -> dict:
     serve_umano = rischio == "alto" or agente == "umano"
     nota = None
     if rischio == "alto":
-        nota = "rischio alto: passa prima da SignorPaolo (gate umano), poi all'agente forte."
+        nota = "rischio alto: passa prima dall'operatore umano (gate umano), poi all'agente forte."
     storico = storico_rework(percorso, agente, tipo)
     return {
         "tipo_compito": tipo,

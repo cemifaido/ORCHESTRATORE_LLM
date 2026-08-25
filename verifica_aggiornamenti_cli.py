@@ -7,7 +7,9 @@ dentro) - l'aggiornamento resta un atto separato, deliberato, dopo verdetto
 umano (vedi docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md)."""
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -22,14 +24,30 @@ from adattatori import litellm
 
 RADICE = Path(__file__).resolve().parent
 
-PORTA_LLAMA_PREDEFINITA = 8090
-# Modello leggero (solo testo) per compiti di riassunto: il default del progetto
-# (Qwen VL 7B, con visione) e' pensato per altri usi - inutilmente pesante qui.
-# Percorsi/parametri presi da start_llama_only.bat, blocco ":model_3b_q4".
-SCRIPT_AVVIO_LLAMA = Path(r"D:\Share\py\altro-progetto\0.6_app\start_llama_only.ps1")
-MODELLO_LEGGERO_GGUF = Path(
-    r"C:\Users\paolo_pavesi\ollama-models\qwen2.5-3b-instruct\qwen2.5-3b-instruct-q4_k_m.gguf"
-)
+
+def ottieni_script_avvio_llama() -> Path:
+    """Restituisce il percorso dello script di avvio llama da ENV o default generico."""
+    val = os.environ.get("SCRIPT_AVVIO_LLAMA")
+    if val:
+        return Path(val)
+    candidato_locale = RADICE / "utility" / "start_llama_only.ps1"
+    if candidato_locale.exists():
+        return candidato_locale
+    return Path.home() / "start_llama_only.ps1"
+
+
+def ottieni_modello_leggero_gguf() -> Path:
+    """Restituisce il percorso del modello GGUF da ENV o default generico sotto home utente."""
+    val = os.environ.get("MODELLO_LEGGERO_GGUF") or os.environ.get("MODELLO_QWEN_GGUF")
+    if val:
+        return Path(val)
+    return Path.home() / "ollama-models" / "qwen2.5-3b-instruct" / "qwen2.5-3b-instruct-q4_k_m.gguf"
+
+
+PORTA_LLAMA_PREDEFINITA = int(os.environ.get("PORTA_LLAMA", "8090"))
+# Modello leggero (solo testo) per compiti di riassunto: configurabile via ENV o argomenti CLI
+SCRIPT_AVVIO_LLAMA = ottieni_script_avvio_llama()
+MODELLO_LEGGERO_GGUF = ottieni_modello_leggero_gguf()
 
 COMANDI_VERSIONE = {
     "claude": ["claude", "--version"],
@@ -284,11 +302,18 @@ def notifica_bacheca_aggiornamento(
     return messaggio
 
 
-def esegui_controllo_e_notifica(radice: Path = RADICE) -> dict[str, Any]:
+def esegui_controllo_e_notifica(
+    radice: Path = RADICE,
+    porta_llama: int = PORTA_LLAMA_PREDEFINITA,
+    script_llama: Path | None = None,
+    modello_gguf: Path | None = None,
+) -> dict[str, Any]:
     """Il compito completo, chiamabile sia da un'Attivita' Pianificata di
     Windows (settimanale) sia al volo su richiesta. Read-only sulle CLI, mai
     un aggiornamento automatico: solo verifica + notifica."""
-    assicura_llama_attivo()
+    script = script_llama or ottieni_script_avvio_llama()
+    modello = modello_gguf or ottieni_modello_leggero_gguf()
+    assicura_llama_attivo(porta=porta_llama, script=script, modello=modello)
     esito = verifica_tutti()
     notificati = []
     for agente, info in esito.items():
@@ -304,7 +329,19 @@ def esegui_controllo_e_notifica(radice: Path = RADICE) -> dict[str, Any]:
 
 
 def main() -> int:
-    esito = esegui_controllo_e_notifica()
+    parser = argparse.ArgumentParser(description="Verifica aggiornamenti CLI e notifica in bacheca")
+    parser.add_argument("--script-llama", type=Path, default=None, help="Percorso dello script di avvio llama")
+    parser.add_argument("--modello-gguf", type=Path, default=None, help="Percorso del modello GGUF leggero")
+    parser.add_argument("--porta-llama", type=int, default=PORTA_LLAMA_PREDEFINITA, help="Porta di ascolto llama-server")
+    parser.add_argument("--radice", type=Path, default=RADICE, help="Radice del repository dell'orchestratore")
+    args = parser.parse_args()
+
+    esito = esegui_controllo_e_notifica(
+        radice=args.radice,
+        porta_llama=args.porta_llama,
+        script_llama=args.script_llama,
+        modello_gguf=args.modello_gguf,
+    )
     print(json.dumps(esito, ensure_ascii=False, indent=2))
     return 0
 

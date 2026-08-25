@@ -803,7 +803,7 @@ risolvere nessuno dei problemi reali trovati (che sono di prompt/modello, non di
 motore di inferenza), e l'unico vantaggio tipico di Ollama — cambiare modello con un
 comando — è già coperto dal meccanismo di selezione descritto sotto.
 
-File modificati/aggiunti in `D:\Share\py\altro-progetto\0.6_app\` (fuori dall'orchestratore,
+File modificati/aggiunti nel progetto applicativo collegato (fuori dall'orchestratore,
 esplicitamente autorizzato):
 
 | File | Modifica |
