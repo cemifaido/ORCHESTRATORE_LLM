@@ -631,9 +631,10 @@ class PostinoHeadlessTest(unittest.TestCase):
             self.assertEqual(risultato["risvegli"][0]["status"], "bloccato")
             self.assertEqual(risultato["risvegli"][0]["motivo"], "debounce")
 
-    def test_risveglio_headless_ignora_gemini_capability_non_supportata(self) -> None:
-        """Gemini non e' in postino.COMANDI (manual_only): resta sempre sul
-        percorso a finestra, qualunque sia lo stato del toggle headless."""
+    def test_risveglio_headless_usa_gemini_capability_ora_supportata(self) -> None:
+        """Gemini e' in postino.COMANDI dal 2026-08-25 (agy con
+        --dangerously-skip-permissions, verificato dal vivo su Windows/WSL):
+        va sul dispatch headless come claude/codex, non piu' sempre a finestra."""
         with tempfile.TemporaryDirectory() as tmp:
             progetti, richiesta = self._progetto_con_richiesta(tmp, agente="gemini")
             p_path = Path(tmp)
@@ -648,7 +649,38 @@ class PostinoHeadlessTest(unittest.TestCase):
                 bacheca.aggiungi_messaggio(
                     p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl", nuova
                 )
-                with patch.object(interfaccia.postino, "dispatch") as dispatch_mock, \
+                with patch.object(
+                    interfaccia.postino, "dispatch",
+                    return_value={"esito": "inviato", "codice": 0},
+                ) as dispatch_mock, patch.object(interfaccia, "_esegui_risveglio_os") as risveglio_os:
+                    interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+
+            dispatch_mock.assert_called_once_with(p_path, "gemini", nuova["thread_id"])
+            risveglio_os.assert_not_called()
+
+    def test_risveglio_headless_ignora_capability_non_supportata(self) -> None:
+        """Un agente non in postino.COMANDI resta sempre sul percorso a
+        finestra, qualunque sia lo stato del toggle headless - patchando
+        COMANDI direttamente cosi' il test resta valido indipendentemente
+        da quali capability sono davvero configurate in futuro (oggi
+        claude/codex/gemini sono tutte supportate, nessun agente reale
+        monitorato dalla dashboard resterebbe fuori)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti, richiesta = self._progetto_con_richiesta(tmp, agente="codex")
+            p_path = Path(tmp)
+            interfaccia.imposta_postino(p_path, attivo=True)
+            interfaccia.imposta_postino_headless(p_path, attivo=True)
+
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")  # baseline
+                nuova = bacheca.costruisci_messaggio(
+                    mittente="umano", destinatari=["codex"], tipo="richiesta", testo="nuovo",
+                )
+                bacheca.aggiungi_messaggio(
+                    p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl", nuova
+                )
+                with patch.object(interfaccia.postino, "COMANDI", {}), \
+                     patch.object(interfaccia.postino, "dispatch") as dispatch_mock, \
                      patch.object(interfaccia, "_esegui_risveglio_os", return_value={"status": "test"}) as risveglio_os:
                     interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
 

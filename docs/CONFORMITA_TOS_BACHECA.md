@@ -271,6 +271,33 @@ headless è ammessa per il dispatcher, alle condizioni seguenti (non opzionali):
    nell'invocazione esatta del dispatcher. Gemini resta `manual_only` finché
    il bug TTY di `agy` non è risolto: per lui solo deep link/pull.
 
+## Aggiornamento 2026-08-25: Gemini/`agy` verificato `official_headless`
+
+Il bug TTY citato sopra (§ "Capability verificate", 2026-07-08) è stato
+diagnosticato per davvero, non solo ri-descritto: non è un limite della
+piattaforma Windows né del binario in sé, ma l'attesa di un'approvazione
+interattiva dei permessi che non arriva mai in un sottoprocesso senza
+terminale. `--dangerously-skip-permissions` salta quell'attesa e `agy -p`
+(sia nativo Windows sia via WSL, testato su entrambi) legge e risponde
+davvero in bacheca — verificato dal vivo il 2026-08-25 su thread reali mai
+toccati prima, non un test simulato.
+
+**Cambio di stato**: Gemini/Antigravity passa da `manual_only` a
+`official_headless` per la CLI (tabella sopra), con una differenza
+rilevante rispetto a Claude/Codex: le regole di permesso granulari
+(`permissions.allow`) non funzionano — verificato identico su Windows e
+WSL, il comando resta negato anche quando il log conferma i permessi
+caricati. L'unica via verificata è il bypass totale dei permessi, non un
+perimetro scoped come per gli altri due. **Decisione umana esplicita**:
+accettato comunque, con `prompt_fisso()` (contesto non fidato, niente
+commit/push/rete) come unico freno per Gemini invece di un doppio livello
+freno-tool + freno-prompt. Se `agy` risolve il difetto dei permessi
+granulari in una versione futura, va ristretto il perimetro come per gli
+altri due — non è una chiusura definitiva della domanda, resta aperta.
+
+Dettagli tecnici completi (percorsi di configurazione, ordine dei flag,
+ricetta esatta) in `docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`.
+
 ## Limiti della sperimentazione ed esclusione del Jitter (2026-07-08)
 
 Durante la progettazione dell'automazione di background, è stata valutata l'introduzione di ritardi artificiali randomizzati (Jitter) e simulazioni di digitazione tasto per tasto per emulare il comportamento umano ed evitare i controlli anti-bot dei provider.

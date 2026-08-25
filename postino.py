@@ -29,6 +29,18 @@ COMANDI = {
     # fosse passato). La forma --flag=valore lo evita.
     "claude": ["claude", "-p", "--allowedTools=Bash(python bacheca.py *),Bash(python registro.py *)"],
     "codex": ["codex", "exec", "--sandbox", "workspace-write"],
+    # agy (Gemini/Antigravity): i permessi granulari (permissions.allow) NON
+    # funzionano - verificato su Windows e WSL, stesso identico blocco
+    # nonostante il log confermi i grant caricati (difetto del tool, non
+    # dell'ambiente; vedi memoria agy_wsl_headless_funziona.md). Unica via
+    # verificata: --dangerously-skip-permissions. Il freno resta prompt_fisso()
+    # (contesto non fidato, niente commit/push/rete), non un perimetro
+    # applicato dal tool come per claude/codex - rischio accettato dall'umano
+    # esplicitamente il 2026-08-25. '-p' e' l'ultimo elemento apposta: prende
+    # come prompt l'argomento immediatamente successivo (bug reale trovato in
+    # verifica live: con altri flag dopo, inghiotte il primo di quelli come
+    # prompt e ignora il prompt vero - errore "took ... as its prompt").
+    "gemini": ["agy", "--dangerously-skip-permissions", "--print-timeout", "180s", "-p"],
 }
 
 

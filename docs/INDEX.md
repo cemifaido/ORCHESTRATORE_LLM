@@ -27,6 +27,7 @@ Questo indice è il punto di ingresso per copiare o collegare la documentazione 
 
 - [Guida: il postino e il dispatch headless](GUIDA_POSTINO_DISPATCH_HEADLESS.md) — **guida operativa di riferimento**: come funziona, prerequisiti per farlo funzionare, come usarlo, come replicarlo su un'altra macchina.
 - [Piano: risvegli automatici](PIANO_RISVEGLI_AUTOMATICI.md) — storia delle decisioni e guardrail concordati con Gemini/Codex (tetti, capability provate non presunte, canali ufficiali).
+- [verifica_aggiornamenti_cli.py](../verifica_aggiornamenti_cli.py) — controllo settimanale (Attività Pianificata Windows) delle versioni di claude/codex/agy, riassunto note di rilascio col modello locale, notifica in bacheca; mai un aggiornamento automatico senza verdetto umano.
 
 ## Integrazioni opzionali
 

@@ -27,10 +27,10 @@ poll ogni 2.5s su st_mtime — nessun demone nuovo)
 per ogni agente con un messaggio pendente non ancora notificato:
         │
         ├─ dispatch_headless = postino_attivo AND postino_headless_attivo
-        │                      AND agente in postino.COMANDI (claude/codex)
+        │                      AND agente in postino.COMANDI (claude/codex/gemini)
         │
         ├─ SE dispatch_headless ──► postino.dispatch(): lancia claude -p /
-        │                           codex exec in background, nessuna finestra
+        │                           codex exec / agy -p in background, nessuna finestra
         │
         └─ ALTRIMENTI ──────────► _esegui_risveglio_os(): apre/porta in primo
                                    piano l'IDE dell'agente, copia il prompt
@@ -69,16 +69,23 @@ In `config/comandi.json`, blocco `"postino"`:
 
 ```json
 "postino": {
-  "max_turni_thread": 3,
+  "max_turni_thread": 8,
   "max_invii_giorno": 10,
   "debounce_secondi": 300
 }
 ```
 
 - **`max_turni_thread`**: massimo di risvegli automatici consecutivi per un
-  thread senza un tocco umano. Un messaggio con `mittente=umano` nel thread
-  azzera il conteggio — non è "mai più di 3 messaggi", è "mai più di 3 senza
-  che un umano intervenga". Vale per **tutti** i canali (headless e deep-link).
+  thread senza un tocco umano — **condiviso tra tutti gli agenti sullo
+  stesso thread**, non contato separatamente per ciascuno: in una
+  conversazione a tre, ogni risposta di chiunque consuma lo stesso
+  contatore. Un messaggio con `mittente=umano` nel thread azzera il
+  conteggio — non è "mai più di N messaggi", è "mai più di N senza che un
+  umano intervenga". Vale per **tutti** i canali (headless e deep-link).
+  Alzato da 3 a 8 il 2026-08-25 (decisione umana, dopo aver collegato anche
+  Gemini) per lasciare margine a conversazioni a tre agenti (~3 scambi a
+  testa) restando comunque più vicino allo spirito conservativo iniziale
+  che al tetto massimo di 10 che avrebbe coperto 3 scambi pieni a testa.
 - **`max_invii_giorno`**: budget giornaliero, ma conta **solo il canale
   headless** — il fallback a finestra apre solo un pannello all'umano, non
   consuma quota dei provider.
@@ -126,6 +133,23 @@ probabilità:
    una CLI o cambiato il PATH, riavvia il processo del server a mano
    (terminarlo e farne partire uno nuovo da una shell aperta di recente),
    o meglio ancora riavvia l'intera macchina/IDE.
+6. **Gemini/`agy` non ha un modo scoped di dare i permessi**: le regole
+   granulari (`permissions.allow`/`permissionGrants`) si caricano
+   correttamente (verificabile nei log CLI) ma il comando resta comunque
+   negato — verificato su Windows e WSL, stesso identico blocco, quindi è
+   un difetto del tool, non dell'ambiente. L'unica via che funziona è
+   `--dangerously-skip-permissions`: il freno resta solo `prompt_fisso()`
+   (istruzioni testuali), non un perimetro imposto dal tool come per
+   claude/codex. `agy -p` inoltre vuole il prompt come argomento
+   **immediatamente successivo**: se altri flag vengono dopo `-p` nella
+   riga di comando, lo *inghiottono* al posto del prompt vero (stesso tipo
+   di bug del flag variadico di claude, causa diversa). In `postino.COMANDI`
+   `-p` va per questo motivo per ultimo nella lista.
+7. **Non serve WSL**: il bug originale ("si blocca senza TTY") non è un
+   limite della piattaforma Windows — è l'attesa di un'approvazione
+   interattiva che non arriva mai. `--dangerously-skip-permissions` salta
+   quell'attesa e `agy.exe` nativo Windows funziona identico a WSL, stesso
+   schema di invocazione di claude/codex. Un solo ambiente da gestire.
 
 ## Come usarlo
 
@@ -133,10 +157,11 @@ probabilità:
 2. Apri la dashboard, sezione Bacheca, progetto interessato.
 3. Accendi "📬 Postino Automatico": da qui in poi i risvegli a finestra
    partono da soli, con i tetti applicati.
-4. Quando ti fidi, accendi anche "🤖 Dispatch Headless": claude/codex
-   rispondono da soli in background, senza aprire finestre. Gemini resta
-   sempre sul percorso a finestra (nessuna capability headless disponibile:
-   `agy -p` ha un bug noto su Windows che richiede un TTY vero).
+4. Quando ti fidi, accendi anche "🤖 Dispatch Headless": claude, codex e
+   gemini rispondono da soli in background, senza aprire finestre.
+   **Nota su Gemini**: usa `--dangerously-skip-permissions` (nessun
+   perimetro scoped come per claude/codex — decisione umana esplicita del
+   2026-08-25, accettata sapendo che il freno è solo `prompt_fisso()`).
 5. Osserva: ogni risveglio automatico (headless o deep-link) è un evento nel
    registro (`agente=sistema`, `tipo_compito=orchestrazione`,
    `id_compito` che inizia per `postino-`). Il widget "⏸️ Pratiche Sospese"
@@ -155,6 +180,72 @@ esplicitamente commit, push, cancellazioni, rete; se serve lavoro reale o
 manca chiarezza, l'agente scrive un checkpoint/domanda e si ferma, non
 improvvisa.
 
+**Conseguenza verificata dal vivo (2026-08-25)**: un agente headless non può
+fare una vera revisione tecnica di codice (`git diff`, rieseguire il gate)
+perché il suo stesso perimetro glielo impedisce — solo `bacheca.py`/
+`registro.py` sono comandi autorizzati. Chiesto a Codex di verificare in
+autonomia un commit imminente, ha correttamente segnalato di non avere
+accesso a `git`/al gate invece di improvvisare o aggirare il limite. Non è
+un difetto: è il confine di sicurezza che funziona come previsto. La
+revisione di merito su un diff/commit resta un compito per l'umano o per un
+agente in sessione interattiva normale, non per il dispatch headless.
+
+## Controllo automatico degli aggiornamenti delle CLI
+
+Un compito separato ma imparentato: le tre CLI che il postino usa
+(`claude`, `codex`, `agy`) si aggiornano nel tempo, e vale la pena sapere
+quando c'è qualcosa di nuovo — senza però aggiornarle mai da sole senza
+un verdetto umano, stesso principio del resto del sistema.
+
+**Come funziona** (`verifica_aggiornamenti_cli.py`):
+
+1. `assicura_llama_attivo()` — se il modello locale (llama-server) è già
+   acceso, lo usa così com'è; se è spento, lo accende col modello leggero
+   Qwen 2.5 3B (solo testo, adatto a riassumere senza il peso del modello
+   con visione usato per altri scopi nel progetto).
+2. `verifica_tutti()` — confronta la versione installata di ciascun tool
+   con l'ultima disponibile: `npm view` per claude/codex (la CLI standalone
+   non è distribuita via npm, ma il pacchetto npm segue lo stesso treno di
+   release ed è un modo sicuro per controllare senza installare nulla),
+   l'endpoint ufficiale del manifest di aggiornamento per `agy`
+   (`.../manifests/windows_amd64.json`). Il confronto è numerico per
+   componente, non lessicografico (`0.9.0 < 0.10.0`).
+3. Se c'è un aggiornamento, `note_rilascio()` recupera il testo delle note
+   di rilascio dove esiste una fonte affidabile nota: API GitHub releases
+   per Codex, `agy changelog` per Gemini. **Per Claude non c'è una fonte
+   nota** — non è un errore, è un limite dichiarato: la notifica arriva
+   comunque coi soli numeri di versione, l'approfondimento si fa a mano.
+4. Il testo recuperato va al modello locale (`riassumi_note_rilascio()`)
+   per un riassunto in italiano semplice — il modello locale non naviga
+   mai internet da solo, riceve solo testo già recuperato.
+5. `notifica_bacheca_aggiornamento()` apre un thread in bacheca
+   (`mittente=sistema`, indirizzato a `claude`) con versione installata,
+   disponibile, e il riassunto se c'è.
+
+**Chi lo raccoglie**: non serve che un agente sia sveglio nel momento esatto
+in cui gira il controllo — la bacheca è pensata apposta per questo. Il
+monitor di un `/loop` attivo, o l'hook di avvio di una sessione futura, nota
+il messaggio da solo. A quel punto Claude legge, valuta se vale la pena
+(nuove funzionalità rilevanti, fix di sicurezza, o solo rumore), e chiede
+all'umano se aggiornare e perché. Solo dopo un consenso esplicito parte
+l'aggiornamento vero (`codex update` / `agy update` / `claude update`) —
+mai automatico.
+
+**Il trigger, settimanale**: non gira dentro il `/loop` di una sessione
+interattiva (si fermerebbe alla chiusura del terminale, e tenerne una aperta
+una settimana intera non ha senso). Gira invece come **Attività Pianificata
+di Windows** (`OrchestratoreLLM_VerificaAggiornamentiCLI`, ogni lunedì alle
+15:00, `schtasks`/`Register-ScheduledTask`), completamente indipendente da
+qualunque sessione — la sua unica uscita è la bacheca. Per cambiare
+frequenza/orario: `Get-ScheduledTask -TaskName
+OrchestratoreLLM_VerificaAggiornamentiCLI | Set-ScheduledTask -Trigger
+<nuovo trigger>`, o ricreala con `Register-ScheduledTask`.
+
+**Anche a richiesta, in qualunque momento**: `python
+verifica_aggiornamenti_cli.py` fa l'intero giro (controllo, note di
+rilascio, riassunto, notifica) in un colpo solo — non serve aspettare
+lunedì, chiunque (umano o agente) può lanciarlo quando vuole.
+
 ## Limiti noti (non ancora risolti)
 
 - **Il self-restart della dashboard non aggiorna l'ambiente**:
@@ -169,7 +260,10 @@ improvvisa.
   (fermarsi automaticamente ai passi `approvazione_umana`, notificare invece
   di svegliare) resta rimandata, come deciso da tutti fin dall'inizio —
   prima si osserva il funzionamento reale di questo, poi si valuta.
-- **Gemini resta manuale**: nessuna capability headless verificata
-  (`agy -p` bloccato da un bug noto su Windows). Se cambia, va riverificato
-  con un test reale prima di aggiungerlo a `postino.COMANDI`, non per
-  analogia con claude/codex.
+- **Permessi granulari di `agy` irrisolti**: `permissions.allow`/
+  `permissionGrants` si caricano (log CLI lo conferma) ma il comando resta
+  negato — causa non isolata nonostante l'indagine su due file di
+  configurazione corretti, due chiavi annidate corrette, e due piattaforme
+  diverse. Se `agy` risolve questo difetto in una versione futura, si può
+  restringere il perimetro di Gemini come già fatto per claude/codex; fino
+  ad allora resta sul bypass totale, decisione rivedibile.

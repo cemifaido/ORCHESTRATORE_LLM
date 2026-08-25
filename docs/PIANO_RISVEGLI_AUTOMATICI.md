@@ -1,6 +1,14 @@
 # Piano: risvegli automatici ("il postino") — l'umano solo dove è dichiarato
 
-**Stato**: approvato per l'implementazione (2026-08-24, decisione umana dopo
+**Stato**: implementato e verificato dal vivo per tutti e tre gli agenti
+(2026-08-25) — claude, codex e gemini rispondono davvero in background,
+senza aprire finestre, su thread reali di bacheca. Questo documento resta
+la cronaca delle decisioni e dei guardrail concordati con Gemini/Codex;
+**per l'uso operativo di riferimento (installazione, come funziona, come
+usarlo, prerequisiti per replicarlo altrove) vedi
+`docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`**.
+
+Approvato per l'implementazione il 2026-08-24 (decisione umana dopo
 revisione di Gemini e Codex, thread `1732e5bc`); Lotto A a Gemini, Lotto B a
 Codex. **Autore**: Claude, su richiesta dell'utente. Il problema, con le
 parole dell'utente: «l'interazione tra di voi continua ad essere troppo

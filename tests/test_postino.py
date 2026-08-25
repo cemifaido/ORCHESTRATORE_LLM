@@ -238,9 +238,13 @@ class PostinoDispatchTest(unittest.TestCase):
             self.assertEqual(secondo, {"esito": "bloccato", "motivo": "debounce"})
 
     def test_dispatch_rifiuta_capability_non_autorizzata(self) -> None:
+        # 'locale' e' un agente valido nel sistema bacheca ma non e' mai stato
+        # pensato come bersaglio del postino (non e' in COMANDI): rappresenta
+        # qui "capability non provata", lo stesso ruolo che 'gemini' aveva
+        # prima di essere verificata e aggiunta (2026-08-25).
         with tempfile.TemporaryDirectory() as tmp:
             esegui = MagicMock()
-            esito = postino.dispatch(_radice_attiva(tmp), "gemini", "t-postino", esegui=esegui)
+            esito = postino.dispatch(_radice_attiva(tmp), "locale", "t-postino", esegui=esegui)
             self.assertEqual(esito, {"esito": "bloccato", "motivo": "capability_non_autorizzata"})
             esegui.assert_not_called()
 
