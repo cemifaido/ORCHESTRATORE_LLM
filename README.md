@@ -1,189 +1,211 @@
-# Squadra (Orchestratore LLM)
+# Squadra — orchestratore LLM multi-agente
 
-Struttura operativa riutilizzabile per coordinare più agenti AI commerciali (Claude, Codex, Gemini), un LLM locale economico gratuito e un operatore umano su qualunque base codice — **senza costi API a consumo**, sfruttando gli abbonamenti flat già attivi.
+**Squadra** coordina Claude, Codex, Gemini, un piccolo modello locale e una persona sullo stesso codicebase. Trasforma un insieme di chat scollegate in un processo visibile: richieste, responsabilità, verifiche, approvazioni e risultati restano tracciati e riprendibili.
 
-> *Per una panoramica sintetica e divulgativa senza dettagli tecnici, consulta la guida: [docs/PRESENTAZIONE_SEMPLICE.md](docs/PRESENTAZIONE_SEMPLICE.md).*
+Non è un sistema che decide al posto tuo. È una sala operativa: automatizza il passaggio di contesto e il lavoro ripetitivo, mentre le decisioni importanti restano umane.
 
-Il principio guida è semplice:
+> Il punto non è far lavorare più agenti contemporaneamente: è sapere chi sta facendo cosa, far verificare il lavoro e non perdere il filo tra una sessione e l'altra.
 
-> il valore non è far parlare gli agenti; il valore è ridurre il contesto riletto ogni volta, instradare meglio, misurare costo/resa e svegliare il lavoratore giusto solo quando serve.
+## Perché usarlo
 
----
+Quando più assistenti lavorano sullo stesso progetto, il collo di bottiglia diventa il copia-incolla: qualcuno deve ricordare il contesto, inoltrare messaggi, controllare test e ricostruire le decisioni. Squadra conserva quel contesto localmente e rende il passaggio di consegne un flusso esplicito.
 
-## Componenti Principali
+| Senza Squadra | Con Squadra |
+| --- | --- |
+| Conversazioni e decisioni disperse tra strumenti | Bacheca append-only, thread e checkpoint ripristinabili |
+| L'umano fa sempre da postino | Il sistema segnala o, se scelto, inoltra il turno all'agente giusto |
+| Un "test verde" è difficile da ricostruire | Gate, esito e responsabile sono nel registro |
+| L'automazione può crescere senza limiti | Whitelist, budget, debounce, kill switch e approvazione umana |
+| Le routine consumano attenzione o token cloud | Triage e sintesi affidati, quando disponibile, a un LLM locale gratuito |
 
-- `bacheca.py` — **Bacheca multi-agente**: messaggistica asincrona strutturata tra Claude, Codex, Gemini, modello locale e umano su file append-only, senza API a pagamento (vedi `docs/RFC_BACHECA_MULTIAGENTE.md` e `docs/GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md`).
-- `postino.py` — **Dispatch headless automatico**: sveglia ed esegue in background l'agente destinatario (Claude, Codex, Gemini) per i thread pendenti, con sandbox restrittive e controlli anti-loop (vedi `docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`).
-- `commit_replay.py` — **Ricostruzione & Replay Commit**: calcola la finestra temporale e le interazioni reali collegate a ciascun commit Git, stimando il risparmio economico ottenuto grazie al modello locale gratuito.
-- `interfaccia.py` & `interfaccia.html` — **Dashboard Web**: visualizzatore in tempo reale con:
-  - **Diagramma di cooperazione SVG radiale**: con il **Gestore Squadra** (infrastruttura) al centro che anima visivamente i passaggi di consegna e le interazioni tra tutti i membri del team.
-  - **Custom Commit Picker a 2 righe**: per selezionare e rivivere la sequenza reale di eventi che ha portato a ciascun commit.
-  - **Live Handoff Console** e monitoraggio pratiche sospese / conflitti.
-- `registro.py` — appende e valida (con `jsonschema`) eventi nel registro JSONL (`eventi.jsonl`).
-- `sentinella.py` — esegue solo comandi dichiarati in whitelist e registra l'esito del quality gate.
-- `triage_locale.py` — guardia automatica locale (llama-server) per classificare output di test e build senza consumare token cloud.
-- `setup_wizard.py` / `setup.ps1` — wizard interattivo per la configurazione guidata dell'ambiente, installazione dipendenze e rilevamento modulare delle risorse (funziona con qualsiasi sottoinsieme di agenti, con o senza GPU).
-- `capoturno.py` — motore di orchestrazione: instrada, gestisce patch e fallback automatico.
-- `verifica_aggiornamenti_cli.py` — controllo periodico delle versioni delle CLI (claude/codex/agy) con sintesi delle note di rilascio tramite LLM locale e notifica in bacheca.
+Gli agenti commerciali possono usare le sessioni e le CLI ufficiali per cui l'utente è già autenticato; l'integrazione LiteLLM resta invece una scelta opzionale per chi vuole collegare provider a consumo. Il progetto non richiede un singolo provider, una GPU o nemmeno un agente esterno: degrada con grazia alla modalità manuale.
 
----
+## Cosa c'è già
 
-## Guida all'Installazione & Prerequisiti
+### Una bacheca, non un'altra chat
 
-### 1. Prerequisiti di Sistema
-Prima di iniziare, assicurati di avere installato sul tuo computer:
-- **Python >= 3.10** (raccomandato Python 3.11, 3.12, 3.13 o 3.14).
-- **Git** per la gestione del repository e dei branch.
-- **Node.js** (opzionale, necessario solo se intendi installare le CLI di Claude o Codex via `npm`).
+`bacheca.py` conserva messaggi, risposte, prese in carico dei file, thread e verdetti in JSONL validato. Un thread può fermarsi in attesa di un gate o di una decisione e poi riprendere senza ricostruire a memoria il contesto. Puoi vedere i messaggi pendenti per ciascun lavoratore, i file già in carico e lo stato globale del lavoro.
 
----
+### Workflow dichiarati e verificabili
 
-### 2. Account e Strumenti Assistenti AI (Opzionali e Modulari)
-Squadra è pensata per funzionare con **qualsiasi combinazione di assistenti**: puoi usarne tre, due, uno solo, o lavorare solo con l'operatore umano e il modello locale.
+Il flusso standard — compito, gate, triage, registrazione, approvazione umana e chiusura — non vive solo in un documento: è un dato JSON con schema e validatore. Questo rende controllabili dipendenze, artefatti prodotti, punti di stop e azioni irreversibili prima di eseguire il lavoro.
 
-| Assistente | Tool CLI | Come si installa | Account / Login richiesto |
-|---|---|---|---|
-| **Claude Code** | `claude` | `npm install -g @anthropic-ai/claude-code` | Abbonamento Anthropic (Claude Pro/Team/Max) con login una tantum `claude` |
-| **OpenAI Codex** | `codex` | `npm install -g @openai/codex` | Abbonamento OpenAI (ChatGPT Plus/Team) con login una tantum `codex` |
-| **Google Gemini** | `agy` | `irm https://antigravity.google/cli/install.ps1 \| iex` | Account Google con login OAuth una tantum `agy models` |
-| **Modello Locale** | `llama-server` | Binario `llama.cpp` + modello `.gguf` (es. Qwen 2.5 3B) | **Nessun account, 100% gratuito e offline** (se non hai GPU dedicata, il wizard disattiva l'LLM e usa triage deterministico) |
+### Qualità dentro il processo
 
----
+La **Sentinella** esegue esclusivamente comandi presenti in una whitelist. Il gate di sviluppo include test, lint, type-check e controllo della complessità; l'esito diventa un evento nel registro. Per output poco chiari, `triage_locale.py` può classificare automaticamente routine/escalation con un modello locale; senza modello locale usa controlli deterministici e non blocca il progetto.
 
-### 3. Setup del Modello Locale (Llama.cpp & Hugging Face) — Opzionale
+### Il postino, ma solo quando lo vuoi tu
 
-Il modello locale permette all'orchestratore di eseguire **triage automatico** e **sintesi delle note di rilascio** a costo zero senza spendere token cloud.
+La dashboard può rilevare un messaggio pendente e preparare il risveglio del destinatario. Il vero dispatch headless è **spento per impostazione predefinita** e richiede un secondo interruttore esplicito. Anche quando attivo resta vincolato da un numero massimo di turni per thread, budget giornaliero, debounce persistente e kill switch immediato.
 
-#### A. Installare Llama.cpp (`llama-server`)
-1. Vai sulle [Release ufficiali di llama.cpp su GitHub](https://github.com/ggerganov/llama.cpp/releases).
-2. Scarica lo zip precompilato per il tuo sistema:
-   - Se hai una scheda video **Nvidia**: `llama-bXXXX-bin-win-cuda-cu12.x-x64.zip`
-   - Se usi solo **CPU**: `llama-bXXXX-bin-win-avx2-x64.zip`
-3. Estrai lo zip in una cartella a piacere (es. `C:\llama.cpp` o all'interno della cartella del progetto).
+Esiste inoltre una modalità di revisione esplicita: un agente può ispezionare diff, log e quality gate e riportare risultati reali, senza modificare file, fare commit o accedere alla rete. Non viene avviata automaticamente.
 
-#### B. Scaricare il Modello Leggero da Hugging Face
-Consigliamo **Qwen 2.5 3B Instruct** in formato GGUF quantizzato a 4 bit (`Q4_K_M`, circa 1.9 GB), leggerissimo ed estremamente reattivo:
+### Audit e replay invece di memoria fragile
 
-Puoi scaricarlo direttamente da PowerShell lanciando:
-```powershell
-# Crea la cartella dei modelli
-New-Item -ItemType Directory -Force -Path "$HOME\ollama-models\qwen2.5-3b-instruct"
+`registro.py` mantiene una cronologia append-only validata con chi ha fatto cosa, esito del gate, stima dei costi e approvazione umana. `commit_replay.py` collega un commit alla finestra di eventi che l'ha prodotto: la dashboard può quindi mostrare non solo il risultato, ma anche la cooperazione che ci ha portato.
 
-# Download del modello da Hugging Face
-Invoke-WebRequest `
-  -Uri "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf" `
-  -OutFile "$HOME\ollama-models\qwen2.5-3b-instruct\qwen2.5-3b-instruct-q4_k_m.gguf"
+### Dashboard operativa
+
+L'interfaccia FastAPI locale riunisce bacheca, pratiche sospese, conflitti, registro e replay dei commit. Il diagramma radiale rende visibili i passaggi tra i membri della squadra e il selettore di commit permette di rileggere lo storico reale su più righe.
+
+### Manutenzione prudente delle CLI
+
+Un controllo schedulabile verifica nuove versioni di Claude, Codex e Gemini, recupera le note disponibili e le sintetizza col modello locale. Non aggiorna mai nulla da solo: apre una notifica in bacheca e aspetta una scelta umana.
+
+## Architettura in un colpo d'occhio
+
+```text
+Umano ─┐
+Claude ├──► Bacheca JSONL ──► Postino opzionale ──► agente destinatario
+Codex  ┤          │                    │
+Gemini ┘          │                    └── limiti, debounce, kill switch
+                  ▼
+            Registro JSONL ◄── Sentinella / quality gate / triage locale
+                  │
+                  └──► Dashboard e replay dei commit
 ```
 
-#### C. Avviare Llama-server
-Avvia il server di inferenza locale sulla porta `8090`:
-```powershell
-# Esempio su Windows con accelerazione GPU (99 layer offload):
-.\llama-server.exe `
-  -m "$HOME\ollama-models\qwen2.5-3b-instruct\qwen2.5-3b-instruct-q4_k_m.gguf" `
-  --port 8090 `
-  -ngl 99 `
-  -c 4096
-```
-*(Se usi solo CPU, imposta `-ngl 0`).*
+Ruoli suggeriti, non obbligatori: Gemini per interfaccia e documentazione, Claude per servizi e refactor, Codex per revisione/sicurezza/casi limite, modello locale per triage e sintesi, umano per contesto e azioni irreversibili.
 
-Quando avvii il Setup Wizard (`.\setup.ps1`), il sistema rileverà automaticamente `llama-server` attivo su `http://localhost:8090` e lo collegherà all'orchestratore.
+## Avvio in 5 minuti
 
----
+### 1. Prerequisiti minimi
 
-### 4. Procedura Passo-Passo per Partire
+- Windows e PowerShell (i launcher inclusi sono PowerShell; gli script Python restano portabili).
+- Python 3.10 o superiore. Python 3.11+ è consigliato.
+- Git, se vuoi usare il replay dei commit e l'hook pre-commit.
 
-#### Passo 1: Copiare o Clonare il Progetto
-Scarica o clona il repository nella cartella desiderata:
-```powershell
-git clone <URL_REPOSITORY> _ORCHESTRATORE_LLM
-cd _ORCHESTRATORE_LLM
-```
+Nessun account AI è necessario per aprire dashboard, bacheca, registro e gate. Claude Code, Codex, Gemini/Antigravity e `llama-server` sono tutti componenti opzionali.
 
-#### Passo 2: Eseguire il Setup Wizard Guidato
-Avvia il wizard di configurazione (esegue la diagnosi, chiede quali agenti abilitare, installa le dipendenze e genera il file `.env` locale):
+### 2. Clona e avvia il wizard
 
 ```powershell
+git clone <URL-DEL-REPOSITORY> Squadra
+cd Squadra
 .\setup.ps1
 ```
-*(oppure `python setup_wizard.py`)*
 
-Durante il wizard ti verrà chiesto:
-1. Quali assistenti abilitare tra quelli presenti sul tuo PC.
-2. Se disponi di una GPU per il modello locale o se preferisci la modalità leggera senza GPU.
-3. Se desideri installare automaticamente le dipendenze Python (`requirements.txt` e `requirements-dev.txt`).
-4. La porta della Dashboard web (default `8095`).
-5. Se installare l'hook Git pre-commit per il controllo automatico di qualità.
+Il wizard esegue una diagnostica del PC, propone gli agenti CLI effettivamente trovati, chiede se usare il modello locale, installa le dipendenze Python e di sviluppo su richiesta, inizializza i dati locali e può installare l'hook Git. Scrive poi la configurazione locale in `.env`, che non va condivisa.
 
-#### Passo 3: Avvio della Dashboard
-Al termine del setup, avvia la console operativa:
+Per una configurazione non interattiva con i valori sicuri rilevati:
 
 ```powershell
-.\avvia_dashboard.ps1
+python .\setup_wizard.py --auto
 ```
-Il browser si aprirà automaticamente su `http://127.0.0.1:8095`.
 
----
+Se hai già predisposto l'ambiente Python e vuoi solo generare la configurazione:
 
-## Avvio rapido
+```powershell
+python .\setup_wizard.py --auto --salta-pip
+```
 
-Avviare la dashboard web per l'uso quotidiano (apre automaticamente il browser su `http://127.0.0.1:8095`):
+### 3. Apri la sala operativa
 
 ```powershell
 .\avvia_dashboard.ps1
 ```
 
-Controllare la bacheca per il proprio agente (es. Gemini):
+Il launcher avvia FastAPI in locale e apre `http://127.0.0.1:8095`. I log restano in `dati_locali/dashboard.log` e `dati_locali/dashboard.err.log`.
+
+## Configurazioni possibili
+
+| Scenario | Cosa abiliti | Cosa ottieni |
+| --- | --- | --- |
+| Solo umano | Wizard, dashboard, registro e gate | Processo tracciabile anche senza provider AI |
+| Uno o più agenti | Le CLI che hai già installato | Bacheca, assegnazione e handoff modulari |
+| Senza GPU | `LLM_LOCALE_ABILITATO=false` | Gate deterministici; nessuna dipendenza dal modello locale |
+| Con LLM locale | `llama-server` sulla porta 8090 | Triage e sintesi gratuiti, offline, senza scrittura di codice |
+| Dispatch headless | Entrambi i toggle del Postino | Turni automatici limitati e auditabili; da accendere solo dopo la verifica dei prerequisiti |
+
+### CLI degli agenti (facoltative)
+
+| Assistente | Comando rilevato dal wizard | Installazione / accesso |
+| --- | --- | --- |
+| Claude Code | `claude` | CLI ufficiale Anthropic e login dell'account autorizzato |
+| OpenAI Codex | `codex` | CLI ufficiale Codex e login dell'account autorizzato |
+| Gemini / Antigravity | `agy` | CLI Antigravity e login OAuth Google |
+
+Il wizard non installa queste CLI: le rileva e ti lascia scegliere se inserirle nella squadra. Per il dispatch headless, controlla prima la [guida del Postino](docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md): richiede CLI standalone aggiornate, permessi/trust iniziali e una decisione consapevole sui limiti del provider.
+
+### Modello locale (facoltativo)
+
+Il percorso consigliato è `llama.cpp` con un modello GGUF leggero, ad esempio Qwen 2.5 3B Instruct Q4_K_M. Scarica una release di `llama.cpp` adatta a CPU o NVIDIA, poi avvia `llama-server` sulla porta 8090; il wizard rileva automaticamente `http://localhost:8090/health`.
 
 ```powershell
-.\pull gemini
+.\llama-server.exe -m "C:\modelli\Qwen2.5-3B-Instruct-Q4_K_M.gguf" --port 8090 -ngl 99 -c 4096
 ```
 
-Aggiungere un evento nel registro:
+Su una macchina solo CPU usa `-ngl 0`. Per la scelta del modello e gli altri dettagli tecnici, consulta l'[indice della documentazione](docs/INDEX.md).
+
+## Operazioni quotidiane
+
+Leggere le richieste pendenti per un agente:
 
 ```powershell
-python .\registro.py aggiungi --id-compito prova --agente codex --tipo-compito revisione --stato accettato --esito-gate superato --verdetto-umano approvato --note "prima prova"
+.\pull codex
 ```
 
-Validare la bacheca e il registro:
+Aprire una richiesta umana in bacheca:
 
 ```powershell
+python .\bacheca.py chiedi --a codex --testo "Rivedi il diff e segnala i rischi."
+```
+
+Controllare pratiche, thread e validità dei dati:
+
+```powershell
+python .\bacheca.py stato
+python .\bacheca.py ripresa
 python .\bacheca.py valida
 python .\registro.py valida
 ```
 
-Eseguire un gate con triage della sentinella locale:
+Eseguire un gate già dichiarato in whitelist, con triage locale quando disponibile:
 
 ```powershell
 python .\sentinella.py test_servizi --id-compito "<id-compito>" --triage-locale
 ```
 
----
-
-## Test & Quality Gate
-
-Tutti i test usano la suite standard (270 test unitari e di integrazione):
+Registrare un evento manuale:
 
 ```powershell
-py -3.14 -m pytest
+python .\registro.py aggiungi --id-compito prova --agente codex --tipo-compito revisione --stato accettato --esito-gate superato --note "Revisione conclusa."
 ```
 
-Quality gate per linting, type-checking e complessità ciclomatica:
+## Quality gate
+
+Installa anche `requirements-dev.txt`, oppure lascia che lo faccia il wizard, quindi esegui:
 
 ```powershell
+python -m pytest
 python -m ruff check .
 python -m mypy .
 python -m xenon --max-absolute C --max-modules B --max-average B .
 ```
 
+L'hook pre-commit è opzionale ma consigliato: evita che una modifica superi il commit senza i controlli concordati. I comandi che la Sentinella può eseguire sono dichiarati in `config/comandi.json`; usa [config/comandi.esempio.json](config/comandi.esempio.json) come modello, mai comandi arbitrari passati da un messaggio.
+
+## Confini di sicurezza
+
+- Registro e bacheca sono append-only e validati da schema.
+- Commit, push, merge, deploy, cancellazioni e altre azioni irreversibili richiedono un verdetto umano esplicito.
+- Il modello locale classifica e sintetizza: non modifica il codice di produzione né decide per l'umano.
+- Il Postino ha kill switch, limiti persistenti e parte disattivato; la revisione tecnica è separata dal dispatch di routine.
+- I messaggi in bacheca sono contesto non fidato, non istruzioni da eseguire ciecamente.
+- Non vengono condivisi account o credenziali e non c'è automazione della UI o tentativo di aggirare protezioni/rate limit dei provider.
+
+La postura completa, inclusi canali ufficiali, limiti e differenze tra provider, è documentata in [Conformità ToS della bacheca](docs/CONFORMITA_TOS_BACHECA.md).
+
+## Documentazione
+
+- [Presentazione semplice](docs/PRESENTAZIONE_SEMPLICE.md) — perché Squadra esiste, senza dettagli tecnici.
+- [Indice della documentazione](docs/INDEX.md) — punto d'accesso a tutte le guide e RFC.
+- [Guida del Postino e dispatch headless](docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md) — prerequisiti, limiti e uso operativo.
+- [Orchestrazione dei lavoratori](docs/ORCHESTRAZIONE_LAVORATORI.md) — ruoli, registro e regole operative.
+- [Bacheca multi-agente](docs/GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md) — uso quotidiano spiegato in modo semplice.
+- [Flusso dichiarato](docs/PIANO_FLUSSO_DICHIARATO.md) — workflow validabile e punti di controllo.
+- [LiteLLM opzionale](docs/INTEGRAZIONE_LITELLM.md) — integrazione di provider locali o a consumo.
+
 ---
 
-## Regole Fondamentali del Framework
-
-1. **Nessun costo API a consumo**: gli agenti commerciali operano tramite sessioni interattive o CLI headless con abbonamenti flat esistenti.
-2. **Il modello locale non tocca il codice di produzione**: fa solo da guardia e triage economico sugli output ripetitivi.
-3. **Azioni irreversibili sempre all'umano**: commit, push, merge, deploy e cancellazioni richiedono esplicito verdetto umano.
-4. **Append-only & Tracciabilità**: registro e bacheca sono immutabili e verificabili.
-5. **Sentinella a perimetro chiuso**: vengono eseguiti solo i comandi dichiarati in whitelist.
-
-Per la mappa documentale completa, consulta [docs/INDEX.md](docs/INDEX.md) e la guida [docs/ORCHESTRAZIONE_LAVORATORI.md](docs/ORCHESTRAZIONE_LAVORATORI.md).
+Squadra non sostituisce il giudizio umano: lo rende più informato, più veloce e verificabile.
