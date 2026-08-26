@@ -22,6 +22,13 @@ AGENTS.md
 .gemini/
 .agents/
 
+# Attestazioni reali del catalogo capability (revisione Codex, 2026-08-26): il
+# file versionato (capability_catalogo.esempio.json) descrive solo cosa il
+# prodotto supporta in teoria; le attestazioni concrete (cosa e' stato
+# verificato su QUESTA installazione, con quale configurazione di auth) sono
+# dati locali, stesso principio di comandi.json/comandi.esempio.json.
+config/capability_catalogo.json
+
 # Python
 __pycache__/
 *.py[cod]

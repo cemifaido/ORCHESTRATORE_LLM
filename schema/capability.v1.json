@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orchestratore.locale/schema/capability.v1.json",
+  "title": "Catalogo capability v1",
+  "description": "Manifest esplicito di cosa e' verificato funzionante, per provider/canale/sistema operativo, invece di doverlo dedurre leggendo il codice o assumerlo per analogia con un altro provider. Vedi docs/PIANO_INDUSTRIALIZZAZIONE.md sezione 3 e docs/THREAT_MODEL.md sezione 4.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["versione_schema", "capability"],
+  "properties": {
+    "versione_schema": { "const": 1 },
+    "capability": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/capability" }
+    }
+  },
+  "$defs": {
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "provider", "prodotto", "canale", "os_supportati",
+        "piano_costo", "fonte_ufficiale", "prova_eseguita",
+        "checked_at", "expires_at", "stato", "modalita_operativa"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Identificativo stabile, es. 'claude_cli_headless'."
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["anthropic", "openai", "google"]
+        },
+        "prodotto": {
+          "type": "string",
+          "description": "Nome dello strumento/prodotto specifico, es. 'Claude Code', 'Codex CLI', 'Antigravity/agy'."
+        },
+        "canale": {
+          "type": "string",
+          "enum": ["cli_headless", "hook_pull", "uri_wake"],
+          "description": "cli_headless: invocazione diretta della CLI in background (es. postino). hook_pull: lo strumento legge da solo un contesto iniettato all'avvio di una sessione. uri_wake: apertura/focus del pannello via URI, senza invio automatico."
+        },
+        "os_supportati": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["windows", "linux", "macos"] },
+          "minItems": 1,
+          "description": "Solo i sistemi su cui la prova e' stata eseguita per davvero - mai un sistema per analogia/aspettativa."
+        },
+        "piano_costo": {
+          "type": "string",
+          "description": "Es. 'abbonamento, nessun costo a consumo' oppure 'a consumo, richiede chiave API'."
+        },
+        "fonte_ufficiale": {
+          "type": "string",
+          "description": "Riferimento alla documentazione ufficiale del provider, o 'verifica diretta' se non esiste doc ufficiale e la prova e' stata solo osservata dal vivo."
+        },
+        "prova_eseguita": {
+          "type": "string",
+          "description": "Cosa e' stato osservato per davvero (comando lanciato, log controllato) - non una descrizione di cosa dovrebbe succedere."
+        },
+        "checked_at": { "type": "string", "format": "date-time" },
+        "expires_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Policy decisa 2026-08-26 (proposta Gemini, non contestata da Codex): 90 giorni da checked_at per ogni voce 'verified'+'automatica' - una capability automatica non puo' restare attestata per sempre senza ri-verifica. null e' accettabile solo per voci non 'verified' (unknown/failed/degraded/disabled), dove non ha senso far scadere un'attestazione che non esiste."
+        },
+        "stato": {
+          "type": "string",
+          "enum": ["unknown", "verified", "failed", "degraded", "disabled"],
+          "description": "unknown: mai verificato dal vivo, o verificato solo contro una specifica/doc senza osservazione empirica diretta. verified: osservato funzionare per davvero. failed: verificato dal vivo e osservato NON funzionare (piu' informativo di unknown: sappiamo cosa non va, non solo che non sappiamo). degraded: funzionava, ora funziona solo parzialmente o con un limite nuovo rispetto a quando fu verificato. disabled: disattivato deliberatamente, indipendentemente dal fatto che funzioni."
+        },
+        "modalita_operativa": {
+          "type": "string",
+          "enum": ["automatica", "manual_only"],
+          "description": "manual_only e' una scelta operativa (anche per una capability 'verified'), non uno stato sanitario - le due dimensioni sono indipendenti."
+        },
+        "note": {
+          "type": "string",
+          "description": "Limiti noti, condizioni particolari, compromessi accettati esplicitamente (es. bypass permessi)."
+        }
+      }
+    }
+  }
+}
