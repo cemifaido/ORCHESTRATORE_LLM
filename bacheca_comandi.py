@@ -130,15 +130,16 @@ def comando_prossimo(args: argparse.Namespace) -> int:
         # le riprese pronte solo nel formato hook: il json resta l'elenco dei soli
         # messaggi pendenti per compatibilita' coi consumatori esistenti (RFC v2 §2.6).
         testo = _formatta_per_hook(pendenti, riprese_pronte(messaggi, agente))
-        # hookEventName deve combaciare con l'evento reale che ha invocato l'hook
-        # (SessionStart/UserPromptSubmit/BeforeAgent), passato da chi configura
-        # l'hook - "prossimo" non e' un evento riconosciuto da nessuno dei tre
-        # strumenti, non andava hardcoded.
-        output = (
-            {"hookSpecificOutput": {"hookEventName": args.evento, "additionalContext": testo}}
-            if testo
-            else {}
-        )
+        if not testo:
+            output: dict[str, Any] = {}
+        elif args.evento == "PreInvocation":
+            # Antigravity (hook Gemini) usa un contratto diverso dagli altri due
+            # strumenti per questo evento: injectSteps/ephemeralMessage, non
+            # hookSpecificOutput/additionalContext (verificato contro lo standard
+            # ufficiale di Antigravity, 2026-08-26).
+            output = {"injectSteps": [{"ephemeralMessage": testo}]}
+        else:
+            output = {"hookSpecificOutput": {"hookEventName": args.evento, "additionalContext": testo}}
         print(json.dumps(output, ensure_ascii=False))
     else:
         print(json.dumps(pendenti, ensure_ascii=False, indent=2, sort_keys=True))

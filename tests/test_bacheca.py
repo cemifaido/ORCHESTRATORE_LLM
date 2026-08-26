@@ -797,6 +797,26 @@ class BachecaCliContractTest(unittest.TestCase):
             self.assertEqual(hook["hookEventName"], "UserPromptSubmit")
             self.assertIn("Controlla la facciata", hook["additionalContext"])
 
+    def test_cli_prossimo_hook_antigravity_preinvocation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["gemini"],
+                tipo="richiesta", testo="Controlla hook antigravity",
+            )
+            bacheca.aggiungi_messaggio(percorso, richiesta)
+
+            esito, stdout, stderr = self._esegui([
+                "--bacheca", str(percorso), "prossimo", "--agente", "gemini",
+                "--formato", "hook", "--evento", "PreInvocation",
+            ])
+
+            self.assertEqual(esito, 0)
+            self.assertEqual(stderr, "")
+            output = json.loads(stdout)
+            self.assertIn("injectSteps", output)
+            self.assertIn("Controlla hook antigravity", output["injectSteps"][0]["ephemeralMessage"])
+
     def test_cli_rispondi_su_correlazione_inesistente_non_scrive(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             percorso = Path(tmp) / "messaggi.jsonl"
