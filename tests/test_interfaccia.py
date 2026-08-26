@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -138,7 +139,7 @@ class EseguiSentinellaTest(unittest.TestCase):
                 "comandi": {
                     "prova": {
                         "cartella": ".",
-                        "argomenti": ["python", "-c", "print('ok-target')"],
+                        "argomenti": [sys.executable, "-c", "print('ok-target')"],
                         "timeout_secondi": 10,
                         "limite_output_caratteri": 1000,
                     }

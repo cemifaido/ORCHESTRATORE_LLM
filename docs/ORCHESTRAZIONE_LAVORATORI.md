@@ -308,6 +308,19 @@ davvero, la direzione concordata (Codex/Gemini/Claude, bacheca thread `4b5d75f5`
 alla dashboard, non una login implementata dentro `interfaccia.py` — punto lasciato
 esplicitamente in backlog, non implementato.
 
+**CSRF residuo su bind loopback** (M8 del rilievo, revisione sicurezza v3): con
+`ORCHESTRATORE_HOST=127.0.0.1` (default) nessuna richiesta all'API porta o
+richiede l'header `X-Orchestratore-Key`, quindi una pagina web malevola aperta
+nello stesso browser sulla stessa macchina potrebbe far partire richieste verso
+`http://127.0.0.1:8095/...` senza che l'utente se ne accorga (CSRF classico:
+l'origine della richiesta non viene verificata). Rischio accettato oggi,
+coerente con l'uso dichiarato (rete aziendale con accesso diretto, singolo
+utente fidato per macchina, non un servizio multi-utente esposto): se in
+futuro la macchina diventasse condivisa fra più persone, la mitigazione
+minima è un token locale per-sessione verificato lato server (non solo
+l'header statico attuale, pensato per client/API, non per isolare utenti
+della stessa macchina) — non implementato, stesso backlog di NEW-1.
+
 Il server `interfaccia.py` (FastAPI/Uvicorn, porta `8095`) offre un'interfaccia di monitoraggio visiva ad alto impatto grafico (dark theme, glassmorphic layout) basata su:
 - **Grafici Chart.js**: Visualizzazione di esecuzioni/rework e ripartizione del tempo LLM cumulato per ogni lavoratore.
 - **Selettore Progetti**: Form per inserire il percorso assoluto e nome di una nuova cartella per effettuarne l'integrazione ed il monitoraggio automatico.

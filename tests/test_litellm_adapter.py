@@ -6,6 +6,14 @@ from unittest.mock import MagicMock, patch
 
 from adattatori import litellm
 
+try:
+    import litellm as _litellm_reale  # noqa: F401
+    _LITELLM_DISPONIBILE = True
+except ImportError:
+    _LITELLM_DISPONIBILE = False
+
+_MOTIVO_SKIP = "litellm e' una dipendenza opzionale (requirements-opzionali.txt), non installata"
+
 
 class RispostaFinta:
     def __init__(self) -> None:
@@ -139,6 +147,7 @@ class LiteLLMAdapterTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             litellm.estrai_primo_oggetto_json("prefisso {non e' json valido")
 
+    @unittest.skipUnless(_LITELLM_DISPONIBILE, _MOTIVO_SKIP)
     def test_completamento_locale_forza_costo_zero_misurato_e_provider_locale(self) -> None:
         """L'inferenza locale non ha un costo API da stimare: e' un fatto noto (zero),
         non un'ipotesi. Verifica anche che punti di default all'endpoint llama-server
@@ -156,6 +165,7 @@ class LiteLLMAdapterTest(unittest.TestCase):
         self.assertEqual(kwargs["api_key"], "non-serve")
         self.assertEqual(kwargs["model"], litellm.MODELLO_LOCALE_PREDEFINITO)
 
+    @unittest.skipUnless(_LITELLM_DISPONIBILE, _MOTIVO_SKIP)
     def test_completamento_applica_timeout_di_default(self) -> None:
         """Guardrail M2 (revisione sicurezza, 2026-08-25): senza un timeout di
         default, litellm.completion() puo' restare appesa indefinitamente."""
@@ -165,6 +175,7 @@ class LiteLLMAdapterTest(unittest.TestCase):
         _, kwargs = mock_completion.call_args
         self.assertEqual(kwargs["timeout"], litellm.TIMEOUT_SECONDI_PREDEFINITO)
 
+    @unittest.skipUnless(_LITELLM_DISPONIBILE, _MOTIVO_SKIP)
     def test_completamento_rispetta_timeout_esplicito_del_chiamante(self) -> None:
         with patch("litellm.completion", return_value=RispostaFinta()) as mock_completion:
             litellm.completamento(

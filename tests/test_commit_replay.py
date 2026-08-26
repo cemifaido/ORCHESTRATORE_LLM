@@ -55,7 +55,11 @@ class RepoGitRealeTest(unittest.TestCase):
             capture_output=True, text=True, check=True,
         ).stdout.strip()
         inizio, fine = commit_replay.finestra_temporale_commit(commit_replay.RADICE, head)
-        self.assertLess(inizio, fine)
+        # <= non <: git ha una risoluzione di 1 secondo, HEAD e il suo genitore
+        # possono avere lo stesso timestamp (es. commit ravvicinati in script/CI) -
+        # non e' un errore: eventi_nella_finestra() filtra con inizio < t <= fine,
+        # quindi inizio == fine produce solo una finestra vuota, non un crash.
+        self.assertLessEqual(inizio, fine)
         self.assertEqual(fine.tzinfo, timezone.utc)
 
 

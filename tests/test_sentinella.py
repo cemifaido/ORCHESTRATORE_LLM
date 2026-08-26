@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import socket
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,7 +27,7 @@ class SentinellaTest(unittest.TestCase):
         comando = {
             "prova": {
                 "cartella": ".",
-                "argomenti": ["python", "-c", "print('ok')"],
+                "argomenti": [sys.executable, "-c", "print('ok')"],
                 "timeout_secondi": 10,
                 "limite_output_caratteri": 1000,
             }
@@ -52,7 +53,7 @@ class SentinellaTest(unittest.TestCase):
             comando = {
                 "prova": {
                     "cartella": fuori,
-                    "argomenti": ["python", "-c", "print('ok')"],
+                    "argomenti": [sys.executable, "-c", "print('ok')"],
                     "timeout_secondi": 10,
                     "limite_output_caratteri": 1000,
                 }
@@ -65,7 +66,7 @@ class SentinellaTest(unittest.TestCase):
             comando = {
                 "prova": {
                     "cartella": radice,
-                    "argomenti": ["python", "-c", "print('ok')"],
+                    "argomenti": [sys.executable, "-c", "print('ok')"],
                     "timeout_secondi": 10,
                     "limite_output_caratteri": 1000,
                 }
@@ -85,7 +86,7 @@ class SentinellaTest(unittest.TestCase):
         comando = {
             "prova": {
                 "cartella": ".",
-                "argomenti": ["python", "-c", "print('ok')"],
+                "argomenti": [sys.executable, "-c", "print('ok')"],
                 "timeout_secondi": 10,
                 "limite_output_caratteri": 1000,
             }
@@ -146,7 +147,7 @@ class SentinellaTest(unittest.TestCase):
         comando = {
             "prova": {
                 "cartella": ".",
-                "argomenti": ["python", "-c", "raise SystemExit(1)"],
+                "argomenti": [sys.executable, "-c", "raise SystemExit(1)"],
                 "timeout_secondi": 10,
                 "limite_output_caratteri": 1000,
                 "verifiche_connessione": [f"127.0.0.1:{porta}"],
