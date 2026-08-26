@@ -486,6 +486,23 @@ class ConcorrenzaStatoTest(unittest.TestCase):
 
             self.assertFalse(percorso_lock.exists())
 
+    def test_blocco_stato_con_timeout_breve_su_lock_attivo_solleva_timeout(self) -> None:
+        """Guardrail (bug trovato scrivendo scrittura_jsonl.py, 2026-08-26,
+        revisione Codex): un lock fresco (attivamente detenuto, non
+        abbandonato) con un timeout_secondi breve deve far scadere
+        TimeoutError, non essere trattato come abbandonato solo perche' il
+        chiamante ha un timeout corto - la soglia di abbandono e' fissa
+        (SOGLIA_LOCK_ABBANDONATO_SECONDI), indipendente da timeout_secondi."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            percorso_lock = postino._percorso_lock_stato(radice)
+            percorso_lock.parent.mkdir(parents=True, exist_ok=True)
+            percorso_lock.touch()  # lock fresco: mtime = adesso
+
+            with self.assertRaises(TimeoutError):
+                with postino._blocco_stato(radice, timeout_secondi=0.2):
+                    pass
+
     def test_blocco_stato_e_rientrante_in_sequenza(self) -> None:
         """Due acquisizioni in sequenza (non annidate) funzionano normalmente:
         il lock viene rilasciato alla fine di ciascun 'with'."""

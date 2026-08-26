@@ -208,6 +208,20 @@ def _percorso_lock_stato(radice: Path) -> Path:
     return _percorso_stato(radice).with_suffix(".lock")
 
 
+# Fissa e indipendente da timeout_secondi (bug trovato scrivendo
+# scrittura_jsonl.py, 2026-08-26, revisione Codex): il subprocess di
+# dispatch puo' durare fino a 300s, quindi un lock va considerato abbandonato
+# solo oltre quella soglia piu' un margine - non in base a quanto un singolo
+# chiamante e' disposto ad aspettare. Prima i due concetti coincidevano nello
+# stesso parametro: con un timeout_secondi breve, un lock ancora attivamente
+# detenuto avrebbe iniziato a sembrare "abbandonato" esattamente quando il
+# chiamante stava per rinunciare, rendendo TimeoutError irraggiungibile.
+# Oggi nessun chiamante passa un timeout diverso dal default (dormiente in
+# produzione), ma il pattern era comunque sbagliato - vedi anche
+# docs/PIANO_INDUSTRIALIZZAZIONE.md sezione 10.
+SOGLIA_LOCK_ABBANDONATO_SECONDI = 310.0
+
+
 @contextlib.contextmanager
 def _blocco_stato(radice: Path, *, timeout_secondi: float = 310.0):
     """Serializza il read-modify-write di postino_stato.json fra chiamate
@@ -219,10 +233,10 @@ def _blocco_stato(radice: Path, *, timeout_secondi: float = 310.0):
 
     os.O_CREAT | os.O_EXCL e' una creazione atomica garantita dal sistema
     operativo sia su Windows sia su POSIX (non serve fcntl/msvcrt specifici
-    per piattaforma). Un lock piu' vecchio del timeout del subprocess di
-    dispatch (300s) piu' un margine si considera abbandonato (processo
-    terminato senza pulire, es. kill -9) e viene rimosso invece di bloccare
-    per sempre - stesso principio fail-safe del resto del modulo."""
+    per piattaforma). Un lock piu' vecchio di SOGLIA_LOCK_ABBANDONATO_SECONDI
+    si considera abbandonato (processo terminato senza pulire, es. kill -9) e
+    viene rimosso invece di bloccare per sempre - stesso principio fail-safe
+    del resto del modulo."""
     percorso_lock = _percorso_lock_stato(radice)
     percorso_lock.parent.mkdir(parents=True, exist_ok=True)
     scadenza = time.monotonic() + timeout_secondi
@@ -236,7 +250,7 @@ def _blocco_stato(radice: Path, *, timeout_secondi: float = 310.0):
                 eta_lock = time.time() - percorso_lock.stat().st_mtime
             except OSError:
                 eta_lock = 0.0
-            if eta_lock > timeout_secondi:
+            if eta_lock > SOGLIA_LOCK_ABBANDONATO_SECONDI:
                 with contextlib.suppress(OSError):
                     percorso_lock.unlink()
                 continue
