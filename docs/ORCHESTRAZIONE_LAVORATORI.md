@@ -253,7 +253,7 @@ L'orchestratore centrale supporta l'aggregazione di più progetti contemporaneam
       "percorso": "D:\\Share\\py\\_ORCHESTRATORE_LLM"
     },
     {
-      "id": "anita",
+      "id": "progetto_esempio",
       "nome": "Progetto Esempio",
       "percorso": "D:\\Share\\py\\altro progetto\\0.6_app"
     }

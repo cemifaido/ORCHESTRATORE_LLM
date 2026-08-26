@@ -14,6 +14,14 @@ CLAUDE.md
 GEMINI.md
 AGENTS.md
 
+# Config hook/permessi degli strumenti AI: contengono percorsi assoluti e stato di
+# sessioni reali di questa macchina, mai un template generico riusabile - locali
+# per operatore/macchina, come CLAUDE.md/GEMINI.md/AGENTS.md sopra.
+.claude/settings.json
+.codex/
+.gemini/
+.agents/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -29,8 +37,9 @@ venv/
 Thumbs.db
 .idea/
 .vscode/
-# Solo lo stato UI volatile di Obsidian: i plugin in .obsidian/plugins restano nel repo
-.obsidian/workspace.json
+# Vault Obsidian personale: non c'entra con lo strumento, locale per operatore
+# (deciso 2026-08-26, prima dei soli plugin restava tracciata la cartella intera)
+.obsidian/
 *.lnk
 *.base
 
