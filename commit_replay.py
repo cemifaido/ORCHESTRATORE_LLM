@@ -2,7 +2,7 @@
 """Ricostruisce, a partire da un commit git e dal registro condiviso, la sequenza di
 eventi che hanno portato a quel commit — per il pannello "Live Agent Handoff" in
 modalita' replay (dati reali gia' accaduti, non uno scenario finto). Vedi
-docs/ORCHESTRAZIONE_LAVORATORI.md, sezione Capoturno.
+docs/ORCHESTRAZIONE_LAVORATORI.md, sezione Replay di un commit reale.
 """
 from __future__ import annotations
 

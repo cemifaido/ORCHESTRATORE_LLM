@@ -125,29 +125,9 @@ Il tasso di rework di un agente **non è mai auto-dichiarato** per evitare valut
 
 ---
 
-## 6. Lanciare un Compito Reale (Capoturno)
+## 6. Rivivere un Commit Reale (Replay Demo)
 
-Il pannello **"🤝 Live Agent Handoff & Cooperazione"** della dashboard lancia `capoturno.py`: un motore che fa scrivere del codice reale a un agente (Gemini/Claude via LiteLLM), lo applica sul progetto target e lo valida con la sentinella, ripetendo in automatico se il gate fallisce.
-
-Passi:
-1. **Progetto Target**: scegli tra i progetti già integrati (sezione 2). Attenzione: se il compito riguarda *questa dashboard* (es. modificare `interfaccia.html`), il progetto giusto è "Orchestratore Centrale", non un altro progetto monitorato.
-2. **Tipo Compito**: determina l'agente suggerito dal routing (es. `servizi` → Claude, `interfaccia` → Gemini, `revisione`/`sicurezza` → Codex). Nota: per l'agente `gemini`, il modello reale chiamato è `gemini/gemini-1.5-flash` se in ambiente è definita `GEMINI_API_KEY` o `GOOGLE_API_KEY` (in caso contrario, effettua il fallback su `openai/gpt-4o-mini` usando `OPENAI_API_KEY`). Per `codex` viene usato `openai/gpt-4o` per controlli di sicurezza e revisione.
-3. **File Target**: percorso relativo al progetto dove scrivere il codice (es. `esempi/test_codice.py`). Se non esiste viene creato. Obbligatorio: il motore non sceglie da solo il file, gestisce un solo file per compito.
-4. **Livello Rischio**: se scegli `alto`, il browser chiede una conferma esplicita in più prima di inviare la richiesta (riepilogo del compito). Non è ancora una sospensione lato server: chi lancia il compito dal form è già l'umano che approva.
-5. **Descrizione Compito**: prompt in linguaggio naturale di cosa deve fare l'agente.
-6. Clic su **"▶ Lancia Compito Reale"**: il diagramma SVG si anima seguendo i passaggi reali (chi sta lavorando, se sta fallendo un gate, se c'è stato un failover), e la console mostra i messaggi passo-passo.
-
-A fine esecuzione, l'evento (`passato`, `fallito` o `errore_ambiente`) viene scritto nel registro **del progetto target**, mai in quello dell'orchestratore.
-
-**Requisito**: serve `pip install litellm` e una chiave API valida per il provider usato (variabile d'ambiente, mai nel codice) **disponibile al processo della dashboard**: se hai impostato la chiave dopo aver avviato `interfaccia.py`, riavvialo (bottone "⟲ Riavvia Sistema") perché la erediti. Senza LiteLLM installato o senza crediti/chiave validi, il compito termina con `stato=errore_ambiente` — è il comportamento atteso, non un errore del framework: significa "manca l'infrastruttura per procedere", non "l'agente ha scritto codice sbagliato".
-
-Specifica completa: `docs/ORCHESTRAZIONE_LAVORATORI.md` (sezione Capoturno).
-
----
-
-## 7. Rivivere un Commit Reale (Replay Demo)
-
-Nello stesso pannello "🤝 Live Agent Handoff & Cooperazione", il blocco "Rivivi un commit reale" mostra un selettore con gli ultimi commit del progetto selezionato (hash, data, autore, messaggio — letti da `git log`, non inventati).
+Nello pannello **"🤝 Live Agent Handoff & Cooperazione"**, il blocco "Rivivi un commit reale" mostra un selettore con gli ultimi commit del progetto selezionato (hash, data, autore, messaggio — letti da `git log`, non inventati).
 
 Passi:
 1. Scegli un commit dal menu a tendina: una card mostra hash breve, data, autore e messaggio del commit scelto.
@@ -160,7 +140,7 @@ Specifica completa: `docs/ORCHESTRAZIONE_LAVORATORI.md` (sezione "Replay di un c
 
 ---
 
-## 8. Bacheca Multi-Agente (messaggistica fra Claude/Codex/Gemini/locale/umano)
+## 7. Bacheca Multi-Agente (messaggistica fra Claude/Codex/Gemini/locale/umano)
 
 Oltre al registro (audit di cosa è stato fatto), c'è una bacheca separata per la
 comunicazione asincrona fra agenti prima/durante il lavoro:
@@ -186,7 +166,7 @@ Due funzioni in più nel pannello:
 - **Attività live**: box che si aggiorna da solo ogni 5s (solo i messaggi nuovi),
   va avviato con il pulsante "▶ Avvia" — non parte mai da solo.
 - **▶ Rivivi**: riproduce animatamente la cronologia di un thread nel pannello
-  "Live Agent Handoff" (stesso meccanismo del replay di un commit reale, §7 sopra).
+  "Live Agent Handoff" (stesso meccanismo del replay di un commit reale, §6 sopra).
 
 **Hook automatici**: se configurati (`.claude/settings.json`, `.codex/hooks.json`),
 Claude Code e Codex leggono da soli i messaggi in sospeso all'avvio di una sessione
@@ -197,9 +177,9 @@ un altro modo.
 
 ---
 
-## 9. Il postino: risvegli automatici, anche a sessione chiusa
+## 8. Il postino: risvegli automatici, anche a sessione chiusa
 
-Tutto il punto 8 sopra richiede comunque che tu apra una sessione perché l'hook
+Tutto il punto 7 sopra richiede comunque che tu apra una sessione perché l'hook
 scatti. Il postino va oltre: quando c'è un messaggio pendente in bacheca, un
 processo in background lancia davvero l'agente giusto (`claude -p`, `codex exec`,
 `agy -p`), che legge, decide e scrive la risposta da solo — nessun pannello da

@@ -1,6 +1,6 @@
 # Integrazione opzionale LiteLLM
 
-**Stato**: adapter in uso reale. `capoturno.py` lo usa per ogni chiamata agente durante l'esecuzione di un compito. LiteLLM resta comunque una dipendenza opzionale, non core.
+**Stato**: adapter in uso reale. Usato da `triage_locale.py` e script di supporto per chiamate al modello locale e provider esterni. LiteLLM resta comunque una dipendenza opzionale, non core.
 
 Vedi anche: [Indice](INDEX.md) · [Orchestrazione dei lavoratori](ORCHESTRAZIONE_LAVORATORI.md).
 
@@ -74,10 +74,10 @@ Funzioni principali:
 - `completamento(...)`: importa LiteLLM solo al momento della chiamata;
 - `completamento_locale(...)`: stessa chiamata, puntata di default all'endpoint del modello locale (llama-server) e con `costo_usd` sempre forzato a `0.0` misurato — usata da `triage_locale.py` per il triage a costo zero (vedi [LLM locale](ORCHESTRAZIONE_LAVORATORI.md#llm-locale));
 - `estrai_misurazione(...)`: legge costo e token da una risposta LiteLLM;
-- `testo_da_risposta(...)`: estrae il testo generato da una risposta (oggetto `ModelResponse`, dict o stringa), tornando `""` invece di sollevare eccezione se la forma è inattesa. Condivisa fra `capoturno.py` (estrazione del codice generato) e `triage_locale.py` (parsing della classificazione JSON), per evitare la stessa logica duplicata in due punti;
+- `testo_da_risposta(...)`: estrae il testo generato da una risposta (oggetto `ModelResponse`, dict o stringa), tornando `""` invece di sollevare eccezione se la forma è inattesa (usata da `triage_locale.py` per il parsing della classificazione JSON);
 - `arricchisci_evento(...)`: copia un evento e aggiunge costo/metadati LiteLLM.
 
-Per un esempio completo, documentato ed eseguibile che gestisce anche il fallback mock per lo sviluppo locale, fai riferimento a [esempi/chiamata_agente_litellm.py](file:///D:/Share/py/_ORCHESTRATORE_LLM/esempi/chiamata_agente_litellm.py). Per l'uso reale in produzione (non un esempio), vedi `capoturno.py`, che chiama `completamento(...)` per ogni tentativo di un compito e gestisce anche il failover fra agenti in caso di errore infrastrutturale (crediti, quota, chiave non valida) — vedi [Capoturno](ORCHESTRAZIONE_LAVORATORI.md#capoturno).
+Per un esempio completo, documentato ed eseguibile che gestisce anche il fallback mock per lo sviluppo locale, fai riferimento a [esempi/chiamata_agente_litellm.py](file:///D:/Share/py/_ORCHESTRATORE_LLM/esempi/chiamata_agente_litellm.py).
 
 Esempio:
 

@@ -226,7 +226,7 @@ più sotto per lo stato corrente, o direttamente
 `docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`.
 
 Per Gemini, al 2026-07-08 restavano validi il pull manuale (§4.3 della RFC) e, per
-compiti automatici in background, le chiamate dirette via `litellm`/`capoturno.py`
+compiti automatici in background, le chiamate dirette via `litellm`
 invece di `agy` — indicazione di Gemini stesso, resa non necessaria dall'aggiornamento
 del 2026-08-25 qui sotto.
 

@@ -92,7 +92,7 @@ bug a monte: la bacheca va letta, non obbedita.
 | Schema | `schema/evento.v1.json` | `schema/messaggio.v1.json` (nuovo, bozza già scritta) |
 
 Tenerli separati evita di sovraccaricare lo schema esistente (già usato da dashboard,
-`genera_cruscotto.py`, `capoturno.py`) con concetti di messaggistica che non gli
+`genera_cruscotto.py`, `sentinella.py`) con concetti di messaggistica che non gli
 appartengono.
 
 ### 3.2 Schema `messaggio.v1.json` (bozza RFC, file già scritto in `schema/`)
@@ -918,17 +918,16 @@ piano, riflette cosa è stato costruito davvero, in ordine cronologico:
      "Live Agent Handoff" esistente (stesso meccanismo già usato per il replay di
      un commit reale, `passoSuccessivo`/`simTimer`, intervallo fisso 1.8s) — con
      una differenza voluta: **niente linee fra coppie arbitrarie di agenti** (il
-     diagramma SVG ha percorsi fissi disegnati per il flusso di `capoturno.py`, non
-     un grafo libero), solo il nodo di chi sta scrivendo che pulsa, più il log
+     diagramma SVG ha percorsi fissi disegnati per il flusso di handoff tra agenti,
+     non un grafo libero), solo il nodo di chi sta scrivendo che pulsa, più il log
      testuale con mittente/destinatari/tipo/testo.
    Nuovo helper difensivo `bacheca.leggi_messaggi_progetto()` (mirror di
    `registro.leggi_eventi_progetto()`) perché una bacheca corrotta non deve far
    cadere l'intera dashboard. Suite a 132/132 test (backend/route coperti dai test;
    il frontend è verificato a vista).
 8. **Fatto**: rimosso dalla dashboard il vecchio pannello/form/route **"Lancia
-   Compito Reale"**: le route `/api/compiti/*` e il lancio di `capoturno` via API
-   non sono più esposti dall'interfaccia. Rimane **"Replay di un Commit Reale"**,
-   solo visualizzazione su eventi già registrati.
+   Compito Reale"** e rimosso `capoturno.py` dal repository (consolidamento su Postino).
+   Rimane **"Replay di un Commit Reale"**, solo visualizzazione su eventi già registrati.
 9. **Da fare**: revisione di questo documento e dello schema da parte di Gemini —
    non ancora avvenuta.
 10. **Fatto**: verifica empirica dell'hook Antigravity/Gemini (§4.3) chiusa con

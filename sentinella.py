@@ -48,6 +48,18 @@ def tronca(testo: str, limite: int) -> str:
     return testo[:limite] + "\n...[output troncato]..."
 
 
+ESEGUIBILI_AMMESSI = frozenset({"git", "python", "python3", "npm", "npx", "node"})
+_SUFFISSI_ESEGUIBILE_WINDOWS = (".exe", ".cmd", ".bat")
+
+
+def _basename_eseguibile(comando: str) -> str:
+    nome = Path(comando).name.lower()
+    for suffisso in _SUFFISSI_ESEGUIBILE_WINDOWS:
+        if nome.endswith(suffisso):
+            return nome[: -len(suffisso)]
+    return nome
+
+
 HOST_LOCALI_NOTI = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 PATTERN_SEGRETI = [
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
@@ -120,7 +132,7 @@ def verifica_connessione(indirizzo: str) -> bool:
         return False
 
 
-def esegui(nome: str, comandi: dict, *, radice_progetto: Path | None = None) -> tuple[str, int, int, str]:
+def esegui(nome: str, comandi: dict, *, radice_progetto: Path) -> tuple[str, int, int, str]:
     if nome not in comandi:
         raise ValueError(f"comando non ammesso: {nome}")
     configurazione = comandi[nome]
@@ -139,12 +151,23 @@ def esegui(nome: str, comandi: dict, *, radice_progetto: Path | None = None) -> 
     argomenti = configurazione.get("argomenti")
     if not isinstance(argomenti, list) or not argomenti:
         raise ValueError(f"argomenti non validi per comando {nome}")
+    eseguibile = _basename_eseguibile(str(argomenti[0]))
+    if eseguibile not in ESEGUIBILI_AMMESSI:
+        # comandi.json non e' firmato/verificato: senza allowlist un file
+        # malevolo potrebbe far girare un binario arbitrario, non solo
+        # limitato alla cartella del progetto (residuo C2, revisione
+        # sicurezza v3, 2026-08-26).
+        raise ValueError(f"eseguibile non ammesso: {argomenti[0]}")
     cartella = Path(configurazione.get("cartella", ".")).resolve()
-    if radice_progetto is not None and not cartella.is_relative_to(radice_progetto.resolve()):
+    if not cartella.is_relative_to(radice_progetto.resolve()):
         # comandi.json e' trattato come dato di configurazione del progetto, ma
         # non e' firmato/verificato: senza questo controllo un file malevolo
         # potrebbe far girare comandi arbitrari fuori dalla cartella del
         # progetto (bug reale trovato in revisione di sicurezza, 2026-08-25).
+        # radice_progetto e' ora obbligatoria (non piu' opzionale): un
+        # chiamante che la dimentica prende un TypeError esplicito a tempo di
+        # chiamata, invece di restare silenziosamente senza protezione
+        # (residuo C2, revisione sicurezza v3, 2026-08-26).
         raise ValueError(f"cartella fuori dalla radice del progetto: {cartella}")
     timeout = int(configurazione.get("timeout_secondi", 60))
     limite_output = int(configurazione.get("limite_output_caratteri", 20000))

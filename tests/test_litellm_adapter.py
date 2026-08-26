@@ -93,8 +93,8 @@ class LiteLLMAdapterTest(unittest.TestCase):
 
     def test_testo_da_risposta_forma_inattesa_torna_stringa_vuota(self) -> None:
         """Una forma inattesa (es. None, un numero, un dict senza le chiavi giuste) non
-        deve far crashare il chiamante: chi usa questa funzione (capoturno, triage
-        locale) tratta "" come "nessun contenuto interpretabile", non come eccezione."""
+        deve far crashare il chiamante: chi usa questa funzione (triage locale,
+        parsing risposte) tratta "" come "nessun contenuto interpretabile", non come eccezione."""
         self.assertEqual(litellm.testo_da_risposta(None), "")
         self.assertEqual(litellm.testo_da_risposta(42), "")
         self.assertEqual(litellm.testo_da_risposta({"choices": []}), "")

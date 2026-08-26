@@ -192,50 +192,14 @@ errors="replace")` a inizio dei `main()` di `triage_locale.py`/`sentinella.py`/
 `bacheca.py`. Dettagli e riproduzione completa in
 `docs/RFC_BACHECA_MULTIAGENTE.md` §6.4.
 
-## Capoturno
+## Replay di un commit reale (demo)
 
-**Come si ottiene davvero del codice scritto, oggi (2026-07-04)** — quattro vie possibili, non alternative fra loro ma con un default esplicito:
-
-| Modalità | Chi scrive davvero il codice | Quando si attiva | Note |
-|---|---|---|---|
-| **Sessione interattiva (default)** | L'assistente Claude Code, direttamente in conversazione, con accesso reale a file/terminale | Quando il compito viene chiesto direttamente in chat | Nessuna chiamata API esterna da capoturno, nessun rischio di crediti/chiave esauriti |
-| Gemini (via LiteLLM) | Modello chiamato da `capoturno.py` | Solo se si lancia dal pannello dashboard "Live Agent Handoff" con Tipo Compito → interfaccia | Mappato su `gemini/gemini-1.5-flash` se è presente `GEMINI_API_KEY` o `GOOGLE_API_KEY`, altrimenti esegue il fallback su `openai/gpt-4o-mini` (richiede `OPENAI_API_KEY`). |
-| Claude (via LiteLLM) | Modello Claude chiamato da `capoturno.py` | Idem, Tipo Compito → servizi/database/documentazione | Richiede chiave Anthropic, soggetto a crediti/quota come qualunque chiamata API |
-| Codex (via LiteLLM) | Modello Codex chiamato da `capoturno.py` | Suggerito dal routing per revisione/sicurezza | Mappato su `openai/gpt-4o` per controlli approfonditi (richiede `OPENAI_API_KEY`). |
-
-Finché la delega via LiteLLM resta legata a crediti/chiavi che possono mancare o esaurirsi, la sessione interattiva resta la via primaria per il lavoro reale; il pannello "Live Agent Handoff" resta disponibile per quando si vuole tornare alla delega automatica via API.
-
-`capoturno.py` è il motore che esegue davvero il ciclo "Watch-and-Solve" per le tre vie via LiteLLM: riceve un compito, lo fa lavorare a un agente reale, applica la patch sul progetto target, la valida con la sentinella e ripete in caso di errore. Non è un nuovo lavoratore: automatizza meccanicamente il ruolo di capoturno (instradamento, delega, validazione, rework) che la tabella dei [Lavoratori](#lavoratori) assegna al LLM locale — chi scrive codice resta sempre Gemini/Claude/Codex, mai il locale.
-
-Ciclo eseguito da `Capoturno.esegui_compito(...)`:
-
-1. **Routing**: `instrada.instrada(tipo_compito, rischio, registro)` suggerisce l'agente (stessa tabella di [Routing](#routing)). Se il rischio è alto o l'agente suggerito è `umano`, viene notificato "serve umano prima" — nella v1 il motore procede comunque (non c'è ancora un blocco sincrono in attesa di approvazione, vedi Limiti noti).
-2. **Chiamata all'agente**: prompt minimale (codice attuale del file, compito, errore dell'ultimo tentativo se è un rework) inviato via `adattatori/litellm.py`. Il modello risponde con un blocco di codice Python racchiuso in ` ```python `.
-3. **Scrittura patch**: il codice estratto viene scritto su `file_target` dentro il progetto reale (`progetto_percorso`), non nell'orchestratore.
-4. **Validazione (gate)**: viene lanciata la sentinella **centrale** (mai una copia), comando `controllo_lint`, con `cwd` sul progetto target e `--config` puntato al `config/comandi.json` centrale — così `ruff check .` valida davvero il file appena scritto nel progetto giusto, non il codice dell'orchestratore.
-5. **Rework**: se il gate fallisce, l'errore viene incluso nel prompt del tentativo successivo (fino a 3 rework). Se il gate passa, l'evento viene registrato `stato=passato`/`esito_gate=superato` nel registro **del progetto target**.
-6. **Failover infrastrutturale**: se la chiamata all'agente fallisce per errore di rete/quota/credenziali (non per codice scritto male), il motore ritenta automaticamente con l'agente di riserva (`claude` ↔ `gemini`). Se anche il fallback fallisce, l'evento viene registrato `stato=errore_ambiente`/`esito_gate=non_eseguito` (non `fallito`): non inquina il conteggio rework, e segnala che serve intervento umano (crediti, chiave API, rete), non una correzione di codice.
-
-### Avvio dalla dashboard
-
-Pannello **"🤝 Live Agent Handoff & Cooperazione"**: seleziona progetto target, tipo compito, file target, rischio e descrivi il compito, poi "▶ Lancia Compito Reale". Il form chiama `POST /api/compiti/avvia` (esecuzione in background), la dashboard fa polling su `GET /api/compiti/stato` e anima il diagramma SVG passo per passo; a fine corsa chiama `POST /api/compiti/reset`.
-
-### Replay di un commit reale (demo)
-
-Nello stesso pannello, "Rivivi un commit reale" mostra un selettore di commit (`GET /api/commit/lista`, da `git log`, con hash/data/autore/messaggio) e un pulsante "🎬 Riproduci". Alla scelta, una card mostra i metadati del commit (hash breve, data, autore, messaggio) e `GET /api/commit/eventi?progetto_id=...&hash=...` (modulo `commit_replay.py`) calcola la finestra temporale del commit (tra il suo timestamp e quello del commit precedente, confrontati come date timezone-aware in UTC — non come stringhe, perché git usa il fuso locale e il registro usa sempre `Z`) e ritorna gli eventi del registro caduti in quella finestra. La dashboard li anima in sequenza sullo stesso diagramma SVG — inferendo la direzione linea-per-linea dall'ordine cronologico degli eventi (verde se passato, rossa se fallito/da rivedere) e chiudendo il ciclo verso il nodo "umano" a fine sequenza — poi mostra una statistica reale, non uno scenario finto:
+Nello pannello **"🤝 Live Agent Handoff & Cooperazione"**, "Rivivi un commit reale" mostra un selettore di commit (`GET /api/commit/lista`, da `git log`, con hash/data/autore/messaggio) e un pulsante "🎬 Riproduci". Alla scelta, una card mostra i metadati del commit (hash breve, data, autore, messaggio) e `GET /api/commit/eventi?progetto_id=...&hash=...` (modulo `commit_replay.py`) calcola la finestra temporale del commit (tra il suo timestamp e quello del commit precedente, confrontati come date timezone-aware in UTC — non come stringhe, perché git usa il fuso locale e il registro usa sempre `Z`) e ritorna gli eventi del registro caduti in quella finestra. La dashboard li anima in sequenza sullo stesso diagramma SVG — inferendo la direzione linea-per-linea dall'ordine cronologico degli eventi (verde se passato, rossa se fallito/da rivedere) e chiudendo il ciclo verso il nodo "umano" a fine sequenza — poi mostra una statistica reale, non uno scenario finto:
 
 - **percentuale di controlli di verifica gestiti gratis dal modello locale** sul totale (locale + eventuali revisioni/sicurezza fatte da un agente a pagamento nella stessa finestra) — varia per commit, non è mai fissa al 100%;
 - **stima in $ del risparmio**, calcolata solo sui `token_totali` realmente misurati (metadati degli eventi `agente=locale`) moltiplicati per il prezzo pubblico di un modello di riferimento dichiarato (GPT-4o-mini, tariffa input, scelta conservativa) — mai un numero inventato.
 
 Un commit senza eventi di verifica (es. solo lavoro conversazionale, costo sempre stimato/0) mostra correttamente "nessun controllo da cui stimare un risparmio": non si forza una percentuale quando non c'è nulla di comparabile.
-
-### Limiti noti (v1)
-
-- Un solo compito reale alla volta: lo stato (`STATO_COMPITO_CORRENTE`) è globale in memoria nel processo `interfaccia.py`, non per-progetto. Un secondo tentativo di avvio viene rifiutato finché il primo non è `finito`.
-- "Serve umano prima" (rischio alto): l'umano che lancia il compito dalla dashboard è già il gate umano (ha compilato il form e cliccato "Lancia"), quindi il backend non blocca nulla — ma se `rischio=alto` il frontend chiede una conferma esplicita in più (`confirm()` col riepilogo del compito) prima di inviare la richiesta. Non è ancora una sospensione lato server: un secondo canale (es. API diretta) potrebbe bypassarla.
-- Scelta del modello per Codex e Locale: Codex è ora mappato su `openai/gpt-4o` per compiti di revisione profonda e sicurezza (richiede `OPENAI_API_KEY`). Il ruolo di Locale rimane dedicato al triage deterministico e al monitoraggio locale.
-- Mappatura dinamica Gemini: Per l'agente `gemini`, il motore prova a utilizzare un vero modello Google (`gemini/gemini-1.5-flash`) se trova in ambiente `GEMINI_API_KEY` o `GOOGLE_API_KEY`. In caso contrario, esegue un fallback su `openai/gpt-4o-mini` (usando `OPENAI_API_KEY`).
-- Il file da modificare va scelto a mano nel form: il motore non esplora il progetto né decide da solo dove scrivere, gestisce un solo file per compito. Un'evoluzione naturale (proposta e non ancora implementata) è una chiamata preliminare "di scoping" allo stesso agente suggerito dal routing, per fargli individuare il file più pertinente prima di scrivere la patch — lasciando comunque il campo compilabile a mano come opzione/override.
 
 ## Metriche
 
@@ -330,11 +294,25 @@ il processo si rifiuta di avviarsi finché non è impostata anche
 `ORCHESTRATORE_API_KEY`: con la chiave impostata, ogni richiesta deve presentare
 l'header `X-Orchestratore-Key` con lo stesso valore.
 
+**Uso dichiarato: solo rete aziendale con accesso diretto, niente accesso remoto**
+(decisione umana, revisione sicurezza v3/NEW-1, 2026-08-26): l'header
+`X-Orchestratore-Key` non è utilizzabile da un browser normale (non può impostare
+header custom sulla richiesta iniziale), quindi non è una soluzione di login per
+accesso via browser — resta valido solo per client/API. Piuttosto che costruire
+subito una sessione/cookie di login nell'app, la decisione presa è: il bind resta
+`127.0.0.1` (loopback) come default e unico scenario supportato oggi, l'uso è
+sempre locale sulla stessa macchina o su rete aziendale fidata con accesso diretto
+alla porta. **Accesso remoto non è nei piani immediati**: se in futuro servisse
+davvero, la direzione concordata (Codex/Gemini/Claude, bacheca thread `4b5d75f5`)
+è un reverse proxy dedicato con TLS e autenticazione browser-compatibile davanti
+alla dashboard, non una login implementata dentro `interfaccia.py` — punto lasciato
+esplicitamente in backlog, non implementato.
+
 Il server `interfaccia.py` (FastAPI/Uvicorn, porta `8095`) offre un'interfaccia di monitoraggio visiva ad alto impatto grafico (dark theme, glassmorphic layout) basata su:
 - **Grafici Chart.js**: Visualizzazione di esecuzioni/rework e ripartizione del tempo LLM cumulato per ogni lavoratore.
 - **Selettore Progetti**: Form per inserire il percorso assoluto e nome di una nuova cartella per effettuarne l'integrazione ed il monitoraggio automatico.
 - **Pannello Sentinella**: Console web interattiva per lanciare comandi deterministici whitelistati (es. pytest, git status) su un determinato progetto in un subprocesso isolato, visualizzandone il log di ritorno.
-- **Live Agent Handoff & Cooperazione**: pannello per lanciare un compito reale tramite `capoturno.py` (vedi [Capoturno](#capoturno)), con diagramma SVG animato e console che mostrano in tempo reale quale agente sta lavorando e con quale esito. Lo stesso diagramma/console riproduce anche, in modalità replay, un commit reale oppure un thread della bacheca multi-agente (pulsante "▶ Rivivi" nel pannello Bacheca — solo il nodo di chi scrive pulsa, senza linee fra coppie arbitrarie di agenti, perché il diagramma ha percorsi fissi pensati per il flusso di `capoturno.py`, non un grafo libero).
+- **Live Agent Handoff & Cooperazione**: pannello per riprodurre in modalità replay un commit reale (vedi [Replay di un commit reale](#replay-di-un-commit-reale-demo)) oppure un thread della bacheca multi-agente (pulsante "▶ Rivivi" nel pannello Bacheca), con diagramma SVG animato e console che mostrano la sequenza temporale degli eventi.
 - **Bacheca Multi-Agente** (vedi [RFC Bacheca multi-agente](RFC_BACHECA_MULTIAGENTE.md)): pannello di sola visualizzazione per `dati_locali/orchestrazione/messaggi.jsonl` — tabella thread con stato/chi aspetta/verdetto umano, banner per i conflitti segnalati, file attualmente in carico, drill-down della cronologia al click. Include un feed live opzionale (pulsante Avvia/Ferma, poll ogni 5s solo dei messaggi nuovi) e il replay animato descritto sopra. Nessuna azione da qui (approvare/chiudere/assegnare restano CLI, `bacheca.py`).
 - **Riavvio Sistema**: `POST /api/sistema/riavvia` avvia un nuovo processo `interfaccia.py` (che ricarica il codice corrente da disco) e termina quello in esecuzione non appena il nuovo ha preso la porta (`__main__` ritenta il bind per ~10s in caso di sovrapposizione). Necessario perché uvicorn non ricarica mai i moduli modificati: senza riavvio, la dashboard resta silenziosamente disallineata dal codice sorgente.
 - **Tempo Elaborazione LLM Cumulato**: la dashboard usa `latenza_ms` aggregata per mostrare il tempo di elaborazione per agente/progetto. I costi restano nel registro e nelle API per audit/LiteLLM, ma non sono più una tile primaria della dashboard.

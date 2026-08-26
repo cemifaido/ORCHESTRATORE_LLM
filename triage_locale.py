@@ -4,7 +4,7 @@
 Non risolve nulla: classifica solo un output (test/lint/build) per decidere se e'
 routine o se serve scalare a un agente piu' capace o a un umano. Pensato per essere
 richiamato prima di "guardare" personalmente un output di routine — vedi
-docs/ORCHESTRAZIONE_LAVORATORI.md, sezione Capoturno.
+docs/ORCHESTRAZIONE_LAVORATORI.md, sezione LLM locale.
 """
 from __future__ import annotations
 

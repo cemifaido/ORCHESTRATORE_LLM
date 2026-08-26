@@ -195,7 +195,7 @@ def completamento(
 
 # Modello locale (llama-server/llama.cpp, endpoint compatibile OpenAI): nessuna chiave
 # reale, nessun costo. Usato per triage/monitoraggio a costo zero prima di scalare a un
-# agente a pagamento (vedi docs/ORCHESTRAZIONE_LAVORATORI.md, sezione Capoturno).
+# agente a pagamento (vedi docs/ORCHESTRAZIONE_LAVORATORI.md, sezione LLM locale).
 MODELLO_LOCALE_PREDEFINITO = "openai/qwen2.5-7b-instruct-q3_k_m.gguf"
 API_BASE_LOCALE_PREDEFINITO = "http://127.0.0.1:8090/v1"
 
