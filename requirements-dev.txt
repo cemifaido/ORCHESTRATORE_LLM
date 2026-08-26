@@ -1,9 +1,13 @@
 # Strumenti di quality gate per lo sviluppo (lint, type check, complessita).
 # Non servono a runtime: installare solo in locale/CI.
-ruff
-mypy
-xenon
+#
+# Versioni pinnate alle build su cui gira davvero il gate (stesso motivo di
+# requirements.txt, vedi lì): per aggiornare, bump della versione e quality
+# gate completo verde prima di committare.
+ruff==0.15.20
+mypy==2.1.0
+xenon==0.9.3
 # Richiesto da fastapi.testclient.TestClient (tests/test_interfaccia.py) - non
 # dichiarato prima, funzionava solo per chi lo aveva gia' installato per altri
 # motivi (bug reale trovato in revisione di sicurezza, 2026-08-25).
-httpx
+httpx==0.28.1

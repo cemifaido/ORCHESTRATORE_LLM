@@ -153,12 +153,16 @@ sicurezza:
   con verifica di specifica + log diagnostico per la conferma empirica nel tempo. Lezione
   generale per il manifest di cui sopra: non dichiarare mai una capability "funzionante"
   senza prova.
-- **Nessuna SBOM/lockfile o policy sulle dipendenze** (revisione Codex): per un clone
-  pubblico, sapere esattamente quali versioni di `fastapi`/`uvicorn`/`pydantic`/
-  `jsonschema`/`rfc3339-validator`/`litellm` sono verificate (non solo dichiarate in
-  `requirements*.txt` senza pin) diventa parte della superficie di fiducia — un utente
-  esterno non ha il contesto implicito di questa installazione per giudicare se una
-  versione è sicura.
+- **Policy sulle dipendenze — chiuso (2026-08-26)**: `requirements.txt` e
+  `requirements-dev.txt` erano senza pin (revisione Codex). Ora entrambi
+  dichiarano versioni esatte (`==`), quelle su cui la suite di test è
+  verificata; installazione e `pip check` riverificati senza conflitti.
+  Aggiornare una versione richiede un bump esplicito e il quality gate
+  completo verde prima del commit — mai un range aperto che introduca una
+  versione mai testata in silenzio. Nessuna SBOM formale: per questo
+  progetto (poche dipendenze dirette, nessuna in produzione con dati di
+  terzi) il pin secco è stato giudicato sufficiente; una SBOM resta
+  possibile in futuro se le dipendenze crescono.
 
 ## 5. Esplicitamente fuori scopo per questo step
 

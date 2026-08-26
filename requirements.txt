@@ -1,5 +1,10 @@
-fastapi
-uvicorn
-pydantic
-jsonschema
-rfc3339-validator
+# Versioni pinnate alle build su cui gira davvero la suite di test (gap
+# "nessuna policy sulle dipendenze" da docs/THREAT_MODEL.md sezione 4,
+# 2026-08-26): un clone esterno deve poter sapere quali versioni sono
+# verificate, non solo dichiarate. Per aggiornare: bump della versione,
+# quality gate completo (pytest/ruff/mypy/xenon) verde prima di committare.
+fastapi==0.139.0
+uvicorn==0.50.0
+pydantic==2.12.5
+jsonschema==4.23.0
+rfc3339-validator==0.1.4
