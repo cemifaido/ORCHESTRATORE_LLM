@@ -459,6 +459,7 @@ class FlussiDichiaratiApiTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             p_path = Path(tmp)
             percorso_messaggi = p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+            percorso_registro = p_path / "dati_locali" / "orchestrazione" / "eventi.jsonl"
             chk = bacheca.costruisci_messaggio(
                 mittente="claude",
                 destinatari=["gemini", "codex", "umano"],
@@ -473,6 +474,26 @@ class FlussiDichiaratiApiTest(unittest.TestCase):
                 }
             )
             bacheca.aggiungi_messaggio(percorso_messaggi, chk)
+            ev = {
+                "versione_schema": 1,
+                "id_evento": "evt-t1",
+                "timestamp": "2026-08-26T10:00:00Z",
+                "id_compito": "t1",
+                "agente": "claude",
+                "tipo_compito": "servizi",
+                "stato": "passato",
+                "esito_gate": "superato",
+                "verdetto_umano": "non_revisionato",
+                "costo_stimato_usd": 0.0,
+                "origine_costo": "stimato",
+                "latenza_ms": 0,
+                "regole_incluse": ["sessione_interattiva"],
+                "note": "sviluppo e test",
+                "file_modificati": ["a.py"],
+                "thread_id": "t1",
+                "metadati": {},
+            }
+            registro.aggiungi_evento(percorso_registro, ev)
 
             progetti = [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
             with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
@@ -481,6 +502,60 @@ class FlussiDichiaratiApiTest(unittest.TestCase):
             self.assertEqual(len(risultato["pratiche_sospese"]), 1)
             self.assertEqual(risultato["pratiche_sospese"][0]["oggetto_atteso"], "verdetto commit")
             self.assertEqual(risultato["thread"][0]["fase_flusso"], "approvazione_umana")
+            self.assertEqual(risultato["thread"][0]["stato_flusso"]["stato"], "attivo")
+            self.assertEqual(risultato["thread"][0]["stato_flusso"]["fase"], "approvazione_umana")
+            self.assertIn("file_modificati", risultato["thread"][0]["stato_flusso"]["prove"])
+
+    def test_bacheca_thread_senza_eventi_parte_da_compito(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            percorso_messaggi = p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+            msg = bacheca.costruisci_messaggio(
+                mittente="claude",
+                destinatari=["gemini", "codex", "umano"],
+                tipo="richiesta",
+                testo="richiesta iniziale",
+                thread_id="t2",
+            )
+            bacheca.aggiungi_messaggio(percorso_messaggi, msg)
+
+            progetti = [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                risultato = interfaccia.bacheca_progetto(progetto_id="test_proj")
+
+            self.assertEqual(risultato["thread"][0]["fase_flusso"], "compito")
+            self.assertEqual(risultato["thread"][0]["stato_flusso"]["stato"], "attivo")
+
+    def test_bacheca_thread_chiuso_senza_prerequisiti_e_incoerente(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            percorso_messaggi = p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+            msg = bacheca.costruisci_messaggio(
+                mittente="claude",
+                destinatari=["gemini", "codex", "umano"],
+                tipo="chiusura",
+                testo="chiudo subito senza prove",
+                thread_id="t3",
+            )
+            bacheca.aggiungi_messaggio(percorso_messaggi, msg)
+
+            progetti = [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                risultato = interfaccia.bacheca_progetto(progetto_id="test_proj")
+
+            self.assertIsNone(risultato["thread"][0]["fase_flusso"])
+            self.assertEqual(risultato["thread"][0]["stato_flusso"]["stato"], "incoerente")
+            self.assertTrue(len(risultato["thread"][0]["stato_flusso"]["diagnostica"]) > 0)
+
+    def test_adapter_calcola_fase_flusso_diretto(self) -> None:
+        # Senza eventi -> fase 'compito'
+        fase = interfaccia._calcola_fase_flusso([], "t_test")
+        self.assertEqual(fase, "compito")
+
+        # Con chiusura senza prove -> None (fail-safe)
+        chiusura_msg = [{"thread_id": "t_test", "tipo": "chiusura"}]
+        fase_incoerente = interfaccia._calcola_fase_flusso(chiusura_msg, "t_test")
+        self.assertIsNone(fase_incoerente)
 
     def test_bacheca_espone_flussi_dichiarati_e_passi_coerenti(self) -> None:
         flussi = interfaccia.leggi_flussi_dichiarati()

@@ -1110,6 +1110,12 @@
       color: #34d399;
       border-color: rgba(16, 185, 129, 0.3);
     }
+    .stepper-step.incoerente, .stepper-step.invalido {
+      background: rgba(244, 63, 94, 0.15);
+      color: #f87171;
+      border-color: rgba(244, 63, 94, 0.4);
+      font-weight: 500;
+    }
     .stepper-arrow {
       color: var(--text-muted);
       font-size: 0.65rem;

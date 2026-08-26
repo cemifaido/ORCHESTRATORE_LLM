@@ -219,6 +219,7 @@ def costruisci_evento(args: argparse.Namespace) -> dict[str, Any]:
         "id_evento": args.id_evento or str(uuid.uuid4()),
         "timestamp": args.timestamp or adesso_utc(),
         "id_compito": args.id_compito,
+        **({"thread_id": args.thread_id} if getattr(args, "thread_id", "") else {}),
         "agente": args.agente,
         "tipo_compito": args.tipo_compito,
         "stato": args.stato,
@@ -229,6 +230,7 @@ def costruisci_evento(args: argparse.Namespace) -> dict[str, Any]:
         "latenza_ms": args.latenza_ms,
         "regole_incluse": lista_csv(args.regole_incluse),
         "file_modificati": lista_csv(args.file_modificati),
+        "artefatti_flusso": lista_csv(getattr(args, "artefatti_flusso", "")),
         "voto_qualita": getattr(args, "voto_qualita", None),
         "voto_velocita": getattr(args, "voto_velocita", None),
         "note": args.note,
@@ -273,6 +275,7 @@ def main(argv: list[str] | None = None) -> int:
     aggiungi.add_argument("--id-evento", default="")
     aggiungi.add_argument("--timestamp", default="")
     aggiungi.add_argument("--id-compito", required=True)
+    aggiungi.add_argument("--thread-id", default="", help="UUID del thread bacheca correlato (opzionale)")
     aggiungi.add_argument("--agente", choices=valori_ammessi("agente"), required=True)
     aggiungi.add_argument("--tipo-compito", choices=valori_ammessi("tipo_compito"), required=True)
     aggiungi.add_argument("--stato", choices=valori_ammessi("stato"), required=True)
@@ -283,6 +286,7 @@ def main(argv: list[str] | None = None) -> int:
     aggiungi.add_argument("--latenza-ms", type=int, default=0)
     aggiungi.add_argument("--regole-incluse", default="")
     aggiungi.add_argument("--file-modificati", default="")
+    aggiungi.add_argument("--artefatti-flusso", default="", help="artefatti runtime aggiuntivi, separati da virgole")
     aggiungi.add_argument("--voto-qualita", type=int, choices=[1, 2, 3, 4, 5], default=None)
     aggiungi.add_argument("--voto-velocita", type=int, choices=[1, 2, 3, 4, 5], default=None)
     aggiungi.add_argument("--note", default="")

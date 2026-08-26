@@ -80,6 +80,12 @@ class ValidaFlussiTest(unittest.TestCase):
         errori = valida_flussi.valida_flusso(dati, self.schema)
         self.assertTrue(any("senza approvazione umana" in errore for errore in errori))
 
+    def test_rileva_ciclo_anche_nel_compilatore_condiviso(self) -> None:
+        dati = copy.deepcopy(self.flusso)
+        self._sostituisci(dati, "compito", "richiede", ["evento_registro"])
+        errori = valida_flussi.valida_flusso(dati, self.schema)
+        self.assertTrue(any("non compilabile" in errore for errore in errori))
+
     def test_schema_rifiuta_approvazione_senza_verdetto_esplicito(self) -> None:
         dati = copy.deepcopy(self.flusso)
         self._sostituisci(dati, "approvazione_umana", "produce", ["nota_umano"])

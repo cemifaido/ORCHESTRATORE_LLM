@@ -97,8 +97,10 @@ class RegistraClassificazioneTest(unittest.TestCase):
                 percorso_registro=percorso,
                 id_compito="triage-test",
                 contesto="test suite",
+                thread_id="thread-test",
             )
             eventi = registro.leggi_eventi(percorso)
+            self.assertEqual(eventi[0]["thread_id"], "thread-test")
             self.assertEqual(len(eventi), 1)
             evento = eventi[0]
             self.assertEqual(evento["agente"], "locale")

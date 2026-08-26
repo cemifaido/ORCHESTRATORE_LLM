@@ -36,6 +36,11 @@
       "type": "string",
       "minLength": 1
     },
+    "thread_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Correlazione esplicita e opzionale con un thread della bacheca. Assente negli eventi storici."
+    },
     "agente": {
       "type": "string",
       "enum": [
@@ -125,6 +130,17 @@
         "type": "string"
       },
       "default": []
+    },
+    "artefatti_flusso": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "uniqueItems": true,
+      "default": [],
+      "description": "Artefatti ulteriori dichiarati dal flusso e prodotti da questo evento; le prove strutturate vivono in metadati.flusso."
     },
     "voto_qualita": {
       "type": ["integer", "null"],

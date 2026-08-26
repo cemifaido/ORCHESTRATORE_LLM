@@ -99,6 +99,7 @@ import registro  # noqa: E402
 import commit_replay  # noqa: E402
 import bacheca  # noqa: E402
 import postino  # noqa: E402
+import motore_flusso  # noqa: E402
 
 AGENTI_BACHECA_DASHBOARD = ("claude", "codex", "gemini")
 
@@ -240,44 +241,29 @@ def leggi_flussi_dichiarati() -> dict[str, dict]:
     return flussi
 
 
-def _calcola_fase_flusso(messaggi: list[dict], thread_id: str) -> str:
-    """Calcola la fase corrente del workflow (da compito_standard) per un thread."""
-    st = bacheca.stato_thread(messaggi, thread_id)
-    if st in ("chiuso", "annullato"):
+def _calcola_fase_flusso(
+    messaggi: list[dict],
+    thread_id: str,
+    eventi: list[dict] | None = None,
+    flusso: dict | None = None,
+) -> str | None:
+    """Adapter sottile verso motore_flusso.deriva_stato.
+
+    Ritorna la fase attiva se lo stato e' attivo, 'chiusura' se completato,
+    None se lo stato e' incoerente o invalido (fail-safe: nessun avanzamento inventato).
+    """
+    if flusso is None:
+        flussi = leggi_flussi_dichiarati()
+        flusso = flussi.get("compito_standard", {})
+    if eventi is None:
+        eventi = []
+
+    dto = motore_flusso.deriva_stato(flusso, eventi, messaggi, thread_id)
+    if dto["stato"] == "attivo":
+        return dto["fase"]
+    elif dto["stato"] == "completato":
         return "chiusura"
-
-    chk = bacheca.checkpoint_ripristinabile_attivo(messaggi, thread_id)
-    verdetto = bacheca.verdetto_umano_corrente(messaggi, thread_id)
-
-    if chk and chk.get("ripresa"):
-        rip = chk["ripresa"]
-        att = rip.get("attende")
-        if att == "umano":
-            if verdetto == "non_revisionato":
-                return "approvazione_umana"
-            elif verdetto == "approvato":
-                return "azione_irreversibile"
-            else:
-                return "compito"
-        elif att == "gate":
-            return "gate"
-        elif att == "agente":
-            return "compito"
-
-    msgs_thread = bacheca._messaggi_del_thread(messaggi, thread_id)
-    if msgs_thread:
-        ultimo = msgs_thread[-1]
-        t = ultimo.get("tipo")
-        if t == "checkpoint":
-            return "registrazione"
-        elif t == "domanda":
-            return "triage"
-        elif t == "presa_in_carico":
-            return "compito"
-        elif t == "sintesi":
-            return "registrazione"
-
-    return "compito"
+    return None
 
 
 
@@ -1015,6 +1001,10 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
             "postino_headless_attivo": postino_headless_attivo(p_path),
         }
 
+    eventi, _ = registro.leggi_eventi_progetto(p_path)
+    flussi = leggi_flussi_dichiarati()
+    flusso_standard = flussi.get("compito_standard", {})
+
     thread_ids = sorted({m["thread_id"] for m in messaggi})
     thread_riepilogo = []
     pratiche_sospese = []
@@ -1027,7 +1017,10 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
             if agente in aspetta:
                 pending_per_agente[agente] += 1
 
-        fase_flusso = _calcola_fase_flusso(messaggi, tid)
+        stato_flusso = motore_flusso.deriva_stato(flusso_standard, eventi, messaggi, tid)
+        fase_flusso = stato_flusso["fase"] if stato_flusso["stato"] == "attivo" else (
+            "chiusura" if stato_flusso["stato"] == "completato" else None
+        )
 
         thread_riepilogo.append({
             "thread_id": tid,
@@ -1039,6 +1032,7 @@ def bacheca_progetto(progetto_id: str = "orchestratore"):
             "verdetto_umano": bacheca.verdetto_umano_corrente(messaggi, tid),
             "file_modificati": ultimo["file_modificati"],
             "fase_flusso": fase_flusso,
+            "stato_flusso": stato_flusso,
         })
 
         chk = bacheca.checkpoint_ripristinabile_attivo(messaggi, tid)

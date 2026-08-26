@@ -52,6 +52,25 @@ class RegistroTest(unittest.TestCase):
         evento["voto_qualita"] = None
         self.assertEqual(registro.valida_evento(evento), [])
 
+    def test_evento_storico_senza_correlazione_resta_valido(self) -> None:
+        """Lotto A D3: il nuovo schema resta compatibile con il JSONL esistente."""
+        self.assertEqual(registro.valida_evento(self.evento_valido()), [])
+
+    def test_valida_accetta_correlazione_e_artefatti_flusso(self) -> None:
+        evento = self.evento_valido()
+        evento["thread_id"] = "thread-123"
+        evento["artefatti_flusso"] = ["commit"]
+        evento["metadati"] = {"flusso": {"commit_hash": "abc123"}}
+        self.assertEqual(registro.valida_evento(evento), [])
+
+    def test_valida_rifiuta_correlazione_o_artefatto_vuoti(self) -> None:
+        evento = self.evento_valido()
+        evento["thread_id"] = ""
+        self.assertTrue(registro.valida_evento(evento))
+        evento = self.evento_valido()
+        evento["artefatti_flusso"] = [""]
+        self.assertTrue(registro.valida_evento(evento))
+
     def test_valida_rifiuta_timestamp_non_conforme_a_date_time(self) -> None:
         evento = self.evento_valido()
         evento["timestamp"] = "non-e-una-data"
@@ -63,6 +82,7 @@ class RegistroTest(unittest.TestCase):
             id_evento="",
             timestamp="2026-07-03T20:00:00Z",
             id_compito="task",
+            thread_id="thread-123",
             agente="codex",
             tipo_compito="revisione",
             stato="accettato",
@@ -73,9 +93,12 @@ class RegistroTest(unittest.TestCase):
             latenza_ms=0,
             regole_incluse="core",
             file_modificati="",
+            artefatti_flusso="commit",
             note="",
         )
         self.assertNotIn("rework", registro.costruisci_evento(args))
+        self.assertEqual(registro.costruisci_evento(args)["thread_id"], "thread-123")
+        self.assertEqual(registro.costruisci_evento(args)["artefatti_flusso"], ["commit"])
 
     def test_metriche_derivano_rework_da_gate_e_verdetto(self) -> None:
         evento_gate = self.evento_valido()

@@ -1470,7 +1470,15 @@
       });
     }
 
-    function renderizzaWorkflowStepper(faseCorrente, flussoDichiarato) {
+    function renderizzaWorkflowStepper(faseCorrente, flussoDichiarato, statoFlusso) {
+      if (statoFlusso && (statoFlusso.stato === "incoerente" || statoFlusso.stato === "invalido")) {
+        const diag = (statoFlusso.diagnostica && statoFlusso.diagnostica.length > 0)
+          ? statoFlusso.diagnostica.join("; ")
+          : statoFlusso.stato;
+        const cls = statoFlusso.stato === "invalido" ? "invalido" : "incoerente";
+        return `<div class="workflow-stepper" title="${escapeHtml(diag)}"><span class="stepper-step ${cls}">⚠ ${escapeHtml(statoFlusso.stato)}: ${escapeHtml(diag)}</span></div>`;
+      }
+
       let passi = [];
       if (flussoDichiarato && Array.isArray(flussoDichiarato.passi) && flussoDichiarato.passi.length > 0) {
         passi = flussoDichiarato.passi.map((p, idx) => {
@@ -1556,7 +1564,7 @@
             const aspetta = (t.aspetta && t.aspetta.length > 0)
               ? t.aspetta.map(a => `<span class="tag-agent ${escapeHtml(a)}">${escapeHtml(a)}</span>`).join(" ")
               : '<span style="color:var(--text-muted);">(nessuno)</span>';
-            const stepperHtml = renderizzaWorkflowStepper(t.fase_flusso || "compito", flussoStandard);
+            const stepperHtml = renderizzaWorkflowStepper(t.fase_flusso || "compito", flussoStandard, t.stato_flusso);
             tr.innerHTML = `
               <td title="${escapeHtml(t.thread_id)}">${escapeHtml(t.thread_id.slice(0, 8))}</td>
               <td><span class="status-badge ${escapeHtml(t.stato)}">${escapeHtml(t.stato)}</span></td>

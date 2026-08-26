@@ -85,6 +85,7 @@ def registra_classificazione(
     percorso_registro: Path,
     id_compito: str,
     contesto: str,
+    thread_id: str | None = None,
 ) -> None:
     """Registra la classificazione come evento agente=locale: senza questo, il lavoro
     del modello locale sparisce in stdout, esattamente come succedeva a Claude prima di
@@ -96,6 +97,7 @@ def registra_classificazione(
         "id_evento": str(uuid.uuid4()),
         "timestamp": registro.adesso_utc(),
         "id_compito": id_compito,
+        **({"thread_id": thread_id} if thread_id else {}),
         "agente": "locale",
         "tipo_compito": "monitoraggio",
         "stato": "passato" if risultato["esito"] == "routine" else "da_rivedere",
@@ -126,6 +128,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Triage a costo zero con il modello locale")
     parser.add_argument("--registro", default=str(PERCORSO_REGISTRO_PREDEFINITO))
     parser.add_argument("--id-compito", default=f"triage-{uuid.uuid4().hex[:8]}")
+    parser.add_argument("--thread-id", default="", help="thread bacheca correlato da propagare nell evento")
     parser.add_argument("--contesto", default="")
     args = parser.parse_args()
 
@@ -134,7 +137,9 @@ def main() -> int:
     risultato = classifica(output, contesto=args.contesto)
     latenza_ms = int((time.perf_counter() - inizio) * 1000)
 
-    registra_classificazione(risultato, latenza_ms, Path(args.registro), args.id_compito, args.contesto)
+    registra_classificazione(
+        risultato, latenza_ms, Path(args.registro), args.id_compito, args.contesto, args.thread_id or None,
+    )
 
     print(json.dumps(risultato, ensure_ascii=False, indent=2))
     return 0 if risultato["esito"] == "routine" else 1

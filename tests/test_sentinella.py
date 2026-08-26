@@ -215,6 +215,7 @@ class SentinellaTest(unittest.TestCase):
                 metodo="triage_deterministico",
                 percorso_registro=percorso,
                 id_compito="task-test",
+                thread_id="thread-test",
                 comando="test_servizi",
                 esito_gate="superato",
                 codice=0,
@@ -223,6 +224,7 @@ class SentinellaTest(unittest.TestCase):
             eventi = registro.leggi_eventi(percorso)
             self.assertEqual(evento["id_compito"], "task-test")
             self.assertEqual(eventi[0]["id_compito"], "task-test")
+            self.assertEqual(eventi[0]["thread_id"], "thread-test")
             self.assertEqual(eventi[0]["regole_incluse"], ["triage_deterministico"])
             self.assertEqual(eventi[0]["metadati"]["comando"], "test_servizi")
             self.assertEqual(eventi[0]["metadati"]["esito_gate_collegato"], "superato")

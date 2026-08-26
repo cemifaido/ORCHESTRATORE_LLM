@@ -11,6 +11,8 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 
+import motore_flusso
+
 
 RADICE = Path(__file__).resolve().parent
 PERCORSO_SCHEMA_PREDEFINITO = RADICE / "schema" / "flusso.v1.json"
@@ -174,6 +176,10 @@ def valida_flusso(dati: Any, schema: dict[str, Any]) -> list[str]:
     successori, predecessori = _grafo(per_id, produttori, consumatori, consumatori_opzionali)
     errori.extend(_errori_raggiungibilita(per_id, successori, predecessori))
     errori.extend(_errori_irreversibili(per_id, predecessori))
+    try:
+        motore_flusso.compila_flusso(dati)
+    except ValueError as errore:
+        errori.append(f"flusso non compilabile: {errore}")
     return errori
 
 

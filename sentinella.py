@@ -279,6 +279,7 @@ def registra_triage(
     metodo: str,
     percorso_registro: Path,
     id_compito: str,
+    thread_id: str | None,
     comando: str,
     esito_gate: str,
     codice: int,
@@ -290,6 +291,7 @@ def registra_triage(
         "id_evento": id_evento,
         "timestamp": adesso_utc(),
         "id_compito": id_compito,
+        **({"thread_id": thread_id} if thread_id else {}),
         "agente": "locale",
         "tipo_compito": "monitoraggio",
         "stato": "passato" if risultato["esito"] == "routine" else "da_rivedere",
@@ -335,6 +337,7 @@ def main() -> int:
     parser.add_argument("--config", default=str(PERCORSO_COMANDI_PREDEFINITO))
     parser.add_argument("--registro", default=str(PERCORSO_REGISTRO_PREDEFINITO))
     parser.add_argument("--id-compito", default="gate")
+    parser.add_argument("--thread-id", default="", help="thread bacheca correlato da propagare negli eventi")
     parser.add_argument(
         "--triage-locale",
         action="store_true",
@@ -361,6 +364,7 @@ def main() -> int:
         "id_evento": id_evento,
         "timestamp": adesso_utc(),
         "id_compito": args.id_compito,
+        **({"thread_id": args.thread_id} if args.thread_id else {}),
         "agente": "locale",
         "tipo_compito": "monitoraggio" if esito == "superato" else "errore_test",
         "stato": determina_stato(esito),
@@ -389,6 +393,7 @@ def main() -> int:
             metodo=metodo_triage,
             percorso_registro=Path(args.registro),
             id_compito=args.id_compito,
+            thread_id=args.thread_id or None,
             comando=args.comando,
             esito_gate=esito,
             codice=codice,
