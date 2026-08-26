@@ -11,6 +11,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import bacheca
+import bacheca_comandi
+import bacheca_proiezioni
+import bacheca_sintesi
 from adattatori.litellm import MisurazioneLiteLLM
 
 
@@ -713,6 +716,41 @@ class BachecaCliContractTest(unittest.TestCase):
         # interfaccia.py lo usa oggi; il lotto B potra' renderlo pubblico con un
         # nome migliore, ma fino ad allora deve restare un alias funzionante.
         self.assertTrue(callable(getattr(bacheca, "_messaggi_del_thread", None)))
+
+    def test_facade_reesporta_le_proiezioni_pure_estratte(self) -> None:
+        alias = {
+            "_messaggi_del_thread": "messaggi_del_thread",
+            "partecipanti_thread": "partecipanti_thread",
+            "_ultimo_rilevante": "ultimo_rilevante",
+            "stato_thread": "stato_thread",
+            "stato_per_destinatario": "stato_per_destinatario",
+            "destinatari_pendenti": "destinatari_pendenti",
+            "verdetto_umano_corrente": "verdetto_umano_corrente",
+            "checkpoint_ripristinabile_attivo": "checkpoint_ripristinabile_attivo",
+            "riprese_pronte": "riprese_pronte",
+            "_a_utc": "a_utc",
+            "file_occupati": "file_occupati",
+            "messaggi_aperti_per": "messaggi_aperti_per",
+        }
+        for nome_facade, nome_modulo in alias.items():
+            self.assertIs(getattr(bacheca, nome_facade), getattr(bacheca_proiezioni, nome_modulo))
+
+    def test_facade_reesporta_i_casi_uso_cli_estratti(self) -> None:
+        nomi = (
+            "comando_aggiungi", "comando_chiedi", "comando_prossimo",
+            "comando_rispondi", "comando_prendi", "comando_occupati",
+            "comando_checkpoint", "comando_ripresa", "comando_emergenza",
+            "comando_sintetizza", "comando_chiudi", "comando_approva",
+            "comando_respingi", "comando_stato", "comando_thread",
+            "comando_riepilogo", "comando_valida",
+        )
+        for nome in nomi:
+            self.assertIs(getattr(bacheca, nome), getattr(bacheca_comandi, nome))
+
+    def test_facade_reesporta_il_confine_sintesi_estratto(self) -> None:
+        self.assertIs(bacheca.sintetizza_thread, bacheca_sintesi.sintetizza_thread)
+        self.assertIs(bacheca._formatta_thread_per_dispatcher, bacheca_sintesi.formatta_thread)
+        self.assertIs(bacheca._delimita_thread_non_fidato, bacheca_sintesi.delimita_thread_non_fidato)
 
     def test_cli_rispondi_preserva_thread_e_destinatari_di_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
