@@ -37,6 +37,8 @@ if sys.platform == "win32":
 
 RADICE = Path(__file__).resolve().parent
 DIR_DATI_LOCALI = RADICE / "dati_locali"
+DIR_CONFIG = RADICE / "config"
+DIR_TEMPLATES_HOOK = DIR_CONFIG / "templates_hook"
 FILE_ENV = RADICE / ".env"
 FILE_PROGETTI = DIR_DATI_LOCALI / "progetti.json"
 
@@ -211,6 +213,55 @@ def inizializza_progetti(radice_orchestratore: Path = RADICE, percorso_progetti:
     dest.write_text(json.dumps({"versione_schema": 1, "progetti": lista_progetti}, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def inizializza_config_agenti(
+    agenti_selezionati: list[str],
+    radice_progetto: Path = RADICE,
+    sovrascrivi: bool = False,
+    dir_templates: Path | None = None,
+) -> dict[str, list[Path]]:
+    """Inizializza le configurazioni locali di hook per gli agenti a partire dai template generici.
+
+    Non sovrascrive i file esistenti a meno che sovrascrivi=True.
+    Ritorna un dizionario con gli agenti e i percorsi dei file configurati/creati.
+    """
+    risultati: dict[str, list[Path]] = {}
+    cartella_tmpl = dir_templates or DIR_TEMPLATES_HOOK
+
+    mappa: dict[str, list[tuple[str, Path]]] = {
+        "claude": [
+            ("claude_settings.esempio.json", Path(".claude") / "settings.json"),
+        ],
+        "codex": [
+            ("codex_hooks.esempio.json", Path(".codex") / "hooks.json"),
+        ],
+        "gemini": [
+            ("gemini_hooks.esempio.json", Path(".agents") / "hooks.json"),
+            ("gemini_settings.esempio.json", Path(".gemini") / "settings.json"),
+        ],
+    }
+
+    for agente in agenti_selezionati:
+        ag_norm = agente.lower().strip()
+        if ag_norm not in mappa:
+            continue
+        risultati[ag_norm] = []
+        for nome_template, path_relativo in mappa[ag_norm]:
+            file_dest = radice_progetto / path_relativo
+            file_tmpl = cartella_tmpl / nome_template
+
+            if file_dest.exists() and not sovrascrivi:
+                risultati[ag_norm].append(file_dest)
+                continue
+
+            file_dest.parent.mkdir(parents=True, exist_ok=True)
+            if file_tmpl.exists():
+                contenuto = file_tmpl.read_text(encoding="utf-8")
+                file_dest.write_text(contenuto, encoding="utf-8")
+            risultati[ag_norm].append(file_dest)
+
+    return risultati
+
+
 def installa_hook_git() -> bool:
     """Installa l'hook git pre-commit per il quality gate se disponibile."""
     script_hook = RADICE / "utility" / "installa_hook.py"
@@ -273,6 +324,7 @@ def configura_modalita_auto(diag: dict[str, Any], salta_pip: bool) -> dict[str, 
         installa_dipendenze(dev=False)
     genera_file_env(config)
     inizializza_progetti()
+    inizializza_config_agenti(config["agenti_abilitati"])
     installa_hook_git()
     return config
 
@@ -293,6 +345,9 @@ def configura_modalita_interattiva(diag: dict[str, Any], salta_pip: bool) -> dic
     if not agenti_selezionati:
         print(f"{Colori.GIALLO}Nessun agente esterno selezionato: userai la modalità manuale/dashboard.{Colori.RESET}")
         agenti_selezionati = ["umano"]
+    else:
+        if chiedi_conferma("Inizializzare automaticamente le configurazioni locali di hook per gli agenti scelti?", default=True):
+            inizializza_config_agenti(agenti_selezionati)
 
     config["agenti_abilitati"] = agenti_selezionati
 
@@ -368,6 +423,16 @@ def stampa_riepilogo_finale(config: dict[str, Any]) -> None:
     )
     postino_desc = f"{'Attivo' if config.get('postino_attivo') else 'Disattivato'} (Headless: {'Sì' if config.get('postino_headless') else 'No'})"
 
+    hook_elenco = []
+    for ag in config.get("agenti_abilitati", []):
+        if ag == "claude":
+            hook_elenco.append("Claude (.claude/settings.json)")
+        elif ag == "codex":
+            hook_elenco.append("Codex (.codex/hooks.json)")
+        elif ag == "gemini":
+            hook_elenco.append("Gemini (.agents/hooks.json)")
+    hook_desc = ", ".join(hook_elenco) if hook_elenco else "Nessuno"
+
     print(f"""
 {Colori.VERDE}{Colori.GRASSETTO}===============================================================
                ✨ SETUP COMPLETATO CON SUCCESSO!
@@ -377,6 +442,7 @@ Riepilogo configurazione salvata in {Colori.CIANO}.env{Colori.RESET}:
   • Squadra Abilitata:     {', '.join(config.get('agenti_abilitati', []))}
   • LLM Locale (GPU):      {gpu_desc}
   • Postino Automatico:    {postino_desc}
+  • Hook Agenti:           {hook_desc}
 
 {Colori.GRASSETTO}Per avviare la Dashboard Web ora:{Colori.RESET}
   {Colori.CIANO}.\\avvia_dashboard.ps1{Colori.RESET}

@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "BeforeAgent": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "bacheca-gemini",
+            "type": "command",
+            "command": "python bacheca.py prossimo --agente gemini --formato hook --evento BeforeAgent",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

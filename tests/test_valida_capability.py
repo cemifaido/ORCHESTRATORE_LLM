@@ -128,6 +128,32 @@ class ValidaCapabilityTest(unittest.TestCase):
         )
         self.assertEqual(errori, [])
 
+    def test_matrice_e_ordinata_e_mostra_i_campi_operativi(self) -> None:
+        catalogo = _catalogo(
+            _voce_valida(id="zeta_hook_pull", expires_at=None),
+            _voce_valida(
+                id="alpha_cli_headless", stato="unknown", modalita_operativa="manual_only",
+                expires_at=None,
+            ),
+        )
+        matrice = valida_capability.formatta_matrice(catalogo)
+        righe = matrice.splitlines()
+        self.assertIn("id", righe[0])
+        self.assertIn("stato", righe[0])
+        self.assertIn("modalita", righe[0])
+        self.assertIn("scadenza", righe[0])
+        self.assertLess(matrice.index("alpha_cli_headless"), matrice.index("zeta_hook_pull"))
+        self.assertIn("unknown", matrice)
+        self.assertIn("manual_only", matrice)
+        self.assertIn("-", matrice)
+
+    def test_matrice_con_catalogo_vuoto_non_crasha(self) -> None:
+        """Lo schema non impone minItems sull'array 'capability' top-level:
+        un catalogo appena inizializzato, senza ancora nessuna voce, e'
+        validato correttamente - la matrice deve gestirlo, non esplodere."""
+        matrice = valida_capability.formatta_matrice(_catalogo())
+        self.assertEqual(matrice, "nessuna capability nel catalogo")
+
     def test_catalogo_illeggibile_ritorna_errore_non_eccezione(self) -> None:
         errori = valida_capability.valida_file(valida_capability.RADICE / "non_esiste.json")
         self.assertTrue(errori)

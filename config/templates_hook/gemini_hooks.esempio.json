@@ -1,0 +1,11 @@
+{
+  "bacheca-gemini": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "python -u ../hook_gemini.py",
+        "timeout": 15
+      }
+    ]
+  }
+}

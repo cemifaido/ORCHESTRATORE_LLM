@@ -61,6 +61,72 @@ class InizializzaProgettiTest(unittest.TestCase):
                 self.assertTrue(any(p.get("id") == "orchestratore" for p in data["progetti"]))
 
 
+class InizializzaConfigAgentiTest(unittest.TestCase):
+    def test_genera_config_claude(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            risultati = sw.inizializza_config_agenti(["claude"], radice_progetto=radice)
+            self.assertIn("claude", risultati)
+            file_claude = radice / ".claude" / "settings.json"
+            self.assertTrue(file_claude.exists())
+            data = json.loads(file_claude.read_text(encoding="utf-8"))
+            self.assertIn("hooks", data)
+            self.assertIn("SessionStart", data["hooks"])
+
+    def test_genera_config_codex(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            risultati = sw.inizializza_config_agenti(["codex"], radice_progetto=radice)
+            self.assertIn("codex", risultati)
+            file_codex = radice / ".codex" / "hooks.json"
+            self.assertTrue(file_codex.exists())
+            data = json.loads(file_codex.read_text(encoding="utf-8"))
+            self.assertIn("hooks", data)
+            self.assertIn("UserPromptSubmit", data["hooks"])
+
+    def test_genera_config_gemini(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            risultati = sw.inizializza_config_agenti(["gemini"], radice_progetto=radice)
+            self.assertIn("gemini", risultati)
+            file_agents = radice / ".agents" / "hooks.json"
+            file_gemini = radice / ".gemini" / "settings.json"
+            self.assertTrue(file_agents.exists())
+            self.assertTrue(file_gemini.exists())
+            data_agents = json.loads(file_agents.read_text(encoding="utf-8"))
+            self.assertIn("bacheca-gemini", data_agents)
+
+    def test_non_sovrascrive_senza_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            file_claude = radice / ".claude" / "settings.json"
+            file_claude.parent.mkdir(parents=True, exist_ok=True)
+            file_claude.write_text('{"personalizzato": true}', encoding="utf-8")
+
+            sw.inizializza_config_agenti(["claude"], radice_progetto=radice, sovrascrivi=False)
+            self.assertEqual(file_claude.read_text(encoding="utf-8"), '{"personalizzato": true}')
+
+            sw.inizializza_config_agenti(["claude"], radice_progetto=radice, sovrascrivi=True)
+            self.assertIn("hooks", json.loads(file_claude.read_text(encoding="utf-8")))
+
+    def test_template_generici_validi_e_senza_dati_locali(self) -> None:
+        dir_templates = sw.RADICE / "config" / "templates_hook"
+        self.assertTrue(dir_templates.exists())
+        template_files = list(dir_templates.glob("*.json"))
+        self.assertGreater(len(template_files), 0)
+
+        for tf in template_files:
+            contenuto = tf.read_text(encoding="utf-8")
+            # Validità sintattica JSON
+            data = json.loads(contenuto)
+            self.assertIsInstance(data, dict)
+            # Nessun path assoluto proprietario o locale
+            self.assertNotIn("D:\\", contenuto)
+            self.assertNotIn("C:\\Users\\", contenuto)
+            self.assertNotIn("/home/", contenuto)
+            self.assertNotIn("/Users/", contenuto)
+
+
 class ModalitaAutomaticaTest(unittest.TestCase):
     def test_esegui_wizard_auto(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -69,7 +135,13 @@ class ModalitaAutomaticaTest(unittest.TestCase):
             with patch.object(sw, "FILE_ENV", file_env), \
                  patch.object(sw, "FILE_PROGETTI", file_proj), \
                  patch.object(sw, "DIR_DATI_LOCALI", Path(tmp)), \
+                 patch.object(sw, "RADICE", Path(tmp)), \
                  patch.object(sw, "installa_hook_git", return_value=True):
+                # Assicuriamoci che la cartella templates_hook esista nella radice mock
+                (Path(tmp) / "config" / "templates_hook").mkdir(parents=True, exist_ok=True)
+                for tf in (sw.RADICE / "config" / "templates_hook").glob("*.json"):
+                    (Path(tmp) / "config" / "templates_hook" / tf.name).write_text(tf.read_text(encoding="utf-8"), encoding="utf-8")
+
                 codice = sw.esegui_wizard(auto=True, salta_pip=True)
                 self.assertEqual(codice, 0)
                 self.assertTrue(file_env.exists())
@@ -78,3 +150,4 @@ class ModalitaAutomaticaTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

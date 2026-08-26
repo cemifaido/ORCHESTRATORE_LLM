@@ -140,16 +140,53 @@ def valida_file(
     return valida_catalogo(dati, schema)
 
 
+def formatta_matrice(dati: dict[str, Any]) -> str:
+    """Restituisce una vista stabile e leggibile del catalogo, solo audit."""
+    if not dati["capability"]:
+        return "nessuna capability nel catalogo"
+    intestazioni = ("id", "stato", "modalita", "scadenza")
+    righe = [
+        (
+            str(voce["id"]),
+            str(voce["stato"]),
+            str(voce["modalita_operativa"]),
+            str(voce["expires_at"] or "-"),
+        )
+        for voce in dati["capability"]
+    ]
+    righe.sort(key=lambda riga: riga[0])
+    larghezze = [
+        max(len(intestazione), *(len(riga[indice]) for riga in righe))
+        for indice, intestazione in enumerate(intestazioni)
+    ]
+
+    def riga(valori: tuple[str, ...]) -> str:
+        return "| " + " | ".join(
+            valore.ljust(larghezze[indice]) for indice, valore in enumerate(valori)
+        ) + " |"
+
+    separatore = "|-" + "-|-".join("-" * larghezza for larghezza in larghezze) + "-|"
+    return "\n".join([riga(intestazioni), separatore, *(riga(valori) for valori in righe)])
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Valida un catalogo capability (read-only).")
+    parser = argparse.ArgumentParser(description="Valida un catalogo capability (audit read-only).")
     parser.add_argument("catalogo", nargs="?", type=Path, default=PERCORSO_CATALOGO_PREDEFINITO)
     parser.add_argument("--schema", type=Path, default=PERCORSO_SCHEMA_PREDEFINITO)
+    parser.add_argument(
+        "--matrice", action="store_true",
+        help="stampa la matrice id/stato/modalita/scadenza dopo la validazione",
+    )
     args = parser.parse_args(argv)
     errori = valida_file(args.catalogo, args.schema)
     if errori:
         for errore in errori:
             print(f"errore: {errore}", file=sys.stderr)
         return 1
+    if args.matrice:
+        print(formatta_matrice(carica_json(args.catalogo)))
+        print("\nVista di audit: non abilita ne' blocca azioni a runtime.")
+        return 0
     print(f"catalogo valido: {args.catalogo}")
     return 0
 
