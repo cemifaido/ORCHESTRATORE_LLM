@@ -100,6 +100,15 @@ Ogni comando ha:
 - `limite_output_caratteri`;
 - `verifiche_connessione` (opzionale): array di URL o indirizzi (es. `["http://localhost:5173"]`) che devono essere raggiungibili via TCP prima di lanciare il test. Se offline, la Sentinella abortisce immediatamente l'avvio e registra `esito_gate` come `"errore_ambiente"`, evitando di calcolare un falso rework.
 
+**Nota operativa** (trovata col pilot su un secondo progetto, 2026-08-26): `"cartella": "."`
+si risolve rispetto alla *cartella di lavoro del processo* che lancia `sentinella.py`, non
+rispetto alla cartella del progetto target. La dashboard lo gestisce già da sola (imposta
+`cwd` esplicitamente sul sottoprocesso); se lanci `sentinella.py` a mano da riga di comando
+su un progetto diverso da questo, esegui il comando **dalla cartella del progetto target**
+(o usa un percorso assoluto in `cartella`), altrimenti la Sentinella rifiuta l'esecuzione
+con "cartella fuori dalla radice del progetto" — è il containment (vedi C2 sotto) che fa
+correttamente il suo lavoro, solo con una radice diversa da quella intesa.
+
 Non esiste esecuzione shell arbitraria.
 
 Il quality gate minimo (lint, type check, complessità) è dichiarato come comandi whitelistati come gli altri: `controllo_lint` (ruff), `controllo_tipi` (mypy), `controllo_complessita` (xenon, soglie `--max-absolute C --max-modules B --max-average B`). Le dipendenze sono in `requirements-dev.txt`, separate da quelle di runtime.
