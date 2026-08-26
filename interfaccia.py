@@ -1142,13 +1142,24 @@ def esegui_risvegli_bacheca(progetto_id: str = "orchestratore"):
             continue
 
         if postino_attivo(percorso_progetto):
-            policy = postino.autorizza(percorso_progetto, agente, candidato["thread_id"])
-            if policy["esito"] != "autorizzato":
-                risvegli.append({"agente": agente, "thread_id": candidato["thread_id"], "status": "bloccato", **policy})
+            # Prenota PRIMA dell'azione OS, non dopo (bug reale trovato da
+            # Codex in modalita' revisione, 2026-08-26): con la prenotazione
+            # dopo, due richieste concorrenti passavano entrambe il pre-check
+            # ed eseguivano entrambe l'azione OS - il contatore restava
+            # corretto (la seconda registrazione veniva rifiutata) ma il
+            # tetto non limitava le azioni reali, solo il conteggio.
+            # registra_canale() ri-verifica la policy su stato fresco e
+            # prenota atomicamente sotto lock (postino._prenota_invio):
+            # chiamarlo qui, prima di _esegui_risveglio_os, chiude la
+            # finestra invece di spostarla.
+            prenotazione = postino.registra_canale(percorso_progetto, agente, candidato["thread_id"], "deep_link")
+            if prenotazione["esito"] != "registrato":
+                risvegli.append({
+                    "agente": agente, "thread_id": candidato["thread_id"],
+                    "status": "bloccato", **prenotazione,
+                })
                 continue
         esito = _esegui_risveglio_os(agente, candidato["cronologia"], claude_session_id)
-        if postino_attivo(percorso_progetto) and esito.get("status") == "eseguito":
-            postino.registra_canale(percorso_progetto, agente, candidato["thread_id"], "deep_link")
         gia_notificati.add(candidato["id_messaggio"])
         notificati[agente] = sorted(gia_notificati)
         stato_modificato = True
@@ -1247,12 +1258,22 @@ def richiedi_revisione_postino(payload: PostinoRevisioneInput):
     L'agente ispeziona/verifica davvero il lavoro (git diff/log, test, lint)
     invece di restare uno spettatore della bacheca; resta soggetto agli stessi
     tetti/kill switch di autorizza(), che pero' un turno di revisione azzera
-    invece di consumare (vedi postino._ultimo_reset_thread)."""
+    invece di consumare (vedi postino._ultimo_reset_thread).
+
+    Richiede POSTINO_HEADLESS_ATTIVO (bug reale trovato in revisione di
+    sicurezza v3, 2026-08-25, NEW-2): senza questo controllo il pulsante
+    lanciava un processo reale anche col toggle "🤖 Dispatch Headless" spento,
+    bastava il solo "📬 Postino Automatico" - lo stesso guardrail gia'
+    applicato al dispatch di routine in esegui_risvegli_bacheca() qui non
+    era mai stato duplicato."""
     progetto = _progetto_o_404(payload.progetto_id)
     if payload.agente not in AGENTI_BACHECA_DASHBOARD:
         raise HTTPException(status_code=400, detail=f"agente non valido: {payload.agente}")
+    percorso_progetto = Path(progetto["percorso"])
+    if not postino_headless_attivo(percorso_progetto):
+        return {"esito": "bloccato", "motivo": "dispatch_headless_disattivato"}
     esito = postino.dispatch(
-        Path(progetto["percorso"]), payload.agente, payload.thread_id, modo="revisione",
+        percorso_progetto, payload.agente, payload.thread_id, modo="revisione",
     )
     return esito
 

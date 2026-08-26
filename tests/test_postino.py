@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -283,6 +285,31 @@ class PostinoDispatchTest(unittest.TestCase):
             )
             self.assertEqual(stato["invii"][0]["canale"], "deep_link")
 
+    def test_registra_canale_ri_verifica_policy_sotto_lock(self) -> None:
+        """Guardrail (trovato da Codex in revisione, 2026-08-26, sullo stesso
+        schema di dispatch()): il chiamante (interfaccia.py) autorizza con
+        autorizza() e poi esegue l'azione OS PRIMA di chiamare
+        registra_canale() - fra i due passaggi il budget puo' essersi gia'
+        esaurito per un'altra chiamata concorrente. registra_canale() deve
+        rifiutarsi invece di superare il tetto in silenzio."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            percorso_config = radice / "config" / "comandi.json"
+            percorso_config.parent.mkdir(parents=True, exist_ok=True)
+            percorso_config.write_text(
+                json.dumps({"versione_schema": 1, "postino": {"max_turni_thread": 1}}), encoding="utf-8",
+            )
+            # stesso thread: il tetto per thread vale per TUTTI i canali (deep_link
+            # incluso), non solo per l'headless.
+            primo = postino.registra_canale(radice, "gemini", "t-postino", "deep_link")
+            secondo = postino.registra_canale(radice, "codex", "t-postino", "deep_link")
+
+            self.assertEqual(primo["esito"], "registrato")
+            self.assertEqual(secondo, {"esito": "bloccato", "motivo": "tetto_thread"})
+            stato = postino._leggi_stato(radice)
+            assert stato is not None
+            self.assertEqual(len(stato["invii"]), 1)
+
 
 class PostinoModoRevisioneTest(unittest.TestCase):
     """Modalita' revisione (decisione umana, 2026-08-25): su richiesta esplicita
@@ -367,6 +394,108 @@ class PostinoModoRevisioneTest(unittest.TestCase):
                 postino.autorizza(radice, "claude", "t-postino"),
                 {"esito": "bloccato", "motivo": "tetto_thread"},
             )
+
+
+class ConcorrenzaStatoTest(unittest.TestCase):
+    """Guardrail H5 (revisione di sicurezza v3, 2026-08-25): il watcher
+    automatico e il pulsante 'Revisione' della dashboard possono chiamare
+    dispatch() nello stesso momento - senza un lock, due read-modify-write
+    concorrenti su postino_stato.json si sovrascrivono a vicenda."""
+
+    def test_prenota_invio_impedisce_doppia_autorizzazione_sullo_stesso_budget(self) -> None:
+        """Guardrail approfondito (trovato da Codex in modalita' revisione,
+        2026-08-26, sul primo fix H5): un lock solo sulla scrittura finale
+        non basta - due dispatch concorrenti potevano leggere lo stesso
+        budget "ancora libero" ed essere autorizzati entrambi, superando il
+        tetto. _prenota_invio deve ri-verificare la policy DENTRO lo stesso
+        lock in cui prenota il turno, cosi' la seconda chiamata vede gia'
+        la prenotazione della prima e viene bloccata."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            percorso_config = radice / "config" / "comandi.json"
+            percorso_config.parent.mkdir(parents=True, exist_ok=True)
+            percorso_config.write_text(
+                json.dumps({"versione_schema": 1, "postino": {"max_invii_giorno": 1}}), encoding="utf-8",
+            )
+            ora = datetime.now(timezone.utc)
+            record_a = {
+                "id": "a", "quando": ora.isoformat(), "agente": "claude", "thread_id": "t-a",
+                "canale": "headless", "modo": "routine", "prompt_sha256": "x", "codice": None,
+            }
+            record_b = {
+                "id": "b", "quando": ora.isoformat(), "agente": "codex", "thread_id": "t-b",
+                "canale": "headless", "modo": "routine", "prompt_sha256": "y", "codice": None,
+            }
+
+            motivo_a = postino._prenota_invio(radice, "claude", "t-a", ora, record_a)
+            motivo_b = postino._prenota_invio(radice, "codex", "t-b", ora, record_b)
+
+            self.assertIsNone(motivo_a)
+            self.assertEqual(motivo_b, "budget_giornaliero")
+            stato = postino._leggi_stato(radice)
+            assert stato is not None
+            self.assertEqual(len(stato["invii"]), 1)
+            self.assertEqual(stato["invii"][0]["id"], "a")
+
+    def test_finalizza_invio_aggiorna_solo_il_record_giusto(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            stato = {
+                "versione_schema": 1,
+                "invii": [
+                    {**_invio(0, agente="claude", thread_id="t-a"), "id": "a", "codice": None},
+                    {**_invio(0, agente="codex", thread_id="t-b"), "id": "b", "codice": None},
+                ],
+            }
+            postino._scrivi_stato(radice, stato)
+
+            postino._finalizza_invio(radice, "b", 0)
+
+            stato_finale = postino._leggi_stato(radice)
+            assert stato_finale is not None
+            per_id = {i["id"]: i["codice"] for i in stato_finale["invii"]}
+            self.assertEqual(per_id, {"a": None, "b": 0})
+
+    def test_scrivi_stato_produce_sempre_json_valido_anche_se_interrotta(self) -> None:
+        """Scrittura atomica: il file temporaneo viene creato accanto al
+        percorso reale e rinominato solo a scrittura completata - il
+        percorso reale non e' mai visibile a meta' scrittura."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            postino._scrivi_stato(radice, {"versione_schema": 1, "invii": [_invio(0)]})
+            percorso = radice / "dati_locali" / "orchestrazione" / "postino_stato.json"
+            # nessun file temporaneo residuo dopo una scrittura riuscita
+            residui = list(percorso.parent.glob(".postino_stato_*.tmp"))
+            self.assertEqual(residui, [])
+            self.assertEqual(json.loads(percorso.read_text(encoding="utf-8"))["invii"][0]["thread_id"], "t-postino")
+
+    def test_blocco_stato_rimuove_lock_abbandonato(self) -> None:
+        """Un lock piu' vecchio del timeout si considera abbandonato (processo
+        terminato senza pulire, es. kill -9) e viene rimosso invece di
+        bloccare per sempre - stesso principio fail-safe del resto del modulo."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            percorso_lock = postino._percorso_lock_stato(radice)
+            percorso_lock.parent.mkdir(parents=True, exist_ok=True)
+            percorso_lock.write_text("", encoding="utf-8")
+            vecchio = time.time() - 400
+            os.utime(percorso_lock, (vecchio, vecchio))
+
+            with postino._blocco_stato(radice, timeout_secondi=310.0):
+                pass  # se il lock abbandonato non viene ripulito, questo si blocca/solleva
+
+            self.assertFalse(percorso_lock.exists())
+
+    def test_blocco_stato_e_rientrante_in_sequenza(self) -> None:
+        """Due acquisizioni in sequenza (non annidate) funzionano normalmente:
+        il lock viene rilasciato alla fine di ciascun 'with'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            with postino._blocco_stato(radice, timeout_secondi=5.0):
+                pass
+            with postino._blocco_stato(radice, timeout_secondi=5.0):
+                pass
+            self.assertFalse(postino._percorso_lock_stato(radice).exists())
 
 
 if __name__ == "__main__":

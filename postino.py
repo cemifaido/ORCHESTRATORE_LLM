@@ -2,10 +2,15 @@
 """Dispatcher headless del postino, rigorosamente fail-closed."""
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import os
 import shutil
 import subprocess
+import tempfile
+import time
+import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -100,17 +105,28 @@ def _spento(radice: Path) -> bool:
     return not (radice / "dati_locali" / "orchestrazione" / "POSTINO_ATTIVO").exists()
 
 
+def _valuta_policy(radice: Path, stato: dict[str, Any], agente: str, thread_id: str, ora: datetime) -> str | None:
+    """Cuore della decisione di autorizza(), fattorizzato perche' dispatch()
+    deve poterlo rivalutare su uno stato appena riletto DENTRO il proprio
+    lock (vedi _prenota_invio) senza duplicare la logica dei tetti."""
+    return _motivo_blocco(
+        stato, agente, thread_id, ora, carica_limiti(radice),
+        ultimo_tocco_umano=_ultimo_reset_thread(stato, radice, thread_id),
+    )
+
+
 def autorizza(radice: Path, agente: str, thread_id: str) -> dict[str, Any]:
-    """Policy comune per watcher/deep-link/headless; non esegue effetti esterni."""
+    """Policy comune per watcher/deep-link/headless; non esegue effetti esterni.
+
+    Usata da dispatch() solo come pre-check economico fuori dal lock (evita
+    di prendere il lock per i casi ovvi): la decisione che conta davvero e'
+    quella rifatta dentro _prenota_invio(), su stato fresco."""
     if _spento(radice):
         return {"esito": "bloccato", "motivo": "kill_switch"}
     stato = _leggi_stato(radice)
     if stato is None:
         return {"esito": "bloccato", "motivo": "stato_non_leggibile"}
-    motivo = _motivo_blocco(
-        stato, agente, thread_id, _adesso(), carica_limiti(radice),
-        ultimo_tocco_umano=_ultimo_reset_thread(stato, radice, thread_id),
-    )
+    motivo = _valuta_policy(radice, stato, agente, thread_id, _adesso())
     return {"esito": "autorizzato"} if motivo is None else {"esito": "bloccato", "motivo": motivo}
 
 
@@ -169,9 +185,69 @@ def _leggi_stato(radice: Path) -> dict[str, Any] | None:
 
 
 def _scrivi_stato(radice: Path, stato: dict[str, Any]) -> None:
+    """Scrittura atomica (bug reale trovato in revisione di sicurezza v3,
+    2026-08-25, H5): scrive su un file temporaneo nella stessa cartella e poi
+    rimpiazza con os.replace(), atomico sia su Windows sia su POSIX - un
+    crash a meta' scrittura non lascia mai un JSON troncato sul percorso
+    reale (un write_text() diretto invece si')."""
     percorso = _percorso_stato(radice)
     percorso.parent.mkdir(parents=True, exist_ok=True)
-    percorso.write_text(json.dumps(stato, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
+    fd, percorso_temp_str = tempfile.mkstemp(dir=percorso.parent, prefix=".postino_stato_", suffix=".tmp")
+    percorso_temp = Path(percorso_temp_str)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as file:
+            file.write(json.dumps(stato, ensure_ascii=False, indent=2))
+        os.replace(percorso_temp, percorso)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            percorso_temp.unlink()
+        raise
+
+
+def _percorso_lock_stato(radice: Path) -> Path:
+    return _percorso_stato(radice).with_suffix(".lock")
+
+
+@contextlib.contextmanager
+def _blocco_stato(radice: Path, *, timeout_secondi: float = 310.0):
+    """Serializza il read-modify-write di postino_stato.json fra chiamate
+    concorrenti (bug reale trovato in revisione di sicurezza v3, 2026-08-25,
+    H5): il watcher automatico e il pulsante 'Revisione' della dashboard
+    possono chiamare dispatch() nello stesso momento, e senza questo lock due
+    scritture concorrenti si sovrascrivono a vicenda (l'ultima vince, la
+    prima sparisce dalla cronologia - un "lost update" classico).
+
+    os.O_CREAT | os.O_EXCL e' una creazione atomica garantita dal sistema
+    operativo sia su Windows sia su POSIX (non serve fcntl/msvcrt specifici
+    per piattaforma). Un lock piu' vecchio del timeout del subprocess di
+    dispatch (300s) piu' un margine si considera abbandonato (processo
+    terminato senza pulire, es. kill -9) e viene rimosso invece di bloccare
+    per sempre - stesso principio fail-safe del resto del modulo."""
+    percorso_lock = _percorso_lock_stato(radice)
+    percorso_lock.parent.mkdir(parents=True, exist_ok=True)
+    scadenza = time.monotonic() + timeout_secondi
+    while True:
+        try:
+            fd = os.open(percorso_lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            break
+        except FileExistsError:
+            try:
+                eta_lock = time.time() - percorso_lock.stat().st_mtime
+            except OSError:
+                eta_lock = 0.0
+            if eta_lock > timeout_secondi:
+                with contextlib.suppress(OSError):
+                    percorso_lock.unlink()
+                continue
+            if time.monotonic() > scadenza:
+                raise TimeoutError(f"lock su {percorso_lock} non ottenuto entro {timeout_secondi}s")
+            time.sleep(0.05)
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            percorso_lock.unlink()
 
 
 def _registra(radice: Path, record: dict[str, Any]) -> None:
@@ -186,13 +262,30 @@ def _registra(radice: Path, record: dict[str, Any]) -> None:
 
 
 def registra_canale(radice: Path, agente: str, thread_id: str, canale: str) -> dict[str, Any]:
-    """Consuma budget e registra un risveglio non-headless gia' autorizzato."""
-    stato = _leggi_stato(radice)
-    if stato is None:
-        return {"esito": "bloccato", "motivo": "stato_non_leggibile"}
-    record = {"quando": _adesso().isoformat(), "agente": agente, "thread_id": thread_id, "canale": canale, "codice": 0}
-    stato["invii"].append(record)
-    _scrivi_stato(radice, stato)
+    """Prenota/registra un risveglio non-headless, ri-verificando la policy
+    su stato fresco sotto lock (postino._prenota_invio) prima di scrivere.
+
+    Va chiamato PRIMA dell'azione OS (focus IDE/copia appunti), non dopo
+    (bug reale trovato da Codex in modalita' revisione, 2026-08-26): con la
+    prenotazione dopo l'azione, due chiamate concorrenti (questo percorso e'
+    raggiungibile anche via POST /api/bacheca/risvegli, in un thread pool -
+    concorrenza reale non solo teorica) passavano entrambe il pre-check ed
+    eseguivano entrambe l'azione OS - il contatore restava corretto (la
+    seconda registrazione veniva rifiutata) ma il tetto non limitava le
+    azioni REALI, solo il loro conteggio. Prenotando prima, una chiamata
+    concorrente bloccata qui non arriva mai a compiere l'azione OS.
+
+    Se l'azione OS fallisce DOPO una prenotazione riuscita, il turno resta
+    comunque consumato (stessa filosofia di dispatch(): un tentativo reale,
+    riuscito o no, consuma il tetto - non annullarlo mai a ritroso)."""
+    ora = _adesso()
+    record = {
+        "id": str(uuid.uuid4()), "quando": ora.isoformat(), "agente": agente,
+        "thread_id": thread_id, "canale": canale, "codice": 0,
+    }
+    motivo_blocco = _prenota_invio(radice, agente, thread_id, ora, record)
+    if motivo_blocco is not None:
+        return {"esito": "bloccato", "motivo": motivo_blocco}
     _registra(radice, record)
     return {"esito": "registrato", **record}
 
@@ -307,6 +400,56 @@ def _risolvi_eseguibile(nome: str) -> str | None:
     return shutil.which(nome)
 
 
+def _prenota_invio(radice: Path, agente: str, thread_id: str, ora: datetime, record: dict[str, Any]) -> str | None:
+    """Rivaluta l'autorizzazione su stato FRESCO e, solo se ancora valida,
+    prenota subito il turno (persiste 'record' con codice=None) - tutto sotto
+    lo stesso lock. Ritorna il motivo del blocco se la ri-verifica fallisce,
+    altrimenti None (prenotato con successo).
+
+    Necessario oltre alla scrittura atomica di _finalizza_invio() qui sotto:
+    un lock solo sulla scrittura FINALE non basta, perche' due dispatch()
+    concorrenti chiamerebbero comunque autorizza() ciascuno sul proprio stato
+    (entrambi letti PRIMA che l'altro registri nulla), verrebbero autorizzati
+    entrambi sullo stesso budget "ancora libero" e lancerebbero entrambi il
+    subprocess, superando il tetto (bug reale trovato da Codex in modalita'
+    revisione, 2026-08-26, sul fix H5 precedente - non solo teorico: trovato
+    rileggendo il codice per davvero, non ipotizzato). Prenotare il turno
+    DENTRO lo stesso lock in cui si rivaluta la policy chiude la finestra:
+    la seconda chiamata concorrente rilegge uno stato che gia' contiene la
+    prenotazione della prima."""
+    with _blocco_stato(radice):
+        stato = _leggi_stato(radice)
+        if stato is None:
+            return "stato_non_leggibile"
+        if _spento(radice):
+            return "kill_switch"
+        motivo = _valuta_policy(radice, stato, agente, thread_id, ora)
+        if motivo is not None:
+            return motivo
+        stato["invii"].append(record)
+        _scrivi_stato(radice, stato)
+    return None
+
+
+def _finalizza_invio(radice: Path, id_invio: str, codice: int | None) -> None:
+    """Aggiorna il campo 'codice' del record prenotato con l'esito reale del
+    subprocess (eseguito FUORI dal lock, puo' durare fino a 300s - tenere il
+    lock per tutta la durata bloccherebbe ogni altro dispatch, anche su
+    thread/progetti diversi). Rilegge lo stato fresco dentro il lock: un'altra
+    prenotazione concorrente puo' essere avvenuta nel frattempo, riscrivere
+    una copia in memoria vecchia la perderebbe (stesso principio di
+    _prenota_invio)."""
+    with _blocco_stato(radice):
+        stato = _leggi_stato(radice)
+        if stato is None:
+            return
+        for invio in stato["invii"]:
+            if invio.get("id") == id_invio:
+                invio["codice"] = codice
+                break
+        _scrivi_stato(radice, stato)
+
+
 def dispatch(
     radice: Path, agente: str, thread_id: str, *, modo: str = "routine", esegui=subprocess.run
 ) -> dict[str, Any]:
@@ -322,26 +465,33 @@ def dispatch(
     esteso a ispezione/verifica read-only, mai a scrittura (decisione umana,
     2026-08-25). I suoi invii azzerano il tetto_thread come un tocco umano
     (vedi _ultimo_reset_thread), quindi non consumano il budget condiviso
-    della modalita' routine."""
+    della modalita' routine.
+
+    Autorizzazione + prenotazione del turno sono atomiche sotto lock (vedi
+    _prenota_invio): un pre-check con autorizza() qui sotto e' solo un
+    ottimizzazione per evitare di prendere il lock nei casi ovvi (kill switch
+    spento), la decisione che conta davvero e' quella dentro il lock."""
     policy = autorizza(radice, agente, thread_id)
     if policy["esito"] != "autorizzato":
         return policy
     comandi = COMANDI_REVISIONE if modo == "revisione" else COMANDI
     if agente not in comandi:
         return {"esito": "bloccato", "motivo": "capability_non_autorizzata"}
-    stato = _leggi_stato(radice)
-    if stato is None:
-        return {"esito": "bloccato", "motivo": "stato_non_leggibile"}
+
     ora = _adesso()
     prompt = prompt_revisione(agente, thread_id) if modo == "revisione" else prompt_fisso(agente, thread_id)
+    id_invio = str(uuid.uuid4())
+    record = {
+        "id": id_invio, "quando": ora.isoformat(), "agente": agente, "thread_id": thread_id,
+        "canale": "headless", "modo": modo,
+        "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "codice": None,
+    }
+    motivo_blocco = _prenota_invio(radice, agente, thread_id, ora, record)
+    if motivo_blocco is not None:
+        return {"esito": "bloccato", "motivo": motivo_blocco}
+
     eseguibile = _risolvi_eseguibile(comandi[agente][0])
     if eseguibile is None:
-        record = {
-            "quando": ora.isoformat(), "agente": agente, "thread_id": thread_id, "canale": "headless",
-            "modo": modo, "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "codice": None,
-        }
-        stato["invii"].append(record)
-        _scrivi_stato(radice, stato)
         _registra(radice, record)
         return {"esito": "errore", "motivo": "eseguibile_non_trovato", **record}
     comando = [eseguibile, *comandi[agente][1:], prompt]
@@ -355,12 +505,7 @@ def dispatch(
         comando, cwd=radice, text=True, encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=300, shell=False, check=False,
     )
-    record = {
-        "quando": ora.isoformat(), "agente": agente, "thread_id": thread_id, "canale": "headless",
-        "modo": modo, "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
-        "codice": risultato.returncode,
-    }
-    stato["invii"].append(record)
-    _scrivi_stato(radice, stato)
+    _finalizza_invio(radice, id_invio, risultato.returncode)
+    record["codice"] = risultato.returncode
     _registra(radice, record)
     return {"esito": "inviato", **record}

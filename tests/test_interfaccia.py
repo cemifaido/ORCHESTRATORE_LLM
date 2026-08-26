@@ -631,6 +631,69 @@ class PostinoHeadlessTest(unittest.TestCase):
             self.assertEqual(risultato["risvegli"][0]["status"], "bloccato")
             self.assertEqual(risultato["risvegli"][0]["motivo"], "debounce")
 
+    def test_risveglio_deep_link_prenota_prima_dell_azione_os(self) -> None:
+        """Guardrail (trovato da Codex in modalita' revisione, 2026-08-26): la
+        prenotazione (registra_canale) deve avvenire PRIMA dell'azione OS, non
+        dopo - altrimenti due richieste concorrenti passano entrambe il
+        pre-check ed eseguono entrambe l'azione OS, anche se il tetto ne
+        permette solo una. Se la prenotazione e' bloccata, l'azione OS non
+        deve mai partire."""
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti, richiesta = self._progetto_con_richiesta(tmp, agente="gemini")
+            p_path = Path(tmp)
+            interfaccia.imposta_postino(p_path, attivo=True)
+
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+                nuova = bacheca.costruisci_messaggio(
+                    mittente="umano", destinatari=["gemini"], tipo="richiesta", testo="nuovo",
+                )
+                bacheca.aggiungi_messaggio(
+                    p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl", nuova
+                )
+                with (
+                    patch.object(
+                        interfaccia.postino, "registra_canale",
+                        return_value={"esito": "bloccato", "motivo": "tetto_thread"},
+                    ) as registra_mock,
+                    patch.object(interfaccia, "_esegui_risveglio_os") as risveglio_os,
+                ):
+                    risultato = interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+
+            registra_mock.assert_called_once()
+            risveglio_os.assert_not_called()
+            self.assertEqual(risultato["risvegli"][0]["status"], "bloccato")
+            self.assertEqual(risultato["risvegli"][0]["motivo"], "tetto_thread")
+
+    def test_risveglio_deep_link_esegue_azione_os_dopo_prenotazione_riuscita(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti, richiesta = self._progetto_con_richiesta(tmp, agente="gemini")
+            p_path = Path(tmp)
+            interfaccia.imposta_postino(p_path, attivo=True)
+
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+                nuova = bacheca.costruisci_messaggio(
+                    mittente="umano", destinatari=["gemini"], tipo="richiesta", testo="nuovo",
+                )
+                bacheca.aggiungi_messaggio(
+                    p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl", nuova
+                )
+                with (
+                    patch.object(
+                        interfaccia.postino, "registra_canale",
+                        return_value={"esito": "registrato", "canale": "deep_link"},
+                    ) as registra_mock,
+                    patch.object(
+                        interfaccia, "_esegui_risveglio_os",
+                        return_value={"status": "eseguito", "modalita": "nuova_chat"},
+                    ) as risveglio_os,
+                ):
+                    interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+
+            registra_mock.assert_called_once()
+            risveglio_os.assert_called_once()
+
     def test_risveglio_headless_usa_gemini_capability_ora_supportata(self) -> None:
         """Gemini e' in postino.COMANDI dal 2026-08-25 (agy con
         --dangerously-skip-permissions, verificato dal vivo su Windows/WSL):
@@ -737,6 +800,7 @@ class PostinoRevisioneEndpointTest(unittest.TestCase):
     def test_richiede_dispatch_in_modalita_revisione(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             p_path = Path(tmp)
+            interfaccia.imposta_postino_headless(p_path, attivo=True)
             progetti = [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
             with (
                 patch.object(interfaccia, "leggi_progetti", return_value=progetti),
@@ -749,6 +813,26 @@ class PostinoRevisioneEndpointTest(unittest.TestCase):
 
         self.assertEqual(risultato, {"esito": "inviato"})
         dispatch_mock.assert_called_once_with(p_path, "codex", "t-1", modo="revisione")
+
+    def test_bloccato_senza_dispatch_headless_attivo(self) -> None:
+        """Guardrail di sicurezza (revisione esterna v3, 2026-08-25, NEW-2):
+        senza il toggle 'Dispatch Headless' esplicitamente acceso, il pulsante
+        non deve mai lanciare un processo reale, qualunque sia lo stato del
+        postino di base."""
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            progetti = [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
+            with (
+                patch.object(interfaccia, "leggi_progetti", return_value=progetti),
+                patch.object(interfaccia.postino, "dispatch") as dispatch_mock,
+            ):
+                payload = interfaccia.PostinoRevisioneInput(
+                    progetto_id="test_proj", agente="codex", thread_id="t-1",
+                )
+                risultato = interfaccia.richiedi_revisione_postino(payload)
+
+        self.assertEqual(risultato, {"esito": "bloccato", "motivo": "dispatch_headless_disattivato"})
+        dispatch_mock.assert_not_called()
 
     def test_rifiuta_agente_non_valido(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
