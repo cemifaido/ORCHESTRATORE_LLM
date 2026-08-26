@@ -117,27 +117,35 @@ solo quando l'ipotesi "questa macchina, questo utente" non regge più. Elenco co
 `docs/PIANO_INDUSTRIALIZZAZIONE.md` §10 (rilascio pubblico); qui solo il taglio
 sicurezza:
 
-- **Config di hook con path assoluti e dati di sessioni reali committati**
-  (`.claude/settings.json` aveva una `permissions.allow` con comandi verbatim di
-  incidenti reali) — per un fork di terzi questo non è solo "non funziona", è un file
-  che non dovrebbe essere distribuito così com'è. Serve un template portabile o un
-  comando di init che generi la configurazione locale, mai committata.
-- **Manifest di capability implementato ma non collegato al runtime** (proposta di
-  Codex, Step 3 del piano chiuso il 2026-08-26 — nota aggiornata dopo revisione Codex
-  del 2026-08-26 sul gap rimasto): `schema/capability.v1.json` +
-  `valida_capability.py` + `config/capability_catalogo.json` esistono e sono
-  testati, con `default deny` (verified richiesto per `automatica`) e scadenza a
-  90 giorni imposti come invarianti del validatore. **Ma è un controllo
-  strutturale offline, non enforcement a runtime**: nessun punto del codice
-  (`postino.py`, `sentinella.py`, `registro.py`, dispatch) legge il catalogo
-  prima di agire — l'unico modo in cui l'invariante protegge davvero qualcosa
-  oggi è se un umano esegue `valida_capability.py` e legge l'esito. Finché non
-  esiste una lettura runtime fail-closed del catalogo prima di ogni azione
-  automatica, non va descritto né percepito come un gate di sicurezza attivo:
-  è un audit strutturale, non un enforcement. Implementare la lettura runtime
-  fail-closed è un item futuro esplicito, da fare prima di qualunque
-  installer/configuratore automatico che si affidi al catalogo per decidere
-  cosa è sicuro eseguire.
+- **Config di hook con path assoluti e dati di sessioni reali committati — chiuso
+  (2026-08-26)**: `.claude/settings.json` aveva una `permissions.allow` con comandi
+  verbatim di incidenti reali. Leak storico chiuso in precedenza (file gitignored,
+  storia riscritta). La seconda metà — nessun template portabile né un modo per
+  generare la configurazione locale senza scriverla a mano — è ora chiusa: template
+  generici in `config/templates_hook/` (nessun path assoluto, nessun dato di sessione
+  reale, verificato anche da test dedicato) e `setup_wizard.py` con
+  `inizializza_config_agenti()` che li applica per gli agenti selezionati durante il
+  setup, senza mai sovrascrivere una config esistente a meno di scelta esplicita
+  (lavoro di Gemini, bacheca thread `02124182`).
+- **Manifest di capability: enforcement runtime — chiuso (2026-08-26)**: era un
+  controllo strutturale offline (`valida_capability.py` protegge solo se un umano
+  lo esegue a mano) fino a oggi. Chiuso con `capability_policy.py` (modulo puro,
+  bacheca thread `2b5c8a22`, lavoro di Codex): gate fail-closed innestati in
+  `postino.dispatch()` (canale headless), `postino.registra_canale()` (canale
+  deep_link) e `hook_gemini.py` (canale hook_pull) — capability assente, non
+  `verified`, non `automatica` o scaduta blocca, con motivo deterministico
+  scritto sia in `dati_locali/orchestrazione/capability_blocchi.jsonl` sia nel
+  log diagnostico esistente (mai un blocco silenzioso, stessa disciplina del
+  bug CWD dell'hook Gemini). Test con fixture/mock, mai il catalogo reale nella
+  suite. **Verificato dal vivo, non solo a schema**: attivando l'enforcement,
+  `gemini_uri_wake` (mai realmente testato) è stato provato due volte
+  (`dashboard_os.copia_negli_appunti`+`lancia_ide_uri`) e osservato NON
+  funzionare — comando eseguito con successo, appunti popolati, ma la finestra
+  Antigravity non va mai in focus da sola. Declassato da `unknown` a `failed`
+  nel catalogo reale (stato più informativo per un fallimento osservato, non
+  solo mai provato) — resta `manual_only` per default deny, causa non ancora
+  indagata. La consegna messaggi a Gemini (`gemini_hook_pull`, canale diverso)
+  non è toccata, resta `verified`/`automatica`.
 - **Adapter Windows-only** (`dashboard_os.py`, deep-link/clipboard del risveglio via
   `antigravity-ide://`): voce corretta dopo verifica diretta (2026-08-26) — non e' un
   fallimento silenzioso. Il catalogo capability modella gia' correttamente
@@ -183,4 +191,7 @@ decisione ancora non presa (§7).
   altrimenti maschererebbe un problema di generalizzazione), con il core
   (registro/bacheca/sentinella/dashboard) funzionante in modalità manuale.
 - Una matrice di capability che riporti esplicitamente `enabled`/`manual_only`/
-  `unavailable` invece di degradare in silenzio.
+  `unavailable` invece di degradare in silenzio — **chiuso (2026-08-26)**:
+  `python valida_capability.py --matrice` (lavoro di Codex, bacheca thread
+  `c62ab2ed`), vista di sola lettura id/stato/modalità/scadenza con avviso
+  esplicito che è audit, non enforcement.

@@ -198,6 +198,14 @@ class CaricaLimitiTest(unittest.TestCase):
 
 
 class PostinoDispatchTest(unittest.TestCase):
+    def setUp(self) -> None:
+        patcher = patch(
+            "postino.capability_policy.autorizza_automazione",
+            return_value={"esito": "autorizzato", "capability": "test_cli_headless"},
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_dispatch_simulato_registra_stato_e_registro(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             radice = _radice_attiva(tmp)
@@ -268,6 +276,19 @@ class PostinoDispatchTest(unittest.TestCase):
             self.assertEqual(esito, {"esito": "bloccato", "motivo": "capability_non_autorizzata"})
             esegui.assert_not_called()
 
+    def test_dispatch_bloccato_da_catalogo_registra_diagnostica_e_non_esegue(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            esegui = MagicMock()
+            with patch("postino.capability_policy.autorizza_automazione", return_value={
+                "esito": "bloccato", "motivo": "capability_scaduta", "capability": "claude_cli_headless",
+            }):
+                esito = postino.dispatch(radice, "claude", "t-postino", esegui=esegui)
+            self.assertEqual(esito["motivo"], "capability_scaduta")
+            esegui.assert_not_called()
+            percorso = radice / "dati_locali" / "orchestrazione" / "capability_blocchi.jsonl"
+            self.assertIn("capability_scaduta", percorso.read_text(encoding="utf-8"))
+
     def test_dispatch_bloccato_da_kill_switch_non_esegue_nulla(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             esegui = MagicMock()
@@ -316,6 +337,14 @@ class PostinoModoRevisioneTest(unittest.TestCase):
     i soci possono ispezionare/verificare davvero, non solo commentare in
     bacheca; i suoi turni azzerano il tetto_thread come un tocco umano, ad
     ogni risposta scritta in questa modalita' (nessun tetto fisso alzato)."""
+
+    def setUp(self) -> None:
+        patcher = patch(
+            "postino.capability_policy.autorizza_automazione",
+            return_value={"esito": "autorizzato", "capability": "test_cli_headless"},
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_dispatch_modo_revisione_usa_comandi_estesi_e_registra_modo(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

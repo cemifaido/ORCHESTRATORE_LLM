@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import bacheca
+import capability_policy
 import registro
 
 
@@ -292,6 +293,10 @@ def registra_canale(radice: Path, agente: str, thread_id: str, canale: str) -> d
     Se l'azione OS fallisce DOPO una prenotazione riuscita, il turno resta
     comunque consumato (stessa filosofia di dispatch(): un tentativo reale,
     riuscito o no, consuma il tetto - non annullarlo mai a ritroso)."""
+    capability = capability_policy.autorizza_automazione(agente, canale)
+    if capability["esito"] != "autorizzato":
+        capability_policy.registra_blocco(radice, agente, canale, capability)
+        return capability
     ora = _adesso()
     record = {
         "id": str(uuid.uuid4()), "quando": ora.isoformat(), "agente": agente,
@@ -485,6 +490,10 @@ def dispatch(
     _prenota_invio): un pre-check con autorizza() qui sotto e' solo un
     ottimizzazione per evitare di prendere il lock nei casi ovvi (kill switch
     spento), la decisione che conta davvero e' quella dentro il lock."""
+    capability = capability_policy.autorizza_automazione(agente, "headless")
+    if capability["esito"] != "autorizzato":
+        capability_policy.registra_blocco(radice, agente, "headless", capability)
+        return capability
     policy = autorizza(radice, agente, thread_id)
     if policy["esito"] != "autorizzato":
         return policy

@@ -15,6 +15,7 @@ RADICE = Path(__file__).resolve().parent
 sys.path.insert(0, str(RADICE))
 
 import bacheca  # noqa: E402
+import capability_policy  # noqa: E402
 
 
 def main() -> int:
@@ -28,9 +29,11 @@ def main() -> int:
     except Exception:
         pass
 
+    decisione = capability_policy.autorizza_automazione("gemini", "hook_pull")
     evento_log = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "stdin": payload_stdin,
+        "capability_policy": decisione,
     }
     try:
         percorso_log.parent.mkdir(parents=True, exist_ok=True)
@@ -38,6 +41,16 @@ def main() -> int:
             f.write(json.dumps(evento_log, ensure_ascii=False) + "\n")
     except Exception:
         pass
+
+    if decisione["esito"] != "autorizzato":
+        registrato = capability_policy.registra_blocco(RADICE, "gemini", "hook_pull", decisione)
+        print(
+            f"hook Gemini bloccato dalla policy capability: {decisione['motivo']} "
+            f"(log={'ok' if registrato else 'fallito'})",
+            file=sys.stderr,
+        )
+        print(json.dumps({}))
+        return 0
 
     # Recupera i messaggi pendenti e formatta per Antigravity
     percorso_bacheca = RADICE / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
