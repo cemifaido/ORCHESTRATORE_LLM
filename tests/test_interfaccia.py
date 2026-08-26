@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -102,6 +104,57 @@ class IntegraProgettoTest(unittest.TestCase):
             contenuto = (dest_path / ".gitignore").read_text(encoding="utf-8")
             self.assertIn("node_modules/", contenuto)
             self.assertIn("config/comandi.json", contenuto)
+
+
+class LeggiProgettiTest(unittest.TestCase):
+    """Guardrail (D5, revisione sicurezza v3, 2026-08-26): prima leggi_progetti()
+    accettava silenziosamente qualunque forma inattesa di progetti.json (compreso
+    un JSON non valido) e restituiva [] senza lasciare traccia - un progetto
+    sparisce dalla dashboard senza che nessuno se ne accorga. Ora logga su
+    stderr in ogni caso non valido, restituendo comunque [] (fail-safe, non
+    fail-loud verso il chiamante)."""
+
+    def test_legge_la_forma_lista_scritta_da_salva_progetti(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "progetti.json"
+            percorso.write_text(
+                json.dumps({"progetti": [{"id": "p1", "nome": "Uno", "percorso": "/x"}]}),
+                encoding="utf-8",
+            )
+            with patch.object(interfaccia, "PERCORSO_PROGETTI", percorso):
+                progetti = interfaccia.leggi_progetti()
+            self.assertEqual(progetti, [{"id": "p1", "nome": "Uno", "percorso": "/x"}])
+
+    def test_legge_la_forma_dict_legacy_e_la_converte(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "progetti.json"
+            percorso.write_text(
+                json.dumps({"progetti": {"p1": {"nome": "Uno", "percorso": "/x"}}}),
+                encoding="utf-8",
+            )
+            with patch.object(interfaccia, "PERCORSO_PROGETTI", percorso):
+                progetti = interfaccia.leggi_progetti()
+            self.assertEqual(progetti, [{"id": "p1", "nome": "Uno", "percorso": "/x"}])
+
+    def test_json_non_valido_logga_e_ritorna_lista_vuota(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "progetti.json"
+            percorso.write_text("{non e' json", encoding="utf-8")
+            with patch.object(interfaccia, "PERCORSO_PROGETTI", percorso):
+                with patch("sys.stderr", new_callable=io.StringIO) as stderr_finto:
+                    progetti = interfaccia.leggi_progetti()
+            self.assertEqual(progetti, [])
+            self.assertIn("progetti.json", stderr_finto.getvalue())
+
+    def test_forma_inattesa_logga_e_ritorna_lista_vuota(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "progetti.json"
+            percorso.write_text(json.dumps({"progetti": "non e' ne' lista ne' dict"}), encoding="utf-8")
+            with patch.object(interfaccia, "PERCORSO_PROGETTI", percorso):
+                with patch("sys.stderr", new_callable=io.StringIO) as stderr_finto:
+                    progetti = interfaccia.leggi_progetti()
+            self.assertEqual(progetti, [])
+            self.assertIn("tipo inatteso", stderr_finto.getvalue())
 
 
 class InterpretaOutputSentinellaTest(unittest.TestCase):
@@ -1017,6 +1070,434 @@ class GeneraPromptRisveglioLLMTest(unittest.TestCase):
         self.assertIn("<<<INIZIO_CRONOLOGIA>>>", contenuto)
         self.assertIn("<<<FINE_CRONOLOGIA>>>", contenuto)
         self.assertIn("fai qualcosa", contenuto)
+
+
+class InterfacciaFacadeContractTest(unittest.TestCase):
+    """Caratterizzazione del contratto e dell'API pubblica di interfaccia.py (Lotto A D2).
+
+    Fissa l'inventario dei simboli pubblici (funzioni, modelli Pydantic, costanti ed entrypoint)
+    che non devono sparire o rompersi durante la scomposizione modulare (Lotti D ed E).
+    """
+
+    def test_simboli_pubblici_e_costanti_esposti(self) -> None:
+        costanti_richieste = (
+            "RADICE", "PERCORSO_PROGETTI", "PERCORSO_HTML", "PERCORSO_FLUSSI",
+            "SCRIPT_SENTINELLA_CENTRALE", "SCRIPT_INTERFACCIA", "HOST_DASHBOARD",
+            "PORTA_DASHBOARD", "CHIAVE_API_DASHBOARD", "AGENTI_BACHECA_DASHBOARD",
+            "app",
+        )
+        for c in costanti_richieste:
+            self.assertTrue(hasattr(interfaccia, c), f"Costante/attributo '{c}' mancante in interfaccia.py")
+
+    def test_modelli_pydantic_esposti(self) -> None:
+        modelli_richiesti = (
+            "ProgettoInput", "SentinellaInput", "PostinoToggleInput",
+            "PostinoHeadlessToggleInput", "PostinoRevisioneInput",
+        )
+        for m in modelli_richiesti:
+            cls = getattr(interfaccia, m, None)
+            self.assertIsNotNone(cls, f"Modello '{m}' non trovato in interfaccia.py")
+            assert cls is not None
+            self.assertTrue(issubclass(cls, interfaccia.BaseModel), f"'{m}' non e' una sottoclasse di BaseModel")
+
+    def test_funzioni_e_route_handlers_esposti(self) -> None:
+        funzioni_richieste = (
+            "postino_attivo", "imposta_postino", "postino_headless_attivo",
+            "imposta_postino_headless", "leggi_progetti", "salva_progetti",
+            "leggi_flussi_dichiarati", "integra_progetto", "percorso_comandi_progetto",
+            "comandi_disponibili_progetto", "arricchisci_progetto",
+            "interpreta_output_sentinella", "esegui_sentinella", "get_stato",
+            "aggiungi_progetto", "lista_commit_progetto", "eventi_commit_progetto",
+            "flussi_dichiarati", "bacheca_progetto", "esegui_risvegli_bacheca",
+            "bacheca_feed_progetto", "bacheca_thread_progetto", "riavvia_sistema",
+            "toggle_postino", "toggle_postino_headless", "richiedi_revisione_postino",
+            "index",
+        )
+        for f in funzioni_richieste:
+            fn = getattr(interfaccia, f, None)
+            self.assertTrue(callable(fn), f"Funzione '{f}' non trovata o non invocabile in interfaccia.py")
+
+
+class InterfacciaTestClientRoutesTest(unittest.TestCase):
+    """Caratterizzazione end-to-end con TestClient per tutte le route FastAPI di interfaccia.py.
+
+    Verifica status code, schema dei payload, query params, header, error handling e casi limite.
+    """
+
+    def setUp(self) -> None:
+        from fastapi.testclient import TestClient
+        self.client = TestClient(interfaccia.app)
+
+    # -- Route statiche e HTML ------------------------------------------------
+
+    def test_get_index_restituisce_200_html(self) -> None:
+        res = self.client.get("/")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("text/html", res.headers.get("content-type", ""))
+        self.assertIn("Orchestratore", res.text)
+
+    def test_get_index_404_se_file_html_manca(self) -> None:
+        with patch.object(interfaccia, "PERCORSO_HTML", Path("/percorso/fantasma/interfaccia.html")):
+            res = self.client.get("/")
+            self.assertEqual(res.status_code, 404)
+            self.assertIn("non trovato", res.json().get("detail", ""))
+
+    def test_get_file_statici_js_e_css(self) -> None:
+        res_js = self.client.get("/static/interfaccia.js")
+        self.assertEqual(res_js.status_code, 200)
+        self.assertIn("I18N", res_js.text)
+
+        res_css = self.client.get("/static/interfaccia.css")
+        self.assertEqual(res_css.status_code, 200)
+
+    # -- /api/stato -----------------------------------------------------------
+
+    def test_api_stato_schema_completo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            progetti = [{"id": "p_test", "nome": "Test Project", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                res = self.client.get("/api/stato")
+
+        self.assertEqual(res.status_code, 200)
+        dati = res.json()
+        self.assertIn("progetti", dati)
+        self.assertIn("globali", dati)
+        self.assertIn("progetto_stats", dati)
+        self.assertIn("agente_stats", dati)
+        self.assertIn("livello_stats", dati)
+        self.assertIn("eventi", dati)
+        self.assertIn("paginazione", dati)
+
+        self.assertEqual(dati["paginazione"]["pagina"], 1)
+        self.assertEqual(dati["paginazione"]["per_pagina"], 50)
+        self.assertEqual(len(dati["progetti"]), 1)
+        self.assertEqual(dati["progetti"][0]["id"], "p_test")
+        self.assertIn("comandi", dati["progetti"][0])
+
+    def test_api_stato_parametri_paginazione_e_clamping(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            reg_dir = p_path / "dati_locali" / "orchestrazione"
+            reg_dir.mkdir(parents=True, exist_ok=True)
+            f_ev = reg_dir / "eventi.jsonl"
+            for i in range(15):
+                registro.aggiungi_evento(f_ev, {
+                    "versione_schema": 1, "id_evento": f"ev-{i}", "timestamp": f"2026-08-26T10:{i:02d}:00Z",
+                    "id_compito": f"t-{i}", "agente": "locale", "tipo_compito": "monitoraggio",
+                    "stato": "passato", "esito_gate": "superato", "verdetto_umano": "non_revisionato",
+                    "costo_stimato_usd": 0.0, "origine_costo": "stimato", "latenza_ms": 0,
+                    "regole_incluse": [], "file_modificati": [], "note": "", "metadati": {},
+                })
+            progetti = [{"id": "p_pag", "nome": "Pag Test", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                # Pagina normale
+                r1 = self.client.get("/api/stato?pagina=2&per_pagina=5")
+                self.assertEqual(r1.status_code, 200)
+                d1 = r1.json()
+                self.assertEqual(len(d1["eventi"]), 5)
+                self.assertEqual(d1["paginazione"]["pagina"], 2)
+                self.assertEqual(d1["paginazione"]["pagine_totali"], 3)
+
+                # Pagina negativa o zero (clamped a 1)
+                r_zero = self.client.get("/api/stato?pagina=0&per_pagina=5")
+                self.assertEqual(r_zero.json()["paginazione"]["pagina"], 1)
+
+                # Pagina oltre il totale (clamped all'ultima pagina)
+                r_over = self.client.get("/api/stato?pagina=999&per_pagina=5")
+                self.assertEqual(r_over.json()["paginazione"]["pagina"], 3)
+
+    # -- /api/progetti --------------------------------------------------------
+
+    def test_api_progetti_registra_nuovo_progetto_valido(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_progetti, tempfile.TemporaryDirectory() as tmp_dest:
+            f_cfg = Path(tmp_progetti) / "progetti.json"
+            p_dest = Path(tmp_dest)
+            with patch.object(interfaccia, "PERCORSO_PROGETTI", f_cfg):
+                res = self.client.post("/api/progetti", json={"nome": "Nuovo Progetto", "percorso": str(p_dest)})
+                self.assertEqual(res.status_code, 200)
+                dati = res.json()
+                self.assertEqual(dati["status"], "ok")
+                self.assertEqual(dati["progetto"]["id"], "nuovo_progetto")
+                self.assertEqual(dati["progetto"]["nome"], "Nuovo Progetto")
+
+                # Verifica persistenza
+                progetti_salvati = interfaccia.leggi_progetti()
+                self.assertTrue(any(p["id"] == "nuovo_progetto" for p in progetti_salvati))
+
+    def test_api_progetti_rifiuta_percorso_inesistente(self) -> None:
+        res = self.client.post("/api/progetti", json={"nome": "Fantasma", "percorso": "/percorso/inesistente_xyz"})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("non esiste", res.json().get("detail", ""))
+
+    def test_api_progetti_rifiuta_percorso_che_e_un_file(self) -> None:
+        with tempfile.NamedTemporaryFile() as tmp_file:
+            res = self.client.post("/api/progetti", json={"nome": "FileProj", "percorso": tmp_file.name})
+            self.assertEqual(res.status_code, 400)
+            self.assertIn("non è una cartella", res.json().get("detail", ""))
+
+    def test_api_progetti_rifiuta_duplicati(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            progetti = [{"id": "duplicato", "nome": "Duplicato", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                res = self.client.post("/api/progetti", json={"nome": "Duplicato", "percorso": str(p_path)})
+                self.assertEqual(res.status_code, 400)
+                self.assertIn("già registrato", res.json().get("detail", ""))
+
+    def test_api_progetti_gestisce_errore_integrazione(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            with patch.object(interfaccia, "leggi_progetti", return_value=[]), \
+                 patch.object(interfaccia, "integra_progetto", side_effect=OSError("permesso negato")):
+                res = self.client.post("/api/progetti", json={"nome": "ErroreIntegr", "percorso": str(p_path)})
+                self.assertEqual(res.status_code, 500)
+                self.assertIn("Integrazione automatica fallita", res.json().get("detail", ""))
+
+    # -- /api/sentinella ------------------------------------------------------
+
+    def test_api_sentinella_progetto_non_trovato(self) -> None:
+        with patch.object(interfaccia, "leggi_progetti", return_value=[]):
+            res = self.client.post("/api/sentinella", json={"progetto_id": "non_esiste", "comando": "test"})
+            self.assertEqual(res.status_code, 404)
+
+    def test_api_sentinella_mancanza_configurazione_comandi(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            progetti = [{"id": "p_empty", "nome": "Vuoto", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                res = self.client.post("/api/sentinella", json={"progetto_id": "p_empty", "comando": "prova"})
+                self.assertEqual(res.status_code, 400)
+                self.assertIn("Nessuna configurazione", res.json().get("detail", ""))
+
+    def test_api_sentinella_esecuzione_con_successo_e_fallimento(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            cfg_dir = p_path / "config"
+            cfg_dir.mkdir(parents=True, exist_ok=True)
+            (cfg_dir / "comandi.json").write_text(json.dumps({
+                "versione_schema": 1,
+                "comandi": {"prova": {"cartella": ".", "argomenti": [sys.executable, "-c", "print('ok')"]}}
+            }), encoding="utf-8")
+            progetti = [{"id": "p_sent", "nome": "Sent", "percorso": str(p_path)}]
+
+            # Successo (codice 0)
+            mock_res_ok = MagicMock(returncode=0, stdout='{"esito": "superato"}', stderr="")
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti), \
+                 patch("subprocess.run", return_value=mock_res_ok):
+                res = self.client.post("/api/sentinella", json={"progetto_id": "p_sent", "comando": "prova"})
+                self.assertEqual(res.status_code, 200)
+                self.assertEqual(res.json()["status"], "success")
+                self.assertEqual(res.json()["dati"]["esito"], "superato")
+
+            # Fallimento (codice != 0)
+            mock_res_fail = MagicMock(returncode=1, stdout='{"esito": "fallito"}', stderr="")
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti), \
+                 patch("subprocess.run", return_value=mock_res_fail):
+                res_f = self.client.post("/api/sentinella", json={"progetto_id": "p_sent", "comando": "prova"})
+                self.assertEqual(res_f.status_code, 200)
+                self.assertEqual(res_f.json()["status"], "failed")
+                self.assertEqual(res_f.json()["dati"]["esito"], "fallito")
+
+    def test_api_sentinella_timeout_e_altre_eccezioni(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            cfg_dir = p_path / "config"
+            cfg_dir.mkdir(parents=True, exist_ok=True)
+            (cfg_dir / "comandi.json").write_text(json.dumps({
+                "versione_schema": 1,
+                "comandi": {"prova": {"cartella": ".", "argomenti": ["sleep"]}}
+            }), encoding="utf-8")
+            progetti = [{"id": "p_sent", "nome": "Sent", "percorso": str(p_path)}]
+
+            # TimeoutExpired -> 504
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti), \
+                 patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="prova", timeout=180)):
+                res_to = self.client.post("/api/sentinella", json={"progetto_id": "p_sent", "comando": "prova"})
+                self.assertEqual(res_to.status_code, 504)
+                self.assertIn("timeout", res_to.json().get("detail", ""))
+
+            # Generic Exception -> 500
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti), \
+                 patch("subprocess.run", side_effect=OSError("process crash")):
+                res_err = self.client.post("/api/sentinella", json={"progetto_id": "p_sent", "comando": "prova"})
+                self.assertEqual(res_err.status_code, 500)
+                self.assertIn("Errore durante l'esecuzione", res_err.json().get("detail", ""))
+
+    # -- /api/flussi ----------------------------------------------------------
+
+    def test_api_flussi_restituisce_mappa_flussi(self) -> None:
+        res = self.client.get("/api/flussi")
+        self.assertEqual(res.status_code, 200)
+        dati = res.json()
+        self.assertIn("flussi", dati)
+        self.assertIn("compito_standard", dati["flussi"])
+        self.assertEqual(dati["flussi"]["compito_standard"]["id_flusso"], "compito_standard")
+
+    # -- /api/commit/* --------------------------------------------------------
+
+    def test_api_commit_lista_progetto_inesistente_404(self) -> None:
+        with patch.object(interfaccia, "leggi_progetti", return_value=[]):
+            res = self.client.get("/api/commit/lista?progetto_id=inesistente")
+            self.assertEqual(res.status_code, 404)
+
+    def test_api_commit_eventi_successo_e_fallimento(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            progetti = [{"id": "p_commit", "nome": "Commit Proj", "percorso": str(p_path)}]
+
+            # Commit valido
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti), \
+                 patch("commit_replay.finestra_temporale_commit", return_value=("2026-08-26T09:00:00Z", "2026-08-26T10:00:00Z")), \
+                 patch("commit_replay.eventi_nella_finestra", return_value=[{"id_evento": "e1"}]), \
+                 patch("commit_replay.stima_risparmio", return_value={"token_risparmiati": 500}):
+                res = self.client.get("/api/commit/eventi?progetto_id=p_commit&hash=abcdef12")
+                self.assertEqual(res.status_code, 200)
+                d = res.json()
+                self.assertEqual(d["hash"], "abcdef12")
+                self.assertEqual(len(d["eventi"]), 1)
+                self.assertEqual(d["stima_risparmio"]["token_risparmiati"], 500)
+
+            # Hash inesistente (ValueError -> 404)
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti), \
+                 patch("commit_replay.finestra_temporale_commit", side_effect=ValueError("commit non trovato")):
+                res_err = self.client.get("/api/commit/eventi?progetto_id=p_commit&hash=000000")
+                self.assertEqual(res_err.status_code, 404)
+
+    # -- /api/bacheca e sotto-route -------------------------------------------
+
+    def test_api_bacheca_feed_e_thread_completi(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            f_msg = p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+            msg1 = bacheca.costruisci_messaggio(mittente="umano", destinatari=["codex"], tipo="richiesta", testo="primo")
+            msg2 = bacheca.costruisci_messaggio(
+                mittente="codex", destinatari=["umano"], tipo="risposta", testo="secondo", thread_id=msg1["thread_id"],
+            )
+            bacheca.aggiungi_messaggio(f_msg, msg1)
+            bacheca.aggiungi_messaggio(f_msg, msg2)
+            progetti = [{"id": "p_bach", "nome": "Bach", "percorso": str(p_path)}]
+
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                # /api/bacheca principale
+                r_main = self.client.get("/api/bacheca?progetto_id=p_bach")
+                self.assertEqual(r_main.status_code, 200)
+                d_main = r_main.json()
+                self.assertEqual(len(d_main["thread"]), 1)
+                self.assertEqual(d_main["thread"][0]["thread_id"], msg1["thread_id"])
+
+                # /api/bacheca/feed
+                r_feed = self.client.get("/api/bacheca/feed?progetto_id=p_bach&limite=10")
+                self.assertEqual(r_feed.status_code, 200)
+                self.assertEqual(len(r_feed.json()["messaggi"]), 2)
+
+                # /api/bacheca/thread esistente
+                r_thr = self.client.get(f"/api/bacheca/thread?progetto_id=p_bach&thread_id={msg1['thread_id']}")
+                self.assertEqual(r_thr.status_code, 200)
+                self.assertEqual(len(r_thr.json()["messaggi"]), 2)
+
+                # /api/bacheca/thread inesistente -> 404
+                r_thr_404 = self.client.get("/api/bacheca/thread?progetto_id=p_bach&thread_id=inesistente")
+                self.assertEqual(r_thr_404.status_code, 404)
+
+    def test_api_bacheca_risposte_difensive_su_file_corrotto(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            f_msg = p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+            f_msg.parent.mkdir(parents=True, exist_ok=True)
+            f_msg.write_text("{bad json line\n", encoding="utf-8")
+            progetti = [{"id": "p_corr", "nome": "Corrotto", "percorso": str(p_path)}]
+
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                # /api/bacheca: ritorna errore DTO senza rompere il server
+                r_main = self.client.get("/api/bacheca?progetto_id=p_corr")
+                self.assertEqual(r_main.status_code, 200)
+                self.assertIn("errore", r_main.json())
+
+                # /api/bacheca/feed: ritorna lista vuota + errore
+                r_feed = self.client.get("/api/bacheca/feed?progetto_id=p_corr")
+                self.assertEqual(r_feed.status_code, 200)
+                self.assertIn("errore", r_feed.json())
+
+                # /api/bacheca/risvegli: ritorna risvegli=[] + errore
+                r_risv = self.client.post("/api/bacheca/risvegli?progetto_id=p_corr")
+                self.assertEqual(r_risv.status_code, 200)
+                self.assertIn("errore", r_risv.json())
+
+                # /api/bacheca/thread: solleva 500
+                r_thr = self.client.get("/api/bacheca/thread?progetto_id=p_corr&thread_id=qualunque")
+                self.assertEqual(r_thr.status_code, 500)
+
+    # -- Toggle postino e revisione -------------------------------------------
+
+    def test_api_postino_toggle_e_headless_toggle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            progetti = [{"id": "p_tog", "nome": "Tog", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                # Toggle base on
+                r_on = self.client.post("/api/bacheca/postino/toggle", json={"progetto_id": "p_tog", "attivo": True})
+                self.assertEqual(r_on.status_code, 200)
+                self.assertTrue(r_on.json()["postino_attivo"])
+
+                # Toggle base off
+                r_off = self.client.post("/api/bacheca/postino/toggle", json={"progetto_id": "p_tog", "attivo": False})
+                self.assertEqual(r_off.status_code, 200)
+                self.assertFalse(r_off.json()["postino_attivo"])
+
+                # Toggle headless on
+                r_h_on = self.client.post(
+                    "/api/bacheca/postino/headless/toggle", json={"progetto_id": "p_tog", "attivo": True}
+                )
+                self.assertEqual(r_h_on.status_code, 200)
+                self.assertTrue(r_h_on.json()["postino_headless_attivo"])
+
+    def test_api_postino_revisione_completa(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            progetti = [{"id": "p_rev", "nome": "Rev", "percorso": str(p_path)}]
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                # 404 su progetto sconosciuto
+                r_404 = self.client.post(
+                    "/api/bacheca/postino/revisione",
+                    json={"progetto_id": "sconosciuto", "agente": "codex", "thread_id": "t1"},
+                )
+                self.assertEqual(r_404.status_code, 404)
+
+                # 400 su agente non valido
+                r_400 = self.client.post(
+                    "/api/bacheca/postino/revisione",
+                    json={"progetto_id": "p_rev", "agente": "agente_falso", "thread_id": "t1"},
+                )
+                self.assertEqual(r_400.status_code, 400)
+
+                # Bloccato se headless non attivo
+                r_block = self.client.post(
+                    "/api/bacheca/postino/revisione",
+                    json={"progetto_id": "p_rev", "agente": "codex", "thread_id": "t1"},
+                )
+                self.assertEqual(r_block.status_code, 200)
+                self.assertEqual(r_block.json(), {"esito": "bloccato", "motivo": "dispatch_headless_disattivato"})
+
+                # Inviato quando headless attivo
+                interfaccia.imposta_postino_headless(p_path, attivo=True)
+                with patch.object(interfaccia.postino, "dispatch", return_value={"esito": "inviato", "codice": 0}) as disp_mock:
+                    r_ok = self.client.post(
+                        "/api/bacheca/postino/revisione",
+                        json={"progetto_id": "p_rev", "agente": "codex", "thread_id": "t1"},
+                    )
+                    self.assertEqual(r_ok.status_code, 200)
+                    self.assertEqual(r_ok.json()["esito"], "inviato")
+                    disp_mock.assert_called_once_with(p_path, "codex", "t1", modo="revisione")
+
+    # -- /api/sistema/riavvia -------------------------------------------------
+
+    def test_api_sistema_riavvia_pianifica_thread(self) -> None:
+        with patch("threading.Thread") as mock_thread:
+            res = self.client.post("/api/sistema/riavvia")
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json(), {"status": "riavvio_in_corso"})
+            mock_thread.assert_called_once()
 
 
 if __name__ == "__main__":

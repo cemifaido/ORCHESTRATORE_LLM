@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -678,6 +679,97 @@ class BachecaTest(unittest.TestCase):
             self.assertEqual(messaggi, [])
             assert errore is not None
             self.assertIn("corrotta", errore)
+
+
+class BachecaCliContractTest(unittest.TestCase):
+    """Caratterizzazione del confine che il refactoring D2 deve conservare.
+
+    I consumatori interni usano bacheca.py anche come libreria; la CLI e' inoltre
+    chiamata dagli hook. Questi test fissano il contratto della facade prima che
+    le responsabilita' vengano estratte in moduli dedicati.
+    """
+
+    def _esegui(self, argv: list[str]) -> tuple[int, str, str]:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            esito = bacheca.main(argv)
+        return esito, stdout.getvalue(), stderr.getvalue()
+
+    def test_facade_mantiene_l_api_usata_dai_consumatori(self) -> None:
+        # Inventario minimo delle funzioni oggi chiamate da interfaccia.py,
+        # postino.py, orchestratore_brainstorming.py e dai loro test. Durante
+        # l'estrazione possono diventare re-export, ma non sparire senza una
+        # migrazione esplicita di tutti i chiamanti.
+        nomi_pubblici = (
+            "costruisci_messaggio", "aggiungi_messaggio", "leggi_messaggi",
+            "leggi_messaggi_progetto", "stato_thread", "stato_per_destinatario",
+            "destinatari_pendenti", "verdetto_umano_corrente",
+            "checkpoint_ripristinabile_attivo", "riprese_pronte", "file_occupati",
+            "messaggi_aperti_per", "sintetizza_thread", "main",
+        )
+        for nome in nomi_pubblici:
+            self.assertTrue(callable(getattr(bacheca, nome, None)), nome)
+        # interfaccia.py lo usa oggi; il lotto B potra' renderlo pubblico con un
+        # nome migliore, ma fino ad allora deve restare un alias funzionante.
+        self.assertTrue(callable(getattr(bacheca, "_messaggi_del_thread", None)))
+
+    def test_cli_rispondi_preserva_thread_e_destinatari_di_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["claude", "codex"],
+                tipo="richiesta", testo="Rivedete il piano",
+            )
+            bacheca.aggiungi_messaggio(percorso, richiesta)
+
+            esito, stdout, stderr = self._esegui([
+                "--bacheca", str(percorso), "rispondi",
+                "--correla-a", richiesta["id_messaggio"],
+                "--mittente", "codex", "--testo", "Piano rivisto",
+            ])
+
+            self.assertEqual(esito, 0)
+            self.assertEqual(stderr, "")
+            risposta = json.loads(stdout)
+            self.assertEqual(risposta["tipo"], "risposta")
+            self.assertEqual(risposta["thread_id"], richiesta["thread_id"])
+            self.assertEqual(risposta["correla_a"], richiesta["id_messaggio"])
+            self.assertEqual(risposta["destinatari"], ["claude", "umano"])
+            self.assertEqual(bacheca.leggi_messaggi(percorso)[-1], risposta)
+
+    def test_cli_prossimo_hook_mantiene_evento_e_contesto(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["codex"],
+                tipo="richiesta", testo="Controlla la facciata",
+            )
+            bacheca.aggiungi_messaggio(percorso, richiesta)
+
+            esito, stdout, stderr = self._esegui([
+                "--bacheca", str(percorso), "prossimo", "--agente", "codex",
+                "--formato", "hook", "--evento", "UserPromptSubmit",
+            ])
+
+            self.assertEqual(esito, 0)
+            self.assertEqual(stderr, "")
+            output = json.loads(stdout)
+            hook = output["hookSpecificOutput"]
+            self.assertEqual(hook["hookEventName"], "UserPromptSubmit")
+            self.assertIn("Controlla la facciata", hook["additionalContext"])
+
+    def test_cli_rispondi_su_correlazione_inesistente_non_scrive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            esito, stdout, stderr = self._esegui([
+                "--bacheca", str(percorso), "rispondi", "--correla-a", "assente",
+                "--mittente", "codex", "--testo", "non deve essere scritto",
+            ])
+            self.assertEqual(esito, 2)
+            self.assertEqual(stdout, "")
+            self.assertIn("nessun messaggio", stderr)
+            self.assertEqual(bacheca.leggi_messaggi(percorso), [])
 
 
 class RipresaV2Test(unittest.TestCase):

@@ -209,16 +209,23 @@ def leggi_progetti() -> list[dict]:
         return default_config["progetti"]
     try:
         raw = json.loads(PERCORSO_PROGETTI.read_text(encoding="utf-8")).get("progetti", [])
-        if isinstance(raw, dict):
-            return [
-                {"id": k, **v} if isinstance(v, dict) else {"id": k, "nome": k, "percorso": str(v)}
-                for k, v in raw.items()
-            ]
-        elif isinstance(raw, list):
-            return raw
+    except (OSError, json.JSONDecodeError) as errore:
+        print(f"[progetti.json] impossibile leggere {PERCORSO_PROGETTI}: {errore}", file=sys.stderr)
         return []
-    except Exception:
-        return []
+    if isinstance(raw, dict):
+        # Forma legacy (mappa id->dettagli): salva_progetti() scrive sempre una
+        # lista, questa forma sopravvive solo in file scritti/modificati a mano.
+        return [
+            {"id": k, **v} if isinstance(v, dict) else {"id": k, "nome": k, "percorso": str(v)}
+            for k, v in raw.items()
+        ]
+    if isinstance(raw, list):
+        return raw
+    print(
+        f"[progetti.json] campo 'progetti' di tipo inatteso ({type(raw).__name__}) in {PERCORSO_PROGETTI}, ignorato",
+        file=sys.stderr,
+    )
+    return []
 
 def salva_progetti(progetti: list[dict]):
     PERCORSO_PROGETTI.parent.mkdir(parents=True, exist_ok=True)
@@ -442,12 +449,11 @@ def integra_progetto(dest_path: Path):
         if src_schema.exists():
             shutil.copy(src_schema, dest_path / "schema" / schema_file)
 
-    # 3. Copia configurazioni di esempio se non esistono già
-    for cfg in ["comandi.esempio.json", "agenti.esempio.json"]:
-        src_cfg = RADICE / "config" / cfg
-        dest_cfg = dest_path / "config" / cfg
-        if src_cfg.exists() and not dest_cfg.exists():
-            shutil.copy(src_cfg, dest_cfg)
+    # 3. Copia la configurazione di esempio se non esiste già
+    src_cfg = RADICE / "config" / "comandi.esempio.json"
+    dest_cfg = dest_path / "config" / "comandi.esempio.json"
+    if src_cfg.exists() and not dest_cfg.exists():
+        shutil.copy(src_cfg, dest_cfg)
 
     # 4. Scrive le istruzioni di sincronizzazione multi-agente se non esistono già
     #    (non sovrascrive personalizzazioni fatte a mano nel progetto target).
@@ -465,8 +471,6 @@ def integra_progetto(dest_path: Path):
         "schema/compito.v1.json",
         "config/comandi.json",
         "config/comandi.esempio.json",
-        "config/agenti.json",
-        "config/agenti.esempio.json",
         "\n# Istruzioni per assistenti AI (sincronizzazione multi-agente via registro):",
         "# locali per operatore/macchina, non condivise nel repository.",
         "CLAUDE.md",

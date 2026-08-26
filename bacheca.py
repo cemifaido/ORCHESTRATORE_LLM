@@ -17,7 +17,7 @@ from typing import Any
 RADICE = Path(__file__).resolve().parent
 sys.path.insert(0, str(RADICE))
 
-from registro import _messaggio_errore, _validatore_per_schema, adesso_utc, lista_csv  # noqa: E402
+from registro import adesso_utc, lista_csv, messaggio_errore, validatore_per_schema  # noqa: E402
 from adattatori import litellm  # noqa: E402
 
 PERCORSO_BACHECA_PREDEFINITO = Path("dati_locali") / "orchestrazione" / "messaggi.jsonl"
@@ -58,9 +58,9 @@ def valida_messaggio(messaggio: dict[str, Any], schema: dict[str, Any] | None = 
                 f"(ammesse: {sorted(SCHEMI_PER_VERSIONE)})"
             ]
         schema = carica_schema_messaggio(percorso_schema)
-    validatore = _validatore_per_schema(schema)
+    validatore = validatore_per_schema(schema)
     errori = sorted(validatore.iter_errors(messaggio), key=lambda e: list(e.absolute_path))
-    return [_messaggio_errore(errore, messaggio) for errore in errori]
+    return [messaggio_errore(errore, messaggio) for errore in errori]
 
 
 def aggiungi_messaggio(percorso: Path, messaggio: dict[str, Any]) -> None:

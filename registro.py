@@ -40,22 +40,26 @@ def lista_csv(valore: str) -> list[str]:
     return [parte.strip() for parte in valore.split(",") if parte.strip()]
 
 
-def _validatore_per_schema(schema: dict[str, Any]) -> jsonschema.protocols.Validator:
+def validatore_per_schema(schema: dict[str, Any]) -> jsonschema.protocols.Validator:
+    """Costruisce un validatore JSON Schema riutilizzabile per qualunque schema del
+    progetto (evento, messaggio, flusso...), non solo per lo schema evento."""
     classe = jsonschema.validators.validator_for(schema)
     classe.check_schema(schema)
     return classe(schema, format_checker=jsonschema.FormatChecker())
 
 
-def _messaggio_errore(errore: jsonschema.exceptions.ValidationError, evento: dict[str, Any]) -> str:
+def messaggio_errore(errore: jsonschema.exceptions.ValidationError, dati: dict[str, Any]) -> str:
+    """Traduce un errore jsonschema in un messaggio leggibile, per qualunque dato
+    validato (evento del registro, messaggio della bacheca, ecc.)."""
     # I due casi piu' comuni restano in italiano per compatibilita' con l'uso esistente
     # (CLI e dashboard); gli altri usano il messaggio di jsonschema, con vera semantica
     # JSON Schema (union type, format, minimum, ecc.) al prezzo di un testo in inglese.
     if errore.validator == "required":
-        mancanti = sorted(set(errore.validator_value) - set(evento))
+        mancanti = sorted(set(errore.validator_value) - set(dati))
         return "campi obbligatori mancanti: " + ", ".join(mancanti)
     if errore.validator == "additionalProperties":
         proprieta = errore.schema.get("properties", {})
-        extra = sorted(set(evento) - set(proprieta))
+        extra = sorted(set(dati) - set(proprieta))
         return "campi non previsti dallo schema: " + ", ".join(extra)
     campo = ".".join(str(parte) for parte in errore.absolute_path)
     return f"{campo}: {errore.message}" if campo else errore.message
@@ -63,9 +67,9 @@ def _messaggio_errore(errore: jsonschema.exceptions.ValidationError, evento: dic
 
 def valida_evento(evento: dict[str, Any], schema: dict[str, Any] | None = None) -> list[str]:
     schema = schema or carica_schema_evento()
-    validatore = _validatore_per_schema(schema)
+    validatore = validatore_per_schema(schema)
     errori = sorted(validatore.iter_errors(evento), key=lambda e: list(e.absolute_path))
-    return [_messaggio_errore(errore, evento) for errore in errori]
+    return [messaggio_errore(errore, evento) for errore in errori]
 
 
 def aggiungi_evento(percorso: Path, evento: dict[str, Any]) -> None:

@@ -270,7 +270,7 @@ Ogni progetto mantiene il proprio file `eventi.jsonl` isolato in `dati_locali/or
 Quando un progetto viene registrato tramite l'interfaccia, l'integrazione esegue:
 1. Creazione delle cartelle di runtime `dati_locali/orchestrazione/` nel percorso di destinazione.
 2. Copia degli schemi `schema/evento.v1.json` e `schema/compito.v1.json` come riferimento locale (documentazione): la validazione vera avviene sempre nell'orchestratore centrale con il proprio schema, non con questa copia.
-3. Copia dei file di configurazione di esempio `config/comandi.esempio.json` e `config/agenti.esempio.json` se non già presenti.
+3. Copia del file di configurazione di esempio `config/comandi.esempio.json` se non già presente.
 4. Aggiornamento automatico del file `.gitignore` del progetto target per escludere i file dati/config gestiti dall'orchestratore, prevenendo commit indesiderati nei repository dei singoli progetti.
 
 Nei progetti integrati prima di questo cambiamento possono restare copie storiche di `registro.py`/`sentinella.py`/`genera_cruscotto.py`/`requirements-orchestratore.txt`: non vengono più usate dalla dashboard (che chiama sempre lo script centrale) e possono essere cancellate manualmente quando comodo, non serve un'azione immediata.

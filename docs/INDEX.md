@@ -44,7 +44,6 @@ Questo indice è il punto di ingresso per copiare o collegare la documentazione 
 
 ## Configurazione
 
-- [Agenti esempio](../config/agenti.esempio.json)
 - [Comandi esempio](../config/comandi.esempio.json)
 
 ## Script

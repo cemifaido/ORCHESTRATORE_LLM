@@ -38,7 +38,7 @@ Per iniziare a gestire un nuovo progetto (es. `mio_progetto`):
 Il sistema eseguirà in automatico le seguenti operazioni nella cartella di destinazione:
 - Creazione di `dati_locali/orchestrazione/`
 - Copia degli schemi `schema/evento.v1.json` e `schema/compito.v1.json` come riferimento locale (solo documentazione: la validazione vera avviene sempre nell'orchestratore centrale)
-- Copia delle configurazioni template `config/comandi.esempio.json` e `config/agenti.esempio.json`
+- Copia della configurazione template `config/comandi.esempio.json`
 - Aggiornamento del `.gitignore` del progetto target per escludere questi file dati/config gestiti dall'orchestratore
 
 **Nota importante**: i progetti target contengono solo dati e configurazione, mai il codice dell'orchestratore. `registro.py` e `sentinella.py` **non vengono più copiati** nel progetto: restano un'unica installazione centrale in questa cartella, e la dashboard li invoca sempre da qui (passando `--config`/`--registro` del progetto target e impostando la cartella di lavoro su di esso). Un aggiornamento dell'orchestratore vale quindi subito per tutti i progetti integrati, senza bisogno di ri-registrarli.
