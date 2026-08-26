@@ -138,10 +138,16 @@ sicurezza:
   fail-closed è un item futuro esplicito, da fare prima di qualunque
   installer/configuratore automatico che si affidi al catalogo per decidere
   cosa è sicuro eseguire.
-- **Adapter Windows-only presentati come impliciti, non come capability opzionale**
-  (`dashboard_os.py`): corretto avere un adapter Windows-specifico, ma un nuovo utente
-  su un sistema non supportato deve vedere un degrado esplicito, non un fallimento
-  silenzioso o un'assunzione implicita che "ovviamente" gira solo su Windows.
+- **Adapter Windows-only** (`dashboard_os.py`, deep-link/clipboard del risveglio via
+  `antigravity-ide://`): voce corretta dopo verifica diretta (2026-08-26) — non e' un
+  fallimento silenzioso. Il catalogo capability modella gia' correttamente
+  `os_supportati: ["windows"]` per `claude_uri_wake`/`codex_uri_wake`/
+  `gemini_uri_wake`, e `dashboard_risvegli.esegui_risveglio_os()` degrada in modo
+  esplicito su sistemi non-Windows (stato `non_supportato`, motivo loggato su
+  stderr) invece di tentare la chiamata. Il gap reale trovato era di copertura, non
+  di comportamento: quel ramo era irraggiungibile nella test suite (il flag
+  `in_test` intercetta sempre prima) — estratto in `piattaforma_supporta_risveglio_os()`
+  e coperto da `tests/test_dashboard_moduli.py::test_piattaforma_supporta_risveglio_os`.
 - **Hook Gemini/Antigravity**: fino a poco fa dichiarato implicitamente funzionante
   ma mai verificato — vedi `docs/PIANO_INDUSTRIALIZZAZIONE.md` §10, chiuso 2026-08-26
   con verifica di specifica + log diagnostico per la conferma empirica nel tempo. Lezione

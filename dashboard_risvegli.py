@@ -130,6 +130,14 @@ def genera_prompt_risveglio_con_llm(agente: str, cronologia_thread: list[dict]) 
     return prompt_fallback
 
 
+def piattaforma_supporta_risveglio_os() -> bool:
+    """Il deep-link + clipboard di dashboard_os.py usa PowerShell e un
+    percorso %LOCALAPPDATA% Windows-specifici (vedi os_supportati=['windows']
+    delle capability *_uri_wake nel catalogo) - su altri OS va dichiarato
+    esplicitamente non supportato, mai tentato in silenzio."""
+    return os.name == "nt"
+
+
 def esegui_risveglio_os(
     agente: str,
     cronologia_thread: list[dict],
@@ -166,7 +174,7 @@ def esegui_risveglio_os(
         print(f"[RISVEGLIO OS] [TEST MODE] Sveglierei {agente} con prompt: {prompt}")
         return {"status": "test", "prompt": prompt, "uri": uri, "modalita": modalita}
 
-    if os.name != "nt":
+    if not piattaforma_supporta_risveglio_os():
         print(f"[RISVEGLIO OS] Meccanismo disponibile solo su Windows, saltato per {agente}.", file=sys.stderr)
         return {
             "status": "non_supportato", "motivo": "risveglio OS disponibile solo su Windows",

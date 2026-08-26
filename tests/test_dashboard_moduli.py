@@ -216,6 +216,15 @@ class DashboardRisvegliTest(unittest.TestCase):
         self.assertIn("gemini", fallback)
         self.assertIn("prossimo", fallback)
 
+    def test_piattaforma_supporta_risveglio_os(self) -> None:
+        """Il deep-link/clipboard di dashboard_os.py e' Windows-only (vedi
+        os_supportati=['windows'] delle capability *_uri_wake): il gate deve
+        rispecchiare esattamente os.name, senza fallback impliciti."""
+        with patch.object(dashboard_risvegli.os, "name", "nt"):
+            self.assertTrue(dashboard_risvegli.piattaforma_supporta_risveglio_os())
+        with patch.object(dashboard_risvegli.os, "name", "posix"):
+            self.assertFalse(dashboard_risvegli.piattaforma_supporta_risveglio_os())
+
 
 class InterfacciaSmokeTest(unittest.TestCase):
     def test_smoke_app_e_route_principali(self) -> None:
