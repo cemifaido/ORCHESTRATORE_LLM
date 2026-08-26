@@ -167,6 +167,18 @@ ragiona tu: il triage locale classifica, non risolve.
 Non usarlo per decisioni architetturali o revisioni di codice: solo per il primo
 filtro su output ripetitivi (test, lint, build) dove "ha funzionato sì/no" è la
 domanda, non "perché"/"come".
+
+## Dati proprietari non generici: mai committarli senza pensarci
+
+Quando crei o modifichi un file che finisce per contenere dati proprietari non
+generici di questa installazione specifica — percorsi assoluti di questa macchina,
+credenziali, contenuto verbatim di sessioni/incidenti reali, nomi o percorsi di altri
+progetti privati dell'utente, hardware specifico, ecc. — prima di committarlo hai
+due sole opzioni: non committarlo affatto (aggiungilo a `.gitignore`, trattalo come
+config locale per operatore/macchina), oppure committare una versione generica al suo
+posto se serve comunque un esempio/template pubblico. Mai il file con i dati reali.
+In caso di dubbio se qualcosa sia "abbastanza generico", tratta il file come non
+generico.
 """
 
 
