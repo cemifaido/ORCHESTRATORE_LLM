@@ -209,6 +209,8 @@ La postura completa, inclusi canali ufficiali, limiti e differenze tra provider,
 - [Bacheca multi-agente](docs/GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md) — uso quotidiano spiegato in modo semplice.
 - [Flusso dichiarato](docs/PIANO_FLUSSO_DICHIARATO.md) — workflow validabile e punti di controllo.
 - [LiteLLM opzionale](docs/INTEGRAZIONE_LITELLM.md) — integrazione di provider locali o a consumo.
+- [Contribuire](CONTRIBUTING.md) — ambiente di sviluppo, quality gate, cosa rende una PR facile da accettare.
+- [Sicurezza](SECURITY.md) — come segnalare una vulnerabilità in modo responsabile.
 
 ## Disclaimer & Crediti
 

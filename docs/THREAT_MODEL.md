@@ -122,11 +122,22 @@ sicurezza:
   incidenti reali) — per un fork di terzi questo non è solo "non funziona", è un file
   che non dovrebbe essere distribuito così com'è. Serve un template portabile o un
   comando di init che generi la configurazione locale, mai committata.
-- **Nessun manifest versionato di capability** (proposta di Codex, non ancora
-  implementata): oggi sapere se una capability (es. dispatch headless per un provider)
-  è verificata o solo assunta richiede leggere il codice. Un manifest esplicito
-  (`enabled`/`manual_only`/`unavailable`) evita che un nuovo utente si fidi
-  implicitamente di qualcosa mai verificato sul suo sistema.
+- **Manifest di capability implementato ma non collegato al runtime** (proposta di
+  Codex, Step 3 del piano chiuso il 2026-08-26 — nota aggiornata dopo revisione Codex
+  del 2026-08-26 sul gap rimasto): `schema/capability.v1.json` +
+  `valida_capability.py` + `config/capability_catalogo.json` esistono e sono
+  testati, con `default deny` (verified richiesto per `automatica`) e scadenza a
+  90 giorni imposti come invarianti del validatore. **Ma è un controllo
+  strutturale offline, non enforcement a runtime**: nessun punto del codice
+  (`postino.py`, `sentinella.py`, `registro.py`, dispatch) legge il catalogo
+  prima di agire — l'unico modo in cui l'invariante protegge davvero qualcosa
+  oggi è se un umano esegue `valida_capability.py` e legge l'esito. Finché non
+  esiste una lettura runtime fail-closed del catalogo prima di ogni azione
+  automatica, non va descritto né percepito come un gate di sicurezza attivo:
+  è un audit strutturale, non un enforcement. Implementare la lettura runtime
+  fail-closed è un item futuro esplicito, da fare prima di qualunque
+  installer/configuratore automatico che si affidi al catalogo per decidere
+  cosa è sicuro eseguire.
 - **Adapter Windows-only presentati come impliciti, non come capability opzionale**
   (`dashboard_os.py`): corretto avere un adapter Windows-specifico, ma un nuovo utente
   su un sistema non supportato deve vedere un degrado esplicito, non un fallimento

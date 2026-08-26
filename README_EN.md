@@ -209,6 +209,8 @@ The full security posture, official channels, limits, and provider specifics are
 - [Multi-Agent Board Guide](docs/GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md) — Everyday board usage made simple.
 - [Declared Workflows](docs/PIANO_FLUSSO_DICHIARATO.md) — Verifiable workflows, phases, and checkpoint gates.
 - [Optional LiteLLM Integration](docs/INTEGRAZIONE_LITELLM.md) — Connecting local or pay-per-token providers.
+- [Contributing](CONTRIBUTING.md) — dev environment, quality gate, what makes a PR easy to accept (Italian).
+- [Security](SECURITY.md) — how to responsibly report a vulnerability (Italian).
 
 ## Disclaimer & Credits
 
