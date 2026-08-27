@@ -1,10 +1,5 @@
 {
   "versione_schema": 1,
-  "postino": {
-    "max_turni_thread": 8,
-    "max_invii_giorno": 10,
-    "debounce_secondi": 300
-  },
   "comandi": {
     "stato_git": {
       "descrizione": "Stato Git (git status --short)",

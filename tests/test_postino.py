@@ -69,14 +69,15 @@ class PostinoPolicyTest(unittest.TestCase):
     def test_budget_giornaliero_conta_solo_headless(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             radice = _radice_attiva(tmp)
-            # 10 deep-link odierni su thread diversi: il budget headless resta libero
+            tetto = postino.LIMITI_PREDEFINITI["max_invii_giorno"]
+            # N deep-link odierni su thread diversi: il budget headless resta libero
             _scrivi_invii(radice, [
-                _invio(i + 1, thread_id=f"t-{i}", canale="deep_link") for i in range(10)
+                _invio(i + 1, thread_id=f"t-{i}", canale="deep_link") for i in range(tetto)
             ])
             self.assertEqual(postino.autorizza(radice, "claude", "t-postino"), {"esito": "autorizzato"})
-            # 10 headless odierni: budget esaurito
+            # N headless odierni (N = tetto del profilo attivo): budget esaurito
             _scrivi_invii(radice, [
-                _invio(i + 1, thread_id=f"t-{i}", canale="headless") for i in range(10)
+                _invio(i + 1, thread_id=f"t-{i}", canale="headless") for i in range(tetto)
             ])
             self.assertEqual(
                 postino.autorizza(radice, "claude", "t-postino"),
@@ -86,7 +87,8 @@ class PostinoPolicyTest(unittest.TestCase):
     def test_record_storico_senza_canale_conta_come_headless(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             radice = _radice_attiva(tmp)
-            invii = [_invio(i + 1, thread_id=f"t-{i}") for i in range(10)]
+            tetto = postino.LIMITI_PREDEFINITI["max_invii_giorno"]
+            invii = [_invio(i + 1, thread_id=f"t-{i}") for i in range(tetto)]
             for invio in invii:
                 del invio["canale"]
             _scrivi_invii(radice, invii)

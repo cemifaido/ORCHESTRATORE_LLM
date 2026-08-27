@@ -23,16 +23,18 @@ import registro
 import sentinella
 
 
-LIMITI_PREDEFINITI = {"max_turni_thread": 3, "max_invii_giorno": 10, "debounce_secondi": 300}
+LIMITI_PREDEFINITI = {"max_turni_thread": 3, "max_invii_giorno": 300, "debounce_secondi": 300}
 # 'smodata' e' intenso, non infinito: i valori configurati sono sempre
 # limitati da questo tetto assoluto per evitare loop/costi accidentali.
-LIMITI_MASSIMI = {"max_turni_thread": 30, "max_invii_giorno": 100, "debounce_secondi": 300}
+# max_invii_giorno alzato a 300 per tutti i profili (decisione umana 2026-08-27,
+# dopo che il tetto precedente di 10/100 si e' esaurito durante un test dal vivo).
+LIMITI_MASSIMI = {"max_turni_thread": 30, "max_invii_giorno": 300, "debounce_secondi": 300}
 DEBOUNCE_MINIMO_SECONDI = 5
 LIMITI_PER_PROFILO = {
     "standard": LIMITI_PREDEFINITI,
     "brainstorming": LIMITI_PREDEFINITI,
-    "super": LIMITI_PREDEFINITI,
-    "smodata": {"max_turni_thread": 30, "max_invii_giorno": 100, "debounce_secondi": 5},
+    "super": {"max_turni_thread": 3, "max_invii_giorno": 100, "debounce_secondi": 300},
+    "smodata": {"max_turni_thread": 30, "max_invii_giorno": 300, "debounce_secondi": 5},
 }
 # Flag di permesso espliciti (rilievo dalla verifica live del 2026-08-24): senza,
 # claude -p parte in permission-mode 'Manual' di default e codex exec in sandbox
