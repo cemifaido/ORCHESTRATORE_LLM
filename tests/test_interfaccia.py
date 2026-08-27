@@ -930,6 +930,7 @@ class WatcherPostinoTest(unittest.TestCase):
             ]
             interfaccia._last_mtimes.clear()
             interfaccia._dispatch_tasks.clear()
+            interfaccia._dispatch_da_ripetere.clear()
             interfaccia._last_mtimes["proj-1"] = 0.0
             interfaccia._last_mtimes["proj-2"] = 0.0
 
@@ -951,6 +952,7 @@ class WatcherPostinoTest(unittest.TestCase):
             finally:
                 interfaccia._last_mtimes.clear()
                 interfaccia._dispatch_tasks.clear()
+                interfaccia._dispatch_da_ripetere.clear()
 
             # Stesso confine gia' verificato per il test precedente: il ciclo passa
             # sempre da to_thread, mai una chiamata diretta alla funzione sincrona.
@@ -958,6 +960,33 @@ class WatcherPostinoTest(unittest.TestCase):
             chiamate = [call.kwargs.get("progetto_id") for call in to_thread.call_args_list]
             self.assertIn("proj-1", chiamate)
             self.assertIn("proj-2", chiamate)
+
+    def test_task_riesegue_il_progetto_se_arriva_un_messaggio_durante_dispatch(self) -> None:
+        """Un mtime nuovo mentre il task e' attivo non va perso: il worker
+        completa il giro gia' avviato e ne esegue subito uno aggiuntivo."""
+        primo_giro_avviato = asyncio.Event()
+        lascia_finire_primo_giro = asyncio.Event()
+
+        async def _finto_to_thread(func, **kwargs):
+            if not primo_giro_avviato.is_set():
+                primo_giro_avviato.set()
+                await lascia_finire_primo_giro.wait()
+
+        async def scenario() -> None:
+            task = asyncio.create_task(interfaccia._esegui_risveglio_task("stesso-progetto"))
+            await primo_giro_avviato.wait()
+            interfaccia._dispatch_da_ripetere.add("stesso-progetto")
+            lascia_finire_primo_giro.set()
+            await task
+
+        interfaccia._dispatch_da_ripetere.clear()
+        try:
+            with patch.object(interfaccia.asyncio, "to_thread", side_effect=_finto_to_thread) as to_thread:
+                asyncio.run(scenario())
+        finally:
+            interfaccia._dispatch_da_ripetere.clear()
+
+        self.assertEqual(to_thread.await_count, 2)
 
 
 class PostinoRevisioneEndpointTest(unittest.TestCase):
