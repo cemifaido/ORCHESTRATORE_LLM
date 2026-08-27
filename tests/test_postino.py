@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import bacheca
 import postino
+import profili_operativi
 import registro
 
 
@@ -19,6 +20,9 @@ def _radice_attiva(tmp: str) -> Path:
     flag = radice / "dati_locali" / "orchestrazione" / "POSTINO_ATTIVO"
     flag.parent.mkdir(parents=True, exist_ok=True)
     flag.write_text("POSTINO_ATTIVO=1\n", encoding="utf-8")
+    # I marker legacy non attivano piu' il Postino: le fixture scelgono il
+    # profilo brainstorming in modo esplicito.
+    profili_operativi.imposta(radice, "brainstorming")
     return radice
 
 
@@ -46,7 +50,7 @@ class PostinoPolicyTest(unittest.TestCase):
     def test_kill_switch_default_spento(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             esito = postino.autorizza(Path(tmp), "claude", "t-postino")
-            self.assertEqual(esito, {"esito": "bloccato", "motivo": "kill_switch"})
+            self.assertEqual(esito, {"esito": "bloccato", "motivo": "profilo_standard"})
 
     def test_autorizzato_con_opt_in_esplicito(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -185,6 +189,14 @@ class CaricaLimitiTest(unittest.TestCase):
             self._scrivi_config(radice, "json rotto {")
             self.assertEqual(postino.carica_limiti(radice), postino.LIMITI_PREDEFINITI)
 
+    def test_override_enorme_e_clampato_al_tetto_rigido(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            self._scrivi_config(radice, json.dumps({
+                "postino": {"max_turni_thread": 999999, "max_invii_giorno": 999999, "debounce_secondi": 999999},
+            }))
+            self.assertEqual(postino.carica_limiti(radice), postino.LIMITI_MASSIMI)
+
     def test_autorizza_usa_i_limiti_del_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             radice = _radice_attiva(tmp)
@@ -232,6 +244,28 @@ class PostinoDispatchTest(unittest.TestCase):
             self.assertEqual(len(eventi), 1)
             self.assertEqual(eventi[0]["agente"], "sistema")
             self.assertNotIn("Sei claude", json.dumps(eventi[0]), "mai il testo del prompt nel registro")
+            record = eventi[0]["metadati"]["postino"]
+            self.assertEqual(record["profilo"], "brainstorming")
+            self.assertIsNotNone(record["revisione_profilo"])
+            self.assertEqual(record["garanzia"], "enforced")
+
+    def test_marker_legacy_non_riattiva_il_dispatch_standard(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            flag = radice / "dati_locali" / "orchestrazione" / "POSTINO_ATTIVO"
+            flag.parent.mkdir(parents=True)
+            flag.write_text("POSTINO_ATTIVO=1\n", encoding="utf-8")
+            esegui = MagicMock()
+            esito = postino.dispatch(radice, "claude", "t-postino", esegui=esegui)
+            self.assertEqual(esito, {"esito": "bloccato", "motivo": "profilo_standard"})
+            esegui.assert_not_called()
+
+    def test_profilo_standard_blocca_prima_del_gate_capability(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("postino.capability_policy.autorizza_automazione") as capability:
+                esito = postino.dispatch(Path(tmp), "claude", "t-postino")
+            self.assertEqual(esito, {"esito": "bloccato", "motivo": "profilo_standard"})
+            capability.assert_not_called()
 
     def test_dispatch_eseguibile_non_trovato_non_esplode_e_si_registra(self) -> None:
         """Se il comando non e' installato/risolvibile (successo qui su questa
@@ -293,7 +327,7 @@ class PostinoDispatchTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             esegui = MagicMock()
             esito = postino.dispatch(Path(tmp), "claude", "t-postino", esegui=esegui)
-            self.assertEqual(esito, {"esito": "bloccato", "motivo": "kill_switch"})
+            self.assertEqual(esito, {"esito": "bloccato", "motivo": "profilo_standard"})
             esegui.assert_not_called()
 
     def test_registra_canale_consuma_contatori_ma_non_budget_headless(self) -> None:

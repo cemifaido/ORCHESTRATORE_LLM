@@ -18,6 +18,7 @@ sys.path.insert(0, str(RADICE))
 from registro import adesso_utc, lista_csv as lista_csv, messaggio_errore, validatore_per_schema  # noqa: E402
 import bacheca_proiezioni as proiezioni  # noqa: E402
 import bacheca_sintesi as sintesi  # noqa: E402
+import profili_operativi  # noqa: E402
 
 # Re-export di compatibilita' per test e consumatori che patchano il confine LLM.
 litellm = sintesi.litellm
@@ -201,6 +202,12 @@ def _formatta_per_hook(
             azione = r["azione"] or "(nessuna azione prevista per questo esito: rileggi il thread)"
             righe.append(f"- thread {c['thread_id'][:8]}, esito {r['verdetto']}: {azione}")
     return "\n".join(righe)
+
+
+def arricchisci_hook_con_profilo(testo: str, radice: Path) -> str:
+    """Anteponde il profilo operativo al contesto effimero di ogni hook."""
+    istruzione = profili_operativi.istruzione_interattiva(profili_operativi.carica(radice))
+    return f"{istruzione}\n\n{testo}" if testo else istruzione
 
 
 

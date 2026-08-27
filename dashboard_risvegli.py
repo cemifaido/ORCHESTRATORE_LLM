@@ -18,6 +18,7 @@ import bacheca
 import dashboard_config
 import dashboard_os
 import postino
+import profili_operativi
 
 AGENTI_BACHECA_DASHBOARD = dashboard_config.AGENTI_BACHECA_DASHBOARD
 
@@ -214,10 +215,12 @@ def calcola_ed_esegui_risvegli(
     claude_session_id = interfaccia._trova_ultima_sessione_claude(percorso_progetto)
     risvegli = []
     stato_modificato = False
-    dispatch_headless = (
-        interfaccia.postino_attivo(percorso_progetto)
-        and interfaccia.postino_headless_attivo(percorso_progetto)
-    )
+    # Il profilo operativo e' l'unica fonte runtime di autorizzazione: i
+    # marker POSTINO_* sono legacy e non devono piu' decidere ne' il dispatch
+    # ne' il gating del risveglio passivo. In standard il watcher si limita a
+    # notificare l'agente attraverso il deep-link/clipboard.
+    profilo = profili_operativi.carica(percorso_progetto)
+    dispatch_headless = profili_operativi.dispatch_abilitato(profilo)
 
     for agente, items in pendenti.items():
         gia_notificati = set(notificati.get(agente, []))
@@ -244,16 +247,6 @@ def calcola_ed_esegui_risvegli(
                 "codice": esito_dispatch.get("codice"),
             })
             continue
-
-        if interfaccia.postino_attivo(percorso_progetto):
-            # Guardrail H5: prenota prima dell'azione OS
-            prenotazione = postino.registra_canale(percorso_progetto, agente, candidato["thread_id"], "deep_link")
-            if prenotazione["esito"] != "registrato":
-                risvegli.append({
-                    "agente": agente, "thread_id": candidato["thread_id"],
-                    "status": "bloccato", **prenotazione,
-                })
-                continue
 
         esito = interfaccia._esegui_risveglio_os(agente, candidato["cronologia"], claude_session_id)
         gia_notificati.add(candidato["id_messaggio"])

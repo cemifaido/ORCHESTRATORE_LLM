@@ -17,10 +17,21 @@ from typing import Any, Callable
 
 import bacheca
 import capability_policy
+import profili_operativi
 import registro
 
 
 LIMITI_PREDEFINITI = {"max_turni_thread": 3, "max_invii_giorno": 10, "debounce_secondi": 300}
+# 'smodata' e' intenso, non infinito: i valori configurati sono sempre
+# limitati da questo tetto assoluto per evitare loop/costi accidentali.
+LIMITI_MASSIMI = {"max_turni_thread": 30, "max_invii_giorno": 100, "debounce_secondi": 300}
+DEBOUNCE_MINIMO_SECONDI = 5
+LIMITI_PER_PROFILO = {
+    "standard": LIMITI_PREDEFINITI,
+    "brainstorming": LIMITI_PREDEFINITI,
+    "super": LIMITI_PREDEFINITI,
+    "smodata": {"max_turni_thread": 30, "max_invii_giorno": 100, "debounce_secondi": 5},
+}
 # Flag di permesso espliciti (rilievo dalla verifica live del 2026-08-24): senza,
 # claude -p parte in permission-mode 'Manual' di default e codex exec in sandbox
 # 'read-only' di default - senza un TTY per approvare, l'uso di Bash/scrittura
@@ -70,7 +81,7 @@ COMANDI_REVISIONE = {
 }
 
 
-def carica_limiti(radice: Path) -> dict[str, int]:
+def carica_limiti(radice: Path, profilo: dict[str, Any] | None = None) -> dict[str, int]:
     """Limiti dal blocco 'postino' di config/comandi.json (proposta Codex:
     nessun file di config nuovo), con fallback sui default conservativi.
 
@@ -78,7 +89,8 @@ def carica_limiti(radice: Path) -> dict[str, int]:
     ALLARGARE i limiti — ogni chiave torna al default se manca o non e' un
     intero positivo. La taratura post-osservazione si fa da config, senza
     toccare codice (decisione umana 2026-08-24)."""
-    limiti = dict(LIMITI_PREDEFINITI)
+    profilo = profilo or profili_operativi.carica(radice)
+    limiti = dict(LIMITI_PER_PROFILO[profilo["profilo"]])
     try:
         dati = json.loads((radice / "config" / "comandi.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -89,7 +101,10 @@ def carica_limiti(radice: Path) -> dict[str, int]:
     for chiave in limiti:
         valore = blocco.get(chiave)
         if isinstance(valore, int) and not isinstance(valore, bool) and valore > 0:
-            limiti[chiave] = valore
+            if chiave == "debounce_secondi":
+                limiti[chiave] = max(DEBOUNCE_MINIMO_SECONDI, min(valore, LIMITI_MASSIMI[chiave]))
+            else:
+                limiti[chiave] = min(valore, LIMITI_MASSIMI[chiave])
     return limiti
 
 
@@ -101,33 +116,46 @@ def _percorso_stato(radice: Path) -> Path:
     return radice / "dati_locali" / "orchestrazione" / "postino_stato.json"
 
 
-def _spento(radice: Path) -> bool:
-    """Opt-in esplicito, coerente col watcher: assenza equivale a spento."""
-    return not (radice / "dati_locali" / "orchestrazione" / "POSTINO_ATTIVO").exists()
+def _motivo_profilo(profilo: dict[str, Any]) -> str | None:
+    if profili_operativi.dispatch_abilitato(profilo):
+        return None
+    return "profilo_standard" if profilo["profilo"] == "standard" else "profilo_non_disponibile"
 
 
-def _valuta_policy(radice: Path, stato: dict[str, Any], agente: str, thread_id: str, ora: datetime) -> str | None:
+def _spento(radice: Path, profilo: dict[str, Any] | None = None) -> bool:
+    """Il profilo, non i marker legacy, e' l'unica fonte runtime di opt-in."""
+    return _motivo_profilo(profilo or profili_operativi.carica(radice)) is not None
+
+
+def _valuta_policy(
+    radice: Path, stato: dict[str, Any], agente: str, thread_id: str, ora: datetime,
+    profilo: dict[str, Any] | None = None,
+) -> str | None:
     """Cuore della decisione di autorizza(), fattorizzato perche' dispatch()
     deve poterlo rivalutare su uno stato appena riletto DENTRO il proprio
     lock (vedi _prenota_invio) senza duplicare la logica dei tetti."""
     return _motivo_blocco(
-        stato, agente, thread_id, ora, carica_limiti(radice),
+        stato, agente, thread_id, ora, carica_limiti(radice, profilo),
         ultimo_tocco_umano=_ultimo_reset_thread(stato, radice, thread_id),
     )
 
 
-def autorizza(radice: Path, agente: str, thread_id: str) -> dict[str, Any]:
+def autorizza(
+    radice: Path, agente: str, thread_id: str, *, profilo: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Policy comune per watcher/deep-link/headless; non esegue effetti esterni.
 
     Usata da dispatch() solo come pre-check economico fuori dal lock (evita
     di prendere il lock per i casi ovvi): la decisione che conta davvero e'
     quella rifatta dentro _prenota_invio(), su stato fresco."""
-    if _spento(radice):
-        return {"esito": "bloccato", "motivo": "kill_switch"}
+    profilo = profilo or profili_operativi.carica(radice)
+    motivo_profilo = _motivo_profilo(profilo)
+    if motivo_profilo is not None:
+        return {"esito": "bloccato", "motivo": motivo_profilo}
     stato = _leggi_stato(radice)
     if stato is None:
         return {"esito": "bloccato", "motivo": "stato_non_leggibile"}
-    motivo = _valuta_policy(radice, stato, agente, thread_id, _adesso())
+    motivo = _valuta_policy(radice, stato, agente, thread_id, _adesso(), profilo)
     return {"esito": "autorizzato"} if motivo is None else {"esito": "bloccato", "motivo": motivo}
 
 
@@ -293,6 +321,10 @@ def registra_canale(radice: Path, agente: str, thread_id: str, canale: str) -> d
     Se l'azione OS fallisce DOPO una prenotazione riuscita, il turno resta
     comunque consumato (stessa filosofia di dispatch(): un tentativo reale,
     riuscito o no, consuma il tetto - non annullarlo mai a ritroso)."""
+    profilo = profili_operativi.carica(radice)
+    motivo_profilo = _motivo_profilo(profilo)
+    if motivo_profilo is not None:
+        return {"esito": "bloccato", "motivo": motivo_profilo}
     capability = capability_policy.autorizza_automazione(agente, canale)
     if capability["esito"] != "autorizzato":
         capability_policy.registra_blocco(radice, agente, canale, capability)
@@ -301,8 +333,11 @@ def registra_canale(radice: Path, agente: str, thread_id: str, canale: str) -> d
     record = {
         "id": str(uuid.uuid4()), "quando": ora.isoformat(), "agente": agente,
         "thread_id": thread_id, "canale": canale, "codice": 0,
+        "profilo": profilo["profilo"], "revisione_profilo": profilo["revisione"],
+        "limiti_effettivi": carica_limiti(radice, profilo),
+        "garanzia": profili_operativi.garanzie(profilo)[agente],
     }
-    motivo_blocco = _prenota_invio(radice, agente, thread_id, ora, record)
+    motivo_blocco = _prenota_invio(radice, agente, thread_id, ora, record, profilo)
     if motivo_blocco is not None:
         return {"esito": "bloccato", "motivo": motivo_blocco}
     _registra(radice, record)
@@ -419,7 +454,10 @@ def _risolvi_eseguibile(nome: str) -> str | None:
     return shutil.which(nome)
 
 
-def _prenota_invio(radice: Path, agente: str, thread_id: str, ora: datetime, record: dict[str, Any]) -> str | None:
+def _prenota_invio(
+    radice: Path, agente: str, thread_id: str, ora: datetime, record: dict[str, Any],
+    profilo: dict[str, Any] | None = None,
+) -> str | None:
     """Rivaluta l'autorizzazione su stato FRESCO e, solo se ancora valida,
     prenota subito il turno (persiste 'record' con codice=None) - tutto sotto
     lo stesso lock. Ritorna il motivo del blocco se la ri-verifica fallisce,
@@ -440,9 +478,11 @@ def _prenota_invio(radice: Path, agente: str, thread_id: str, ora: datetime, rec
         stato = _leggi_stato(radice)
         if stato is None:
             return "stato_non_leggibile"
-        if _spento(radice):
-            return "kill_switch"
-        motivo = _valuta_policy(radice, stato, agente, thread_id, ora)
+        profilo = profilo or profili_operativi.carica(radice)
+        motivo_profilo = _motivo_profilo(profilo)
+        if motivo_profilo is not None:
+            return motivo_profilo
+        motivo = _valuta_policy(radice, stato, agente, thread_id, ora, profilo)
         if motivo is not None:
             return motivo
         stato["invii"].append(record)
@@ -496,11 +536,15 @@ def dispatch(
     _prenota_invio): un pre-check con autorizza() qui sotto e' solo un
     ottimizzazione per evitare di prendere il lock nei casi ovvi (kill switch
     spento), la decisione che conta davvero e' quella dentro il lock."""
+    profilo = profili_operativi.carica(radice)
+    motivo_profilo = _motivo_profilo(profilo)
+    if motivo_profilo is not None:
+        return {"esito": "bloccato", "motivo": motivo_profilo}
     capability = capability_policy.autorizza_automazione(agente, "headless")
     if capability["esito"] != "autorizzato":
         capability_policy.registra_blocco(radice, agente, "headless", capability)
         return capability
-    policy = autorizza(radice, agente, thread_id)
+    policy = autorizza(radice, agente, thread_id, profilo=profilo)
     if policy["esito"] != "autorizzato":
         return policy
     comandi = COMANDI_REVISIONE if modo == "revisione" else COMANDI
@@ -515,9 +559,12 @@ def dispatch(
     record = {
         "id": id_invio, "quando": ora.isoformat(), "agente": agente, "thread_id": thread_id,
         "canale": "headless", "modo": modo,
+        "profilo": profilo["profilo"], "revisione_profilo": profilo["revisione"],
+        "limiti_effettivi": carica_limiti(radice, profilo),
+        "garanzia": profili_operativi.garanzie(profilo)[agente],
         "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "codice": None,
     }
-    motivo_blocco = _prenota_invio(radice, agente, thread_id, ora, record)
+    motivo_blocco = _prenota_invio(radice, agente, thread_id, ora, record, profilo)
     if motivo_blocco is not None:
         return {"esito": "bloccato", "motivo": motivo_blocco}
 

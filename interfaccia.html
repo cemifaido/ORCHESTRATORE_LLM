@@ -294,15 +294,43 @@
           <label for="bachecaProjSelect" data-i18n="label_proj">Progetto</label>
           <select id="bachecaProjSelect" style="width:100%;"></select>
         </div>
-        <div id="bachecaPostinoControl" style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
-          <span style="font-size:0.85rem; color:var(--text-muted); font-weight:600;" data-i18n="label_postino_auto">📬 Postino Automatico:</span>
-          <button type="button" id="bachecaPostinoBtn" class="btn" style="padding:0.35rem 0.8rem; font-size:0.8rem; font-weight:600; border-radius:6px; transition:all 0.2s ease;">
-            🔴 DISATTIVATO
-          </button>
-          <span style="font-size:0.85rem; color:var(--text-muted); font-weight:600; margin-left:0.6rem;" title="Fa rispondere davvero claude/codex in background (claude -p / codex exec), senza aprire finestre. Richiede il Postino Automatico attivo. Gemini non e' supportato (resta a finestra)." data-i18n="label_headless_dispatch" data-i18n-title="label_headless_dispatch_title">🤖 Dispatch Headless:</span>
-          <button type="button" id="bachecaPostinoHeadlessBtn" class="btn" style="padding:0.35rem 0.8rem; font-size:0.8rem; font-weight:600; border-radius:6px; transition:all 0.2s ease;">
-            🔴 DISATTIVATO
-          </button>
+        <div id="bachecaProfiloControl" style="display:flex; flex-direction:column; gap:0.6rem; background:rgba(30,41,59,0.5); border:1px solid rgba(148,163,184,0.15); border-radius:8px; padding:0.75rem; min-width:320px; flex:1;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.6rem;">
+            <div style="display:flex; align-items:center; gap:0.6rem;">
+              <span style="font-size:0.85rem; color:var(--text-muted); font-weight:600;" data-i18n="label_profilo_operativo">📬 Profilo Operativo Postino:</span>
+              <select id="profiloSelect" style="padding:0.35rem 0.6rem; font-size:0.82rem; font-weight:600; background:var(--bg-card); color:var(--text-main); border:1px solid rgba(148,163,184,0.3); border-radius:6px;">
+                <option value="standard">🔒 standard (fail-closed, nessun dispatch)</option>
+                <option value="brainstorming">💬 brainstorming (discussione / read-only)</option>
+                <option value="super">⚡ super (workspace-write, no Git - non disp.)</option>
+                <option value="smodata">🚀 smodata (ritmo alto, no Git - non disp.)</option>
+              </select>
+            </div>
+            <div id="profiloDispatchBadge" style="font-size:0.78rem; font-weight:700; padding:0.25rem 0.6rem; border-radius:4px; background:rgba(244,63,94,0.15); border:1px solid rgba(244,63,94,0.4); color:#fb7185;">
+              🔴 DISPATCH DISATTIVATO
+            </div>
+          </div>
+          <div id="profiloDescrizione" style="font-size:0.8rem; color:var(--text-muted); line-height:1.4; padding:0.4rem 0.5rem; background:rgba(15,23,42,0.4); border-radius:4px; border-left:3px solid var(--accent);">
+            Caricamento profilo operativo...
+          </div>
+          <div style="margin-top:0.2rem;">
+            <div style="font-size:0.75rem; font-weight:600; text-transform:uppercase; color:var(--text-muted); margin-bottom:0.3rem;" data-i18n="header_guarantees_matrix">
+              🛡️ Garanzie Reali per Agente (Nessuna falsa promessa)
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:0.5rem;" id="profiloGaranzieGrid">
+              <div style="background:var(--bg-card); padding:0.4rem 0.6rem; border-radius:4px; border:1px solid rgba(148,163,184,0.1);">
+                <div style="font-size:0.75rem; color:var(--color-claude); font-weight:700;">Claude</div>
+                <div id="garanziaClaude" style="margin-top:0.2rem; font-size:0.75rem;">-</div>
+              </div>
+              <div style="background:var(--bg-card); padding:0.4rem 0.6rem; border-radius:4px; border:1px solid rgba(148,163,184,0.1);">
+                <div style="font-size:0.75rem; color:var(--color-codex); font-weight:700;">Codex</div>
+                <div id="garanziaCodex" style="margin-top:0.2rem; font-size:0.75rem;">-</div>
+              </div>
+              <div style="background:var(--bg-card); padding:0.4rem 0.6rem; border-radius:4px; border:1px solid rgba(148,163,184,0.1);">
+                <div style="font-size:0.75rem; color:var(--color-gemini); font-weight:700;">Gemini</div>
+                <div id="garanziaGemini" style="margin-top:0.2rem; font-size:0.75rem;">-</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem; flex-wrap:wrap; gap:0.5rem;">

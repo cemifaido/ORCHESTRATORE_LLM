@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import interfaccia
 import bacheca
+import profili_operativi
 import registro
 
 
@@ -646,7 +647,7 @@ class PostinoAutomaticoTest(unittest.TestCase):
                 self.assertIn("postino_attivo", risultato)
                 self.assertFalse(risultato["postino_attivo"])
 
-                interfaccia.imposta_postino(p_path, attivo=True)
+                profili_operativi.imposta(p_path, "brainstorming")
                 risultato = interfaccia.bacheca_progetto(progetto_id="test_proj")
                 self.assertTrue(risultato["postino_attivo"])
 
@@ -695,7 +696,7 @@ class PostinoHeadlessTest(unittest.TestCase):
                 self.assertIn("postino_headless_attivo", risultato)
                 self.assertFalse(risultato["postino_headless_attivo"])
 
-                interfaccia.imposta_postino_headless(p_path, attivo=True)
+                profili_operativi.imposta(p_path, "brainstorming")
                 risultato = interfaccia.bacheca_progetto(progetto_id="test_proj")
                 self.assertTrue(risultato["postino_headless_attivo"])
 
@@ -713,8 +714,7 @@ class PostinoHeadlessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             progetti, richiesta = self._progetto_con_richiesta(tmp, agente="codex")
             p_path = Path(tmp)
-            interfaccia.imposta_postino(p_path, attivo=True)
-            interfaccia.imposta_postino_headless(p_path, attivo=True)
+            profili_operativi.imposta(p_path, "brainstorming")
 
             with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
                 interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")  # baseline
@@ -739,8 +739,7 @@ class PostinoHeadlessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             progetti, richiesta = self._progetto_con_richiesta(tmp, agente="codex")
             p_path = Path(tmp)
-            interfaccia.imposta_postino(p_path, attivo=True)
-            interfaccia.imposta_postino_headless(p_path, attivo=True)
+            profili_operativi.imposta(p_path, "brainstorming")
 
             with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
                 interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
@@ -760,17 +759,17 @@ class PostinoHeadlessTest(unittest.TestCase):
             self.assertEqual(risultato["risvegli"][0]["status"], "bloccato")
             self.assertEqual(risultato["risvegli"][0]["motivo"], "debounce")
 
-    def test_risveglio_deep_link_prenota_prima_dell_azione_os(self) -> None:
-        """Guardrail (trovato da Codex in modalita' revisione, 2026-08-26): la
-        prenotazione (registra_canale) deve avvenire PRIMA dell'azione OS, non
-        dopo - altrimenti due richieste concorrenti passano entrambe il
-        pre-check ed eseguono entrambe l'azione OS, anche se il tetto ne
-        permette solo una. Se la prenotazione e' bloccata, l'azione OS non
-        deve mai partire."""
+    def test_risveglio_standard_esegue_focus_passivo_senza_prenotazione(self) -> None:
+        """Decisione umana + Codex + Gemini (2026-08-27, thread bacheca
+        89fbd0ec): in profilo standard il risveglio passivo (focus IDE) resta
+        sempre disponibile, senza gating e senza passare da registra_canale()
+        - identico al vecchio comportamento 'Postino spento'. registra_canale
+        non ha piu' nessun chiamante runtime in dashboard_risvegli.py, per
+        scelta esplicita (non va reintrodotto in questo fix)."""
         with tempfile.TemporaryDirectory() as tmp:
             progetti, richiesta = self._progetto_con_richiesta(tmp, agente="gemini")
             p_path = Path(tmp)
-            interfaccia.imposta_postino(p_path, attivo=True)
+            # Nessun profilo impostato: default fail-closed = standard.
 
             with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
                 interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
@@ -781,38 +780,7 @@ class PostinoHeadlessTest(unittest.TestCase):
                     p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl", nuova
                 )
                 with (
-                    patch.object(
-                        interfaccia.postino, "registra_canale",
-                        return_value={"esito": "bloccato", "motivo": "tetto_thread"},
-                    ) as registra_mock,
-                    patch.object(interfaccia, "_esegui_risveglio_os") as risveglio_os,
-                ):
-                    risultato = interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
-
-            registra_mock.assert_called_once()
-            risveglio_os.assert_not_called()
-            self.assertEqual(risultato["risvegli"][0]["status"], "bloccato")
-            self.assertEqual(risultato["risvegli"][0]["motivo"], "tetto_thread")
-
-    def test_risveglio_deep_link_esegue_azione_os_dopo_prenotazione_riuscita(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            progetti, richiesta = self._progetto_con_richiesta(tmp, agente="gemini")
-            p_path = Path(tmp)
-            interfaccia.imposta_postino(p_path, attivo=True)
-
-            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
-                interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
-                nuova = bacheca.costruisci_messaggio(
-                    mittente="umano", destinatari=["gemini"], tipo="richiesta", testo="nuovo",
-                )
-                bacheca.aggiungi_messaggio(
-                    p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl", nuova
-                )
-                with (
-                    patch.object(
-                        interfaccia.postino, "registra_canale",
-                        return_value={"esito": "registrato", "canale": "deep_link"},
-                    ) as registra_mock,
+                    patch.object(interfaccia.postino, "registra_canale") as registra_mock,
                     patch.object(
                         interfaccia, "_esegui_risveglio_os",
                         return_value={"status": "eseguito", "modalita": "nuova_chat"},
@@ -820,7 +788,7 @@ class PostinoHeadlessTest(unittest.TestCase):
                 ):
                     interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
 
-            registra_mock.assert_called_once()
+            registra_mock.assert_not_called()
             risveglio_os.assert_called_once()
 
     def test_risveglio_headless_usa_gemini_capability_ora_supportata(self) -> None:
@@ -830,8 +798,7 @@ class PostinoHeadlessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             progetti, richiesta = self._progetto_con_richiesta(tmp, agente="gemini")
             p_path = Path(tmp)
-            interfaccia.imposta_postino(p_path, attivo=True)
-            interfaccia.imposta_postino_headless(p_path, attivo=True)
+            profili_operativi.imposta(p_path, "brainstorming")
 
             with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
                 interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")  # baseline
@@ -852,21 +819,16 @@ class PostinoHeadlessTest(unittest.TestCase):
 
     def test_risveglio_headless_ignora_capability_non_supportata(self) -> None:
         """Un agente non in postino.COMANDI resta sempre sul percorso a
-        finestra, qualunque sia lo stato del toggle headless - patchando
-        COMANDI direttamente cosi' il test resta valido indipendentemente
-        da quali capability sono davvero configurate in futuro (oggi
-        claude/codex/gemini sono tutte supportate, nessun agente reale
-        monitorato dalla dashboard resterebbe fuori)."""
+        finestra/appunti, anche con dispatch headless attivo."""
         with tempfile.TemporaryDirectory() as tmp:
-            progetti, richiesta = self._progetto_con_richiesta(tmp, agente="codex")
+            progetti, richiesta = self._progetto_con_richiesta(tmp, agente="gemini")
             p_path = Path(tmp)
-            interfaccia.imposta_postino(p_path, attivo=True)
-            interfaccia.imposta_postino_headless(p_path, attivo=True)
+            profili_operativi.imposta(p_path, "brainstorming")
 
             with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
                 interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")  # baseline
                 nuova = bacheca.costruisci_messaggio(
-                    mittente="umano", destinatari=["codex"], tipo="richiesta", testo="nuovo",
+                    mittente="umano", destinatari=["gemini"], tipo="richiesta", testo="nuovo",
                 )
                 bacheca.aggiungi_messaggio(
                     p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl", nuova
@@ -929,7 +891,7 @@ class PostinoRevisioneEndpointTest(unittest.TestCase):
     def test_richiede_dispatch_in_modalita_revisione(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             p_path = Path(tmp)
-            interfaccia.imposta_postino_headless(p_path, attivo=True)
+            profili_operativi.imposta(p_path, "brainstorming")
             progetti = [{"id": "test_proj", "nome": "Test", "percorso": str(p_path)}]
             with (
                 patch.object(interfaccia, "leggi_progetti", return_value=progetti),
@@ -960,7 +922,7 @@ class PostinoRevisioneEndpointTest(unittest.TestCase):
                 )
                 risultato = interfaccia.richiedi_revisione_postino(payload)
 
-        self.assertEqual(risultato, {"esito": "bloccato", "motivo": "dispatch_headless_disattivato"})
+        self.assertEqual(risultato, {"esito": "bloccato", "motivo": "dispatch_profilo_disattivato"})
         dispatch_mock.assert_not_called()
 
     def test_rifiuta_agente_non_valido(self) -> None:
@@ -1471,16 +1433,16 @@ class InterfacciaTestClientRoutesTest(unittest.TestCase):
                 )
                 self.assertEqual(r_400.status_code, 400)
 
-                # Bloccato se headless non attivo
+                # Bloccato se profilo non abilitato (default standard)
                 r_block = self.client.post(
                     "/api/bacheca/postino/revisione",
                     json={"progetto_id": "p_rev", "agente": "codex", "thread_id": "t1"},
                 )
                 self.assertEqual(r_block.status_code, 200)
-                self.assertEqual(r_block.json(), {"esito": "bloccato", "motivo": "dispatch_headless_disattivato"})
+                self.assertEqual(r_block.json(), {"esito": "bloccato", "motivo": "dispatch_profilo_disattivato"})
 
-                # Inviato quando headless attivo
-                interfaccia.imposta_postino_headless(p_path, attivo=True)
+                # Inviato quando profilo brainstorming abilitato
+                profili_operativi.imposta(p_path, "brainstorming")
                 with patch.object(interfaccia.postino, "dispatch", return_value={"esito": "inviato", "codice": 0}) as disp_mock:
                     r_ok = self.client.post(
                         "/api/bacheca/postino/revisione",

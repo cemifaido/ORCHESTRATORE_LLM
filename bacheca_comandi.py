@@ -69,6 +69,11 @@ def _formatta_per_hook(
     return _b()._formatta_per_hook(messaggi_pendenti, riprese)
 
 
+def _arricchisci_hook_con_profilo(testo: str, percorso_bacheca: Path) -> str:
+    # Percorso canonico: <radice>/dati_locali/orchestrazione/messaggi.jsonl.
+    return _b().arricchisci_hook_con_profilo(testo, percorso_bacheca.parent.parent.parent)
+
+
 def _richiedi_thread_esistente(messaggi: list[dict[str, Any]], thread_id: str) -> None:
     _b()._richiedi_thread_esistente(messaggi, thread_id)
 
@@ -124,15 +129,17 @@ def comando_chiedi(args: argparse.Namespace) -> int:
 
 def comando_prossimo(args: argparse.Namespace) -> int:
     agente = normalizza_agente(args.agente)
-    messaggi = leggi_messaggi(Path(args.bacheca))
+    percorso_bacheca = Path(args.bacheca)
+    messaggi = leggi_messaggi(percorso_bacheca)
     pendenti = messaggi_aperti_per(messaggi, agente)
     if args.formato == "hook":
         # le riprese pronte solo nel formato hook: il json resta l'elenco dei soli
         # messaggi pendenti per compatibilita' coi consumatori esistenti (RFC v2 §2.6).
-        testo = _formatta_per_hook(pendenti, riprese_pronte(messaggi, agente))
-        if not testo:
-            output: dict[str, Any] = {}
-        elif args.evento == "PreInvocation":
+        testo = _arricchisci_hook_con_profilo(
+            _formatta_per_hook(pendenti, riprese_pronte(messaggi, agente)), percorso_bacheca
+        )
+        output: dict[str, Any]
+        if args.evento == "PreInvocation":
             # Antigravity (hook Gemini) usa un contratto diverso dagli altri due
             # strumenti per questo evento: injectSteps/ephemeralMessage, non
             # hookSpecificOutput/additionalContext (verificato contro lo standard
@@ -625,4 +632,3 @@ def comando_valida(args: argparse.Namespace) -> int:
         return 1
     print(f"bacheca valida: {len(messaggi)} messaggi")
     return 0
-

@@ -248,9 +248,9 @@
       margin-bottom: 0.4rem;
     }
 
-    .form-group input, .form-group select {
+    .form-group input, .form-group select, select {
       width: 100%;
-      background: rgba(15, 23, 42, 0.6);
+      background: rgba(15, 23, 42, 0.8);
       border: 1px solid var(--card-border);
       color: var(--text-main);
       padding: 0.6rem 0.8rem;
@@ -261,7 +261,22 @@
       transition: all 0.2s;
     }
 
-    .form-group input:focus, .form-group select:focus {
+    select option {
+      background-color: #0f172a !important;
+      color: #f8fafc !important;
+    }
+
+    #profiloSelect {
+      background-color: #0f172a !important;
+      color: #f8fafc !important;
+    }
+
+    #profiloSelect option {
+      background-color: #0f172a !important;
+      color: #f8fafc !important;
+    }
+
+    .form-group input:focus, .form-group select:focus, select:focus {
       outline: none;
       border-color: var(--accent-blue);
       box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);

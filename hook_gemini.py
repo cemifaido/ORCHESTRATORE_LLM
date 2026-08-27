@@ -57,7 +57,9 @@ def main() -> int:
     messaggi = bacheca.leggi_messaggi(percorso_bacheca)
     pendenti = bacheca.messaggi_aperti_per(messaggi, "gemini")
     riprese = bacheca.riprese_pronte(messaggi, "gemini")
-    testo = bacheca._formatta_per_hook(pendenti, riprese)
+    testo = bacheca.arricchisci_hook_con_profilo(
+        bacheca._formatta_per_hook(pendenti, riprese), RADICE
+    )
 
     if not testo:
         print(json.dumps({}))

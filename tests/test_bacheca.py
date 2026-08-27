@@ -823,6 +823,7 @@ class BachecaCliContractTest(unittest.TestCase):
             hook = output["hookSpecificOutput"]
             self.assertEqual(hook["hookEventName"], "UserPromptSubmit")
             self.assertIn("Controlla la facciata", hook["additionalContext"])
+            self.assertIn("Profilo operativo standard", hook["additionalContext"])
 
     def test_cli_prossimo_hook_antigravity_preinvocation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

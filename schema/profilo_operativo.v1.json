@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orchestratore.locale/schema/profilo_operativo.v1.json",
+  "title": "Profilo operativo del Postino v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["versione_schema", "profilo", "aggiornato_il", "revisione"],
+  "properties": {
+    "versione_schema": {"const": 1},
+    "profilo": {"type": "string", "enum": ["standard", "brainstorming", "super", "smodata"]},
+    "aggiornato_il": {"type": "string", "format": "date-time"},
+    "revisione": {"type": "string", "minLength": 1}
+  }
+}

@@ -26,6 +26,7 @@ import dashboard_progetti
 import dashboard_risvegli
 import dashboard_servizi
 import interfaccia
+import profili_operativi
 
 
 class DashboardConfigTest(unittest.TestCase):
@@ -224,6 +225,110 @@ class DashboardRisvegliTest(unittest.TestCase):
             self.assertTrue(dashboard_risvegli.piattaforma_supporta_risveglio_os())
         with patch.object(dashboard_risvegli.os, "name", "posix"):
             self.assertFalse(dashboard_risvegli.piattaforma_supporta_risveglio_os())
+
+    @staticmethod
+    def _pendente(agente: str = "claude") -> dict[str, list[dict]]:
+        return {
+            "claude": ([{"id_messaggio": "m-nuovo", "thread_id": "t-1", "cronologia": []}] if agente == "claude" else []),
+            "codex": [],
+            "gemini": [],
+        }
+
+    def test_brainstorming_esegue_dispatch_headless(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            dashboard_risvegli.scrivi_stato_risvegli(
+                dashboard_risvegli.percorso_stato_risvegli(radice), {"versione_schema": 1, "notificati": {}},
+            )
+            with patch("dashboard_risvegli.thread_pendenti_per_agente", return_value=self._pendente()), \
+                 patch("profili_operativi.carica", return_value={"profilo": "brainstorming"}), \
+                 patch("profili_operativi.dispatch_abilitato", return_value=True), \
+                 patch("postino.dispatch", return_value={"esito": "inviato", "codice": 0}) as dispatch, \
+                 patch("interfaccia._trova_ultima_sessione_claude", return_value=None), \
+                 patch("interfaccia._esegui_risveglio_os") as risveglio:
+                _, esiti = dashboard_risvegli.calcola_ed_esegui_risvegli(radice, [])
+
+            dispatch.assert_called_once_with(radice, "claude", "t-1")
+            risveglio.assert_not_called()
+            self.assertEqual(esiti[0]["status"], "headless")
+
+    def test_standard_esegue_risveglio_passivo_senza_gating(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            dashboard_risvegli.scrivi_stato_risvegli(
+                dashboard_risvegli.percorso_stato_risvegli(radice), {"versione_schema": 1, "notificati": {}},
+            )
+            with patch("dashboard_risvegli.thread_pendenti_per_agente", return_value=self._pendente()), \
+                 patch("profili_operativi.carica", return_value=profili_operativi.profilo_standard()), \
+                 patch("profili_operativi.dispatch_abilitato", return_value=False), \
+                 patch("postino.dispatch") as dispatch, \
+                 patch("postino.registra_canale") as registra_canale, \
+                 patch("interfaccia._trova_ultima_sessione_claude", return_value=None), \
+                 patch("interfaccia._esegui_risveglio_os", return_value={"status": "eseguito", "modalita": "focus_ide"}) as risveglio:
+                _, esiti = dashboard_risvegli.calcola_ed_esegui_risvegli(radice, [])
+
+            dispatch.assert_not_called()
+            registra_canale.assert_not_called()
+            risveglio.assert_called_once_with("claude", [], None)
+            self.assertEqual(esiti[0]["status"], "eseguito")
+
+
+class DashboardProfiliOperativiTest(unittest.TestCase):
+    def test_post_profilo_e_get_bacheca(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice_progetto = Path(tmp)
+            f_cfg = radice_progetto / "progetti.json"
+            progetti = [{"id": "test_proj", "nome": "Test Proj", "percorso": str(radice_progetto)}]
+            dashboard_progetti.salva_progetti(progetti, f_cfg)
+
+            # Crea marker legacy da ripulire
+            p_leg = radice_progetto / "dati_locali" / "orchestrazione"
+            p_leg.mkdir(parents=True, exist_ok=True)
+            (p_leg / "POSTINO_ATTIVO").write_text("1", encoding="utf-8")
+            (p_leg / "POSTINO_HEADLESS_ATTIVO").write_text("1", encoding="utf-8")
+
+            with patch("dashboard_progetti.leggi_progetti", return_value=progetti), \
+                 patch("interfaccia.leggi_progetti", return_value=progetti):
+                client = TestClient(interfaccia.app)
+
+                # 1. POST profilo valido
+                res_post = client.post(
+                    "/api/bacheca/postino/profilo",
+                    json={"progetto_id": "test_proj", "profilo": "brainstorming"},
+                )
+                self.assertEqual(res_post.status_code, 200)
+                dati_post = res_post.json()
+                self.assertEqual(dati_post["status"], "ok")
+                self.assertEqual(dati_post["profilo"]["profilo"], "brainstorming")
+                self.assertEqual(dati_post["garanzie_per_agente"]["claude"], "enforced")
+                self.assertEqual(dati_post["garanzie_per_agente"]["codex"], "prompt_only")
+
+                # Verifica housekeeping su marker legacy
+                self.assertFalse((p_leg / "POSTINO_ATTIVO").exists())
+                self.assertFalse((p_leg / "POSTINO_HEADLESS_ATTIVO").exists())
+
+                # 2. GET bacheca include profilo DTO e garanzie
+                res_get = client.get("/api/bacheca?progetto_id=test_proj")
+                self.assertEqual(res_get.status_code, 200)
+                dati_get = res_get.json()
+                self.assertIn("profilo", dati_get)
+                self.assertEqual(dati_get["profilo"]["profilo"], "brainstorming")
+                self.assertIn("garanzie_per_agente", dati_get)
+                self.assertIn("descrizione_profilo", dati_get)
+
+                # 3. POST profilo non valido => HTTP 400
+                res_bad_prof = client.post(
+                    "/api/bacheca/postino/profilo",
+                    json={"progetto_id": "test_proj", "profilo": "profilo_inventato"},
+                )
+                self.assertEqual(res_bad_prof.status_code, 400)
+
+                # 4. POST progetto inesistente => HTTP 404
+                res_bad_proj = client.post(
+                    "/api/bacheca/postino/profilo",
+                    json={"progetto_id": "non_esiste", "profilo": "standard"},
+                )
+                self.assertEqual(res_bad_proj.status_code, 404)
 
 
 class InterfacciaSmokeTest(unittest.TestCase):

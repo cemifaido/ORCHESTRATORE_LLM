@@ -21,6 +21,7 @@ import dashboard_progetti
 import dashboard_risvegli
 import dashboard_servizi
 import postino
+import profili_operativi
 
 router = APIRouter()
 
@@ -44,6 +45,11 @@ class PostinoToggleInput(BaseModel):
 class PostinoHeadlessToggleInput(BaseModel):
     progetto_id: str
     attivo: bool
+
+
+class PostinoProfiloInput(BaseModel):
+    progetto_id: str
+    profilo: str
 
 
 class PostinoRevisioneInput(BaseModel):
@@ -207,6 +213,43 @@ def riavvia_sistema():
     return {"status": "riavvio_in_corso"}
 
 
+@router.post("/api/bacheca/postino/profilo")
+def imposta_postino_profilo(payload: PostinoProfiloInput):
+    import interfaccia
+    progetto = interfaccia._progetto_o_404(payload.progetto_id)
+    p_path = Path(progetto["percorso"])
+
+    try:
+        dto = profili_operativi.imposta(p_path, payload.profilo)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Housekeeping: pulizia dei vecchi marker legacy su disco
+    for marker in ("POSTINO_ATTIVO", "POSTINO_HEADLESS_ATTIVO"):
+        f_marker = p_path / "dati_locali" / "orchestrazione" / marker
+        if f_marker.exists():
+            try:
+                f_marker.unlink()
+            except Exception:
+                pass
+
+    garanzie = profili_operativi.garanzie(dto)
+    descrizione = profili_operativi.istruzione_interattiva(dto)
+    try:
+        limiti = postino.carica_limiti(p_path)
+    except Exception:
+        limiti = {}
+
+    return {
+        "status": "ok",
+        "progetto_id": payload.progetto_id,
+        "profilo": dto,
+        "garanzie_per_agente": garanzie,
+        "descrizione": descrizione,
+        "limiti_effettivi": limiti,
+    }
+
+
 @router.post("/api/bacheca/postino/toggle")
 def toggle_postino(payload: PostinoToggleInput):
     import interfaccia
@@ -230,8 +273,9 @@ def richiedi_revisione_postino(payload: PostinoRevisioneInput):
     if payload.agente not in interfaccia.AGENTI_BACHECA_DASHBOARD:
         raise HTTPException(status_code=400, detail=f"agente non valido: {payload.agente}")
     percorso_progetto = Path(progetto["percorso"])
-    if not interfaccia.postino_headless_attivo(percorso_progetto):
-        return {"esito": "bloccato", "motivo": "dispatch_headless_disattivato"}
+    profilo_corrente = profili_operativi.carica(percorso_progetto)
+    if not profili_operativi.dispatch_abilitato(profilo_corrente):
+        return {"esito": "bloccato", "motivo": "dispatch_profilo_disattivato"}
     esito = postino.dispatch(
         percorso_progetto, payload.agente, payload.thread_id, modo="revisione",
     )

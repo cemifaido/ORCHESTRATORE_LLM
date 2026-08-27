@@ -110,6 +110,8 @@
         // Bacheca
         widget_bacheca_title: "🗂️ Bacheca Multi-Agente",
         bacheca_read_only_notice: "Questa vista e' di sola lettura: la fase workflow e' derivata dalle evidenze append-only in bacheca e registro. Un'approvazione si registra nella bacheca, non modifica direttamente la fase.",
+        label_profilo_operativo: "📬 Profilo Operativo Postino:",
+        header_guarantees_matrix: "🛡️ Garanzie Reali per Agente (Nessuna falsa promessa)",
         label_postino_auto: "📬 Postino Automatico:",
         label_headless_dispatch: "🤖 Dispatch Headless:",
         label_headless_dispatch_title: "Fa rispondere davvero claude/codex in background (claude -p / codex exec), senza aprire finestre. Richiede il Postino Automatico attivo. Gemini non e' supportato (resta a finestra).",
@@ -305,6 +307,8 @@
         // Board
         widget_bacheca_title: "🗂️ Multi-Agent Board",
         bacheca_read_only_notice: "This view is read-only: the workflow phase is derived from append-only board and registry evidence. An approval is recorded on the board; it does not directly change the phase.",
+        label_profilo_operativo: "📬 Postino Operating Profile:",
+        header_guarantees_matrix: "🛡️ Real Guarantees per Agent (No false promises)",
         label_postino_auto: "📬 Automatic Postman:",
         label_headless_dispatch: "🤖 Headless Dispatch:",
         label_headless_dispatch_title: "Runs claude/codex autonomously in background (claude -p / codex exec) without opening windows. Requires Automatic Postman enabled. Gemini not supported (window only).",
@@ -594,8 +598,7 @@
           btn.style.color = "#34d399";
         }
       });
-      document.getElementById("bachecaPostinoBtn")?.addEventListener("click", togglePostinoAutomatico);
-      document.getElementById("bachecaPostinoHeadlessBtn")?.addEventListener("click", togglePostinoHeadless);
+      document.getElementById("profiloSelect")?.addEventListener("change", cambiaProfiloOperativo);
 
       // Paginazione della timeline eventi
       document.getElementById("timelinePrevBtn")?.addEventListener("click", () => {
@@ -1261,90 +1264,79 @@
       }
     }
 
-    let bachecaPostinoAttivo = false;
-    let bachecaPostinoHeadlessAttivo = false;
-
-    function renderizzaPostinoState(attivo) {
-      bachecaPostinoAttivo = !!attivo;
-      const btn = document.getElementById("bachecaPostinoBtn");
-      if (!btn) return;
-      if (bachecaPostinoAttivo) {
-        btn.textContent = t("status_active");
-        btn.style.background = "rgba(16,185,129,0.18)";
-        btn.style.border = "1px solid rgba(16,185,129,0.5)";
-        btn.style.color = "#34d399";
-        btn.title = t("postino_auto_on_title");
-      } else {
-        btn.textContent = t("status_disabled");
-        btn.style.background = "rgba(244,63,94,0.18)";
-        btn.style.border = "1px solid rgba(244,63,94,0.5)";
-        btn.style.color = "#fb7185";
-        btn.title = t("postino_auto_off_title");
+    function badgeGaranziaHtml(tipo) {
+      if (tipo === "enforced") {
+        return `<span class="tag-badge" style="background:rgba(16,185,129,0.2); color:#34d399; font-weight:700; font-size:0.72rem; padding:0.1rem 0.4rem; border-radius:4px; border:1px solid rgba(16,185,129,0.4);">🛡️ Enforced</span>`;
       }
-      renderizzaPostinoHeadlessState(bachecaPostinoHeadlessAttivo);
+      if (tipo === "prompt_only") {
+        return `<span class="tag-badge" style="background:rgba(245,158,11,0.2); color:#fbbf24; font-weight:700; font-size:0.72rem; padding:0.1rem 0.4rem; border-radius:4px; border:1px solid rgba(245,158,11,0.4);">⚠️ Prompt only</span>`;
+      }
+      return `<span class="tag-badge" style="background:rgba(148,163,184,0.15); color:#94a3b8; font-weight:600; font-size:0.72rem; padding:0.1rem 0.4rem; border-radius:4px; border:1px solid rgba(148,163,184,0.3);">⛔ Non disp.</span>`;
     }
 
-    async function togglePostinoAutomatico() {
-      const select = document.getElementById("bachecaProjSelect");
-      const progetto_id = (select && select.value) || "orchestratore";
-      const nuovoStato = !bachecaPostinoAttivo;
+    function renderizzaProfiloOperativo(data) {
+      if (!data) return;
+      const dto = data.profilo || {};
+      const nomeProfilo = dto.profilo || "standard";
+      const select = document.getElementById("profiloSelect");
+      if (select && select.value !== nomeProfilo) {
+        select.value = nomeProfilo;
+      }
+
+      const badge = document.getElementById("profiloDispatchBadge");
+      if (badge) {
+        const dispatchAbilitato = nomeProfilo === "brainstorming";
+        if (dispatchAbilitato) {
+          badge.textContent = "🟢 DISPATCH ATTIVO (brainstorming)";
+          badge.style.background = "rgba(16,185,129,0.15)";
+          badge.style.borderColor = "rgba(16,185,129,0.4)";
+          badge.style.color = "#34d399";
+        } else {
+          badge.textContent = nomeProfilo === "standard" ? "🔴 DISPATCH DISATTIVATO (standard)" : `⛔ NON DISPONIBILE (${nomeProfilo})`;
+          badge.style.background = "rgba(244,63,94,0.15)";
+          badge.style.borderColor = "rgba(244,63,94,0.4)";
+          badge.style.color = "#fb7185";
+        }
+      }
+
+      const descBox = document.getElementById("profiloDescrizione");
+      if (descBox) {
+        descBox.textContent = data.descrizione_profilo || data.descrizione || "Nessuna descrizione disponibile.";
+      }
+
+      const garanzie = data.garanzie_per_agente || {};
+      const gClaude = document.getElementById("garanziaClaude");
+      if (gClaude) gClaude.innerHTML = badgeGaranziaHtml(garanzie.claude || "enforced");
+
+      const gCodex = document.getElementById("garanziaCodex");
+      if (gCodex) gCodex.innerHTML = badgeGaranziaHtml(garanzie.codex || "prompt_only");
+
+      const gGemini = document.getElementById("garanziaGemini");
+      if (gGemini) gGemini.innerHTML = badgeGaranziaHtml(garanzie.gemini || "prompt_only");
+    }
+
+    async function cambiaProfiloOperativo() {
+      const projSelect = document.getElementById("bachecaProjSelect");
+      const progetto_id = (projSelect && projSelect.value) || "orchestratore";
+      const profSelect = document.getElementById("profiloSelect");
+      const nuovoProfilo = profSelect ? profSelect.value : "standard";
+
       try {
-        const res = await fetch("/api/bacheca/postino/toggle", {
+        const res = await fetch("/api/bacheca/postino/profilo", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ progetto_id: progetto_id, attivo: nuovoStato })
+          body: JSON.stringify({ progetto_id: progetto_id, profilo: nuovoProfilo })
         });
-        if (!res.ok) throw new Error("risposta non valida");
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || "Errore cambio profilo");
+        }
         const data = await res.json();
-        renderizzaPostinoState(data.postino_attivo);
-        showFeedback(data.postino_attivo ? t("postino_activated_msg") : t("postino_deactivated_msg"), "info");
+        renderizzaProfiloOperativo(data);
+        showFeedback(`Profilo impostato: ${nuovoProfilo}`, "success");
       } catch (err) {
-        showFeedback("Errore toggle Postino", "error");
-      }
-    }
-
-    function renderizzaPostinoHeadlessState(attivo) {
-      bachecaPostinoHeadlessAttivo = !!attivo;
-      const btn = document.getElementById("bachecaPostinoHeadlessBtn");
-      if (!btn) return;
-      btn.disabled = !bachecaPostinoAttivo;
-      btn.style.opacity = bachecaPostinoAttivo ? "1" : "0.5";
-      btn.style.cursor = bachecaPostinoAttivo ? "pointer" : "not-allowed";
-      if (bachecaPostinoHeadlessAttivo) {
-        btn.textContent = t("status_active");
-        btn.style.background = "rgba(16,185,129,0.18)";
-        btn.style.border = "1px solid rgba(16,185,129,0.5)";
-        btn.style.color = "#34d399";
-        btn.title = t("headless_on_title");
-      } else {
-        btn.textContent = t("status_disabled");
-        btn.style.background = "rgba(244,63,94,0.18)";
-        btn.style.border = "1px solid rgba(244,63,94,0.5)";
-        btn.style.color = "#fb7185";
-        btn.title = bachecaPostinoAttivo ? t("headless_off_title") : t("headless_requires_postino");
-      }
-    }
-
-    async function togglePostinoHeadless() {
-      if (!bachecaPostinoAttivo) {
-        showFeedback(t("activate_postino_first"), "error");
-        return;
-      }
-      const select = document.getElementById("bachecaProjSelect");
-      const progetto_id = (select && select.value) || "orchestratore";
-      const nuovoStato = !bachecaPostinoHeadlessAttivo;
-      try {
-        const res = await fetch("/api/bacheca/postino/headless/toggle", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ progetto_id: progetto_id, attivo: nuovoStato })
-        });
-        if (!res.ok) throw new Error("risposta non valida");
-        const data = await res.json();
-        renderizzaPostinoHeadlessState(data.postino_headless_attivo);
-        showFeedback(data.postino_headless_attivo ? t("headless_activated_msg") : t("headless_deactivated_msg"), "info");
-      } catch (err) {
-        showFeedback("Errore toggle Headless", "error");
+        showFeedback(`Errore impostazione profilo: ${err.message}`, "error");
+        caricaBacheca();
       }
     }
 
@@ -1542,8 +1534,7 @@
 
         renderizzaPendingBacheca(data.pending_per_agente, data.claude_session_id);
         renderizzaPraticheSospese(data.pratiche_sospese);
-        bachecaPostinoHeadlessAttivo = !!data.postino_headless_attivo;
-        renderizzaPostinoState(data.postino_attivo);
+        renderizzaProfiloOperativo(data);
         await eseguiRisvegliBacheca(progetto_id);
         const thread = data.thread || [];
         const flussi = data.flussi || {};

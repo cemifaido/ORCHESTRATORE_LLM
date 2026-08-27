@@ -11,6 +11,7 @@ from unittest.mock import patch
 import bacheca
 import dashboard_servizi
 import postino
+import profili_operativi
 import registro
 
 
@@ -22,9 +23,7 @@ class GoldenPathBachecaPostinoDashboardTest(unittest.TestCase):
             radice = Path(tmp)
             thread_id = "thread-golden"
             (radice / "dati_locali" / "orchestrazione").mkdir(parents=True)
-            (radice / "dati_locali" / "orchestrazione" / "POSTINO_ATTIVO").write_text(
-                "POSTINO_ATTIVO=1\n", encoding="utf-8"
-            )
+            profili_operativi.imposta(radice, "brainstorming", revisione="test-golden")
             bacheca.aggiungi_messaggio(
                 radice / "dati_locali" / "orchestrazione" / "messaggi.jsonl",
                 bacheca.costruisci_messaggio(

@@ -20,6 +20,8 @@ import dashboard_flussi
 import dashboard_os
 import dashboard_progetti
 import motore_flusso
+import postino
+import profili_operativi
 import registro
 
 AGENTI_BACHECA_DASHBOARD = dashboard_config.AGENTI_BACHECA_DASHBOARD
@@ -244,6 +246,14 @@ def ottieni_bacheca_progetto(
         for f, info in bacheca.file_occupati(messaggi).items()
     }
 
+    dto_profilo = profili_operativi.carica(p_path)
+    garanzie = profili_operativi.garanzie(dto_profilo)
+    descrizione = profili_operativi.istruzione_interattiva(dto_profilo)
+    try:
+        limiti_effettivi = postino.carica_limiti(p_path)
+    except Exception:
+        limiti_effettivi = {}
+
     return {
         "progetto_id": progetto_id,
         "thread": thread_riepilogo,
@@ -252,8 +262,12 @@ def ottieni_bacheca_progetto(
         "pratiche_sospese": pratiche_sospese,
         "flussi": dashboard_flussi.leggi_flussi_dichiarati(),
         "claude_session_id": dashboard_os.trova_ultima_sessione_claude(p_path),
-        "postino_attivo": postino_attivo(p_path),
-        "postino_headless_attivo": postino_headless_attivo(p_path),
+        "profilo": dto_profilo,
+        "garanzie_per_agente": garanzie,
+        "descrizione_profilo": descrizione,
+        "limiti_effettivi": limiti_effettivi,
+        "postino_attivo": profili_operativi.dispatch_abilitato(dto_profilo),
+        "postino_headless_attivo": profili_operativi.dispatch_abilitato(dto_profilo),
     }
 
 
