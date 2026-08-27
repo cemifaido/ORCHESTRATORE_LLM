@@ -38,9 +38,9 @@ Il flusso standard — compito, gate, triage, registrazione, approvazione umana 
 
 La **Sentinella** esegue esclusivamente comandi presenti in una whitelist. Il gate di sviluppo include test, lint, type-check e controllo della complessità; l'esito diventa un evento nel registro. Per output poco chiari, `triage_locale.py` può classificare automaticamente routine/escalation con un modello locale; senza modello locale usa controlli deterministici e non blocca il progetto.
 
-### Il postino, ma solo quando lo vuoi tu
+### Il postino, con un profilo scelto da te per ogni progetto
 
-La dashboard può rilevare un messaggio pendente e preparare il risveglio del destinatario. Il vero dispatch headless è **spento per impostazione predefinita** e richiede un secondo interruttore esplicito. Anche quando attivo resta vincolato da un numero massimo di turni per thread, budget giornaliero, debounce persistente e kill switch immediato.
+La dashboard può rilevare un messaggio pendente e preparare il risveglio del destinatario. Quanto in automatico gestire dipende da un **profilo operativo per progetto**, scelto da un menu in dashboard, non da interruttori sparsi: `standard` (nessuna automazione, come oggi appena installato), `brainstorming` (l'agente risponde da solo in bacheca, con ritmo limitato), `super`/`smodata` (in arrivo: anche scrittura file, mai comandi Git in scrittura). Ogni progetto nuovo parte in `standard` — l'automazione è sempre una scelta esplicita, mai il default. Anche al massimo del ritmo resta un tetto assoluto in codice, mai davvero illimitato, e la dashboard dichiara onestamente, per ciascun assistente, se un vincolo è tecnico o solo una convenzione nel prompt — non promette la stessa protezione per tutti quando non è vera.
 
 Esiste inoltre una modalità di revisione esplicita: un agente può ispezionare diff, log e quality gate e riportare risultati reali, senza modificare file, fare commit o accedere alla rete. Non viene avviata automaticamente.
 
@@ -119,7 +119,7 @@ Il launcher avvia FastAPI in locale e apre `http://127.0.0.1:8095`. I log restan
 | Uno o più agenti | Le CLI che hai già installato | Bacheca, assegnazione e handoff modulari |
 | Senza GPU | `LLM_LOCALE_ABILITATO=false` | Gate deterministici; nessuna dipendenza dal modello locale |
 | Con LLM locale | `llama-server` sulla porta 8090 | Triage e sintesi gratuiti, offline, senza scrittura di codice |
-| Dispatch headless | Entrambi i toggle del Postino | Turni automatici limitati e auditabili; da accendere solo dopo la verifica dei prerequisiti |
+| Dispatch headless | Profilo `brainstorming` (o superiore) su un progetto | Turni automatici limitati e auditabili; da scegliere solo dopo la verifica dei prerequisiti |
 
 ### CLI degli agenti (facoltative)
 

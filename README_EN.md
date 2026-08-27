@@ -38,9 +38,9 @@ The standard lifecycle — task, gate, triage, logging, human approval, and clos
 
 The **Sentinel** (`sentinella.py`) executes strictly whitelisted commands. The development gate includes automated tests, linting, type-checking, and complexity checks (Xenon); every result is recorded in the audit log. For ambiguous outputs, `triage_locale.py` can automatically classify routine vs. escalation using a local model; without a local model, deterministic rule checks ensure zero blocking.
 
-### The Postman, Only When You Want It
+### The Postman, With a Profile You Choose Per Project
 
-The dashboard can detect pending messages and focus the target agent's window. Headless automated dispatch is **disabled by default (fail-closed)** and requires an explicit secondary toggle. Even when active, it is constrained by maximum turns per thread, daily budget caps, persistent debounce intervals, and an instant kill switch.
+The dashboard can detect pending messages and focus the target agent's window. How much automation runs is set by an **operational profile per project**, chosen from a dashboard menu rather than scattered toggles: `standard` (no automation, the default for every new project), `brainstorming` (the agent replies on its own in the board, at a limited pace), `super`/`smodata` (coming: file writes too, Git write commands never). Every new project starts in `standard` — automation is always an explicit opt-in, never the default. Even at the fastest pace there is an absolute cap in code, never truly unlimited, and the dashboard honestly states, per assistant, whether a constraint is technically enforced or only a prompt convention — it never claims the same protection for all three when it isn't real.
 
 A standalone technical review mode allows an agent to inspect diffs, test logs, and quality gates to report real findings without modifying source files, making git commits, or accessing the network.
 
@@ -119,7 +119,7 @@ The launcher starts FastAPI locally and opens `http://127.0.0.1:8095`. Logs are 
 | One or More Agents | CLIs already installed on your machine | Modular board, task assignment, and handoffs |
 | Without GPU | `LLM_LOCALE_ABILITATO=false` | Deterministic quality gates; zero local LLM dependency |
 | With Local LLM | `llama-server` running on port 8090 | Free, offline triage and synthesis without code editing |
-| Headless Dispatch | Both Postman toggles activated | Limited, auditable automated turns; enable only after verifying prerequisites |
+| Headless Dispatch | `brainstorming` profile (or higher) on a project | Limited, auditable automated turns; choose only after verifying prerequisites |
 
 ### Agent CLIs (Optional)
 

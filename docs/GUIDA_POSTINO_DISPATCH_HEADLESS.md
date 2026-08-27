@@ -1,10 +1,77 @@
 # Guida: il postino e il dispatch headless
 
-**Stato**: funzionante e verificato dal vivo (2026-08-25). Questa è la guida
-operativa di riferimento — cosa fa, cosa serve per farlo funzionare, come si
-usa, come si replica su un'altra macchina. Per la storia delle decisioni e i
-guardrail concordati con Gemini/Codex vedi `docs/PIANO_RISVEGLI_AUTOMATICI.md`;
-per l'idea originale vedi `docs/PROPOSTA_RIUSO_IDEE_WEFT.md`.
+**Stato**: funzionante e verificato dal vivo. Dispatch headless attivo dal
+2026-08-25; **sistema di profili operativi** (standard/brainstorming/super/
+smodata, sostituisce i due vecchi interruttori grezzi) dal 2026-08-27 — vedi
+sezione dedicata sotto. Questa è la guida operativa di riferimento — cosa fa,
+cosa serve per farlo funzionare, come si usa, come si replica su un'altra
+macchina. Per la storia delle decisioni e i guardrail concordati con
+Gemini/Codex vedi `docs/PIANO_RISVEGLI_AUTOMATICI.md`; per l'idea originale
+vedi `docs/PROPOSTA_RIUSO_IDEE_WEFT.md`.
+
+## Il profilo operativo (un solo controllo, non due interruttori)
+
+Fino al 2026-08-26 il Postino si accendeva con due interruttori indipendenti
+(`POSTINO_ATTIVO`/`POSTINO_HEADLESS_ATTIVO`, vedi più sotto per la parte
+ancora presente sul disco per compatibilità). **Ora ogni progetto ha un solo
+profilo operativo**, scelto dalla dashboard (menu a tendina "Profilo
+Operativo Postino"), che sostituisce entrambi i vecchi interruttori:
+
+| Profilo | Cosa fa | Stato oggi |
+|---|---|---|
+| **standard** | Nessuna automazione. Il risveglio resta solo passivo (focus finestra + prompt negli appunti, umano incolla e invia) — identico al vecchio "Postino spento", sempre disponibile, nessun limite. | **Attivo**, default per ogni progetto nuovo |
+| **brainstorming** | Dispatch headless reale (l'agente risponde da solo in bacheca), limiti di ritmo larghi. | **Attivo** |
+| **super** | Come brainstorming, in più l'agente può scrivere file — mai comandi Git in scrittura. | Selezionabile ma **non ancora attivo**: manca la whitelist di comandi che decide davvero cosa può fare un agente in scrittura (vedi "Limiti noti") |
+| **smodata** | Stessa capacità di "super", limiti di ritmo praticamente rimossi (mai davvero infiniti — un tetto assoluto in codice impedisce un loop/costo incontrollato anche qui). | Selezionabile ma **non ancora attivo**, stesso motivo di "super" |
+
+Per **super** e **smodata**, la dashboard mostra onestamente, per ciascun
+agente (Claude/Codex/Gemini), se la garanzia sarebbe `enforced` (vincolo
+tecnico vero), `prompt_only` (solo un'istruzione nel prompt, nessun blocco
+tecnico) o `non_disponibile` (oggi, per tutti — il dispatch non parte
+comunque finché non esiste la whitelist). Non promette mai la stessa
+protezione per tutti e tre gli agenti sotto un'unica etichetta: Claude ha
+oggi il perimetro più restringibile per davvero (`--allowedTools`), Codex e
+Gemini restano più spesso legati alla sola disciplina del prompt.
+
+**Git non è mai automatico, in nessun profilo.** Nemmeno "smodata" autorizza
+un commit o un push automatico — quello resta sempre un'azione in sessione
+interattiva, su ordine esplicito dell'umano, invariato rispetto a sempre.
+"Smodata" riguarda solo il ritmo (quante volte/quanto in fretta), non i
+permessi.
+
+### Matrice completa: capacità × garanzia reale per agente
+
+Colonne capacità = cosa il profilo *autorizza* in linea di principio.
+Colonne agente = cosa quella capacità *garantisce davvero* per ciascuno, non
+solo cosa promette a parole — `enforced` (vincolo tecnico imposto dallo
+strumento), `prompt_only` (solo istruzione nel prompt, nessun blocco
+tecnico), `non_disponibile` (il dispatch non parte, a prescindere).
+
+| Profilo | Dispatch headless | Scrittura file | Git in scrittura | Claude | Codex | Gemini |
+|---|---|---|---|---|---|---|
+| **standard** | mai | mai | mai | — (nessuna automazione, nulla da garantire) | — | — |
+| **brainstorming** | sì (solo risposta in bacheca) | mai | mai | `enforced` | `prompt_only` | `prompt_only` |
+| **super** | sì, con scrittura file | sì | mai | `non_disponibile` oggi → `enforced` una volta pronta la whitelist | `non_disponibile` oggi → resterà `prompt_only` anche a regime (`--sandbox` di Codex non espone una whitelist granulare) | `non_disponibile` oggi → resterà `prompt_only` anche a regime (bypass permessi, nessun perimetro scoped) |
+| **smodata** | sì, con scrittura file | sì | mai | come "super" | come "super" | come "super" |
+
+Righe "una volta pronta la whitelist"/"a regime" descrivono l'esito atteso
+della fase C (bacheca thread `89fbd0ec`/`40f2528b`, in corso con Codex al
+momento di scrivere questo): per Codex e Gemini `prompt_only` **resta** anche
+a lavoro finito — non è uno stato transitorio, è un limite reale degli
+strumenti oggi disponibili, verificato non assunto (vedi "Limiti noti").
+
+Endpoint: `POST /api/bacheca/postino/profilo` (`{progetto_id, profilo}`),
+sostituisce i due vecchi `postino/toggle`/`postino/headless/toggle`. Cambia
+profilo, pulisce automaticamente gli eventuali vecchi marker
+`POSTINO_ATTIVO`/`POSTINO_HEADLESS_ATTIVO` rimasti sul disco (housekeeping,
+non serve farlo a mano). Stato letto da `GET /api/bacheca` (campo `profilo`
+col DTO completo, `garanzie_per_agente`, `limiti_effettivi`).
+
+**Spegnimento d'emergenza**: seleziona "standard" dal menu — interrompe
+tutto (dispatch headless e ritmo automatico), comprese le code già pronte.
+I vecchi marker su disco non contano più nulla: anche se rimasti da
+un'installazione precedente, il profilo (o la sua assenza, che equivale a
+"standard") è l'unica fonte di verità del runtime.
 
 ## Cos'è, in una frase
 
@@ -26,7 +93,8 @@ poll ogni 2.5s su st_mtime — nessun demone nuovo)
         ▼
 per ogni agente con un messaggio pendente non ancora notificato:
         │
-        ├─ dispatch_headless = postino_attivo AND postino_headless_attivo
+        ├─ dispatch_headless = profili_operativi.dispatch_abilitato(profilo)
+        │                      (oggi vero solo per "brainstorming")
         │                      AND agente in postino.COMANDI (claude/codex/gemini)
         │
         ├─ SE dispatch_headless ──► postino.dispatch(): lancia claude -p /
@@ -35,33 +103,24 @@ per ogni agente con un messaggio pendente non ancora notificato:
         └─ ALTRIMENTI ──────────► _esegui_risveglio_os(): apre/porta in primo
                                    piano l'IDE dell'agente, copia il prompt
                                    negli appunti (richiede un umano che
-                                   incolli e invii — il vecchio meccanismo,
-                                   verificato a luglio)
+                                   incolli e invii — resta sempre disponibile
+                                   in profilo "standard", senza limiti: è il
+                                   risveglio passivo, non automazione)
 ```
 
-`postino.py` è il motore di policy, usato da entrambi i percorsi:
+`postino.py` è il motore di policy, usato dal dispatch headless:
 
 - `autorizza(radice, agente, thread_id)` — decide se il turno è permesso
-  (kill switch, tetti, debounce). Non esegue nulla, solo decide.
+  (profilo, capability, tetti, debounce). Non esegue nulla, solo decide.
 - `dispatch(radice, agente, thread_id)` — se autorizzato, lancia davvero il
-  processo headless e registra l'esito.
-- `registra_canale(radice, agente, thread_id, canale)` — usato dal percorso
-  a finestra per consumare i tetti senza lanciare processi.
-
-## I due interruttori (entrambi opt-in, spenti di default)
-
-| File | Cosa accende | Dove si trova nel dashboard |
-|---|---|---|
-| `dati_locali/orchestrazione/POSTINO_ATTIVO` | Il watcher + il fallback a finestra | Pulsante "📬 Postino Automatico" |
-| `dati_locali/orchestrazione/POSTINO_HEADLESS_ATTIVO` | Il dispatch headless reale (sotto-funzione del primo, inerte se il primo è spento) | Pulsante "🤖 Dispatch Headless" (disabilitato finché il primo è spento) |
-
-Endpoint dietro i pulsanti: `POST /api/bacheca/postino/toggle` e
-`POST /api/bacheca/postino/headless/toggle`, entrambi con body
-`{"progetto_id": ..., "attivo": true|false}`. Stato letto da
-`GET /api/bacheca` (campi `postino_attivo`, `postino_headless_attivo`).
-
-**Spegnimento d'emergenza**: cancellare il file `POSTINO_ATTIVO` interrompe
-tutto, comprese le code già pronte — non serve toccare altro.
+  processo headless e registra l'esito, incluso il profilo/garanzia/limiti
+  applicati.
+- `registra_canale(radice, agente, thread_id, canale)` — resta nel codice
+  (gating capability/profilo, guardrail di concorrenza) ma **oggi non ha più
+  nessun chiamante nel percorso reale**: il risveglio passivo in "standard"
+  ci passa deliberatamente accanto, per restare senza limiti come il vecchio
+  "Postino spento" (decisione 2026-08-27, vedi sezione profili sopra e
+  `docs/PIANO_INDUSTRIALIZZAZIONE.md` §9 per il seguito).
 
 ## I tetti (configurabili, mai un file nuovo)
 
@@ -155,18 +214,18 @@ probabilità:
 
 1. Verifica i prerequisiti sopra (una tantum per macchina).
 2. Apri la dashboard, sezione Bacheca, progetto interessato.
-3. Accendi "📬 Postino Automatico": da qui in poi i risvegli a finestra
-   partono da soli, con i tetti applicati.
-4. Quando ti fidi, accendi anche "🤖 Dispatch Headless": claude, codex e
-   gemini rispondono da soli in background, senza aprire finestre.
+3. Nel menu "Profilo Operativo Postino", scegli **"brainstorming"**: da qui
+   in poi claude, codex e gemini rispondono da soli in background quando c'è
+   un messaggio pendente, senza aprire finestre, con i tetti applicati.
    **Nota su Gemini**: usa `--dangerously-skip-permissions` (nessun
    perimetro scoped come per claude/codex — decisione umana esplicita del
    2026-08-25, accettata sapendo che il freno è solo `prompt_fisso()`).
-5. Osserva: ogni risveglio automatico (headless o deep-link) è un evento nel
+4. Osserva: ogni risveglio automatico (headless o passivo) è un evento nel
    registro (`agente=sistema`, `tipo_compito=orchestrazione`,
-   `id_compito` che inizia per `postino-`). Il widget "⏸️ Pratiche Sospese"
-   in dashboard mostra i checkpoint ripristinabili in attesa.
-6. Per spegnere tutto: il toggle base, o cancellare `POSTINO_ATTIVO` a mano.
+   `id_compito` che inizia per `postino-`), con profilo/garanzia/limiti
+   applicati nei metadati. Il widget "⏸️ Pratiche Sospese" in dashboard
+   mostra i checkpoint ripristinabili in attesa.
+5. Per spegnere tutto: riporta il menu a **"standard"**.
 
 ## Il confine di sicurezza (importante, non è opzionale)
 
@@ -319,3 +378,18 @@ lunedì, chiunque (umano o agente) può lanciarlo quando vuole.
   diverse. Se `agy` risolve questo difetto in una versione futura, si può
   restringere il perimetro di Gemini come già fatto per claude/codex; fino
   ad allora resta sul bypass totale, decisione rivedibile.
+- **"Super" e "smodata" selezionabili ma inerti**: manca ancora la matrice
+  comandi che decide davvero cosa un agente può scrivere in quei profili — un
+  progetto messo in "super" oggi si comporta come "standard" (nessun dispatch
+  parte, la dashboard lo dichiara onestamente con `non_disponibile`), non
+  come un rischio nascosto. Fase C della sequenza concordata con Codex,
+  bacheca thread `89fbd0ec`/`40f2528b`, in corso.
+- **`postino.registra_canale()` senza chiamanti runtime**: effetto
+  collaterale della migrazione al profilo operativo — il risveglio passivo
+  in "standard" ci passa deliberatamente accanto (per restare senza limiti,
+  identico al vecchio "Postino spento"), quindi tutto il lavoro fatto su
+  quella funzione (gating capability, guardrail di concorrenza) resta
+  raggiungibile solo dai suoi test in isolamento, non dal codice reale.
+  Deciso come voluto per non ampliare il fix del 2026-08-27; decisione
+  rimandata su cosa farne (rimuoverla o riservarla a un futuro canale
+  esplicito) — vedi `docs/PIANO_INDUSTRIALIZZAZIONE.md` §9.

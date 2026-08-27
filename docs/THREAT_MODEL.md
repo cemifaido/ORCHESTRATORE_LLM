@@ -71,12 +71,16 @@ o un evento del registro verificato possono farlo.
 
 ### 3.4 Automazione fuori controllo / costi non limitati
 Il dispatch headless (postino) potrebbe, senza limiti, generare un numero illimitato di
-chiamate reali a un provider a pagamento. **Mitigato**: `LIMITI_PREDEFINITI` (debounce
-300s per coppia agente+thread, tetto 3 turni per thread, tetto 10 invii/giorno),
-kill-switch esplicito (`POSTINO_ATTIVO`/`POSTINO_HEADLESS_ATTIVO`, default **spento**,
-fail-closed), e la prenotazione atomica del turno avviene *prima* dell'azione reale
-(subprocess o azione OS), non dopo — H5, revisione sicurezza v3, chiuso 2026-08-26 dopo
-quattro cicli di revisione live con Codex.
+chiamate reali a un provider a pagamento. **Mitigato**: limiti di ritmo per profilo
+(debounce, tetto turni/thread, tetto invii/giorno — un tetto assoluto in codice che
+nessun override di configurazione può superare, nemmeno il profilo "smodata"), kill
+switch esplicito (**profilo operativo per progetto**, `standard` = spento, default
+fail-closed per ogni progetto nuovo o file assente/corrotto — sostituisce dal
+2026-08-27 i due marker `POSTINO_ATTIVO`/`POSTINO_HEADLESS_ATTIVO`, ora legacy e
+ignorati dal runtime), e la prenotazione atomica del turno avviene *prima* dell'azione
+reale (subprocess o azione OS), non dopo — H5, revisione sicurezza v3, chiuso
+2026-08-26 dopo quattro cicli di revisione live con Codex. Vedi
+`docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md` per la matrice completa dei profili.
 
 ### 3.5 Race condition su stato condiviso
 Scritture concorrenti su `postino_stato.json`/`eventi.jsonl`/`messaggi.jsonl` potrebbero
