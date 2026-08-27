@@ -148,6 +148,55 @@ destinatari. Se un thread è indirizzato a `claude` e `codex` e risponde solo Cl
   (§3.4) e per il trigger "un messaggio mi è indirizzato" (§3.6): un thread
   globalmente "risposto" da Claude può avere Codex ancora "pending".
 
+### 3.3bis Protocollo "passo": override esplicito d'intento sul testo
+
+Limite scoperto in uso dal vivo (2026-08-27, test live del dispatch automatico su
+questo stesso progetto): la pendenza per destinatario (§3.3) dipende **solo** dal
+`tipo` del messaggio, mai dal contenuto del `testo`. Una `risposta` che nel corpo
+contiene una domanda di rimbalzo per l'altro partecipante non riapre mai nulla —
+il dibattito si ferma silenziosamente finché un umano (o Claude) non lo riapre a
+mano con un nuovo `richiesta`/`domanda`. Rompe qualunque dibattito/brainstorming
+fra agenti pensato per autoalimentarsi.
+
+Design concordato in bacheca (thread `5628be18`, umano + Codex + Gemini,
+convergenza indipendente sugli stessi dettagli): un livello di intento
+**addizionale sopra `TIPI_APERTURA`, mai sostitutivo** — in assenza di marker il
+comportamento resta esattamente quello di sempre. Il marker si legge solo
+sull'**ultima riga non vuota** del `testo`, match esatto case-insensitive, mai una
+sottostringa nel corpo/prosa (gergo radio):
+
+- ultima riga `- passo` → forza pendenza per i destinatari di quel messaggio,
+  **anche se `tipo=risposta`**.
+- ultima riga `- passo e chiudo` → forza chiusura, anche sovrascrivendo una
+  pendenza aperta da un messaggio precedente nello stesso thread (es. una
+  `richiesta` ancora aperta seguita da un rilancio "anzi lascia stare - passo e
+  chiudo").
+- nessun marker riconosciuto → fallback identico a oggi, solo `TIPI_APERTURA`.
+
+Implementato in `bacheca_proiezioni.marker_intento()` + wiring in
+`stato_per_destinatario()` (`tests/test_bacheca.py`). **Deliberatamente escluso**:
+un modello locale come classificatore semantico del caso residuo senza marker —
+proposto dall'umano, respinto in bacheca da Codex e Gemini indipendentemente per
+lo stesso motivo (non-determinismo e dipendenza dalla disponibilità del server
+proprio nel meccanismo che decide se risvegliare un agente: rende la decisione
+difficile da riprodurre, testare, auditare). Il percorso decisionale resta
+puramente deterministico; un uso futuro del locale solo in modalità
+advisory/telemetria (classificazione registrata a parte, mai decisionale) resta
+un'idea aperta, non implementata.
+
+**Freno anti-loop**: nessun contatore nuovo — il tetto per-thread già esistente
+(`max_turni_thread` in `postino.py`, conta i dispatch automatici dal ultimo tocco
+umano nel thread, si azzera solo quando un umano tocca di nuovo) copre già lo
+stesso rischio segnalato indipendentemente da Codex e Gemini (rimbalzi "- passo"
+infiniti fra due agenti senza presidio umano): un rimbalzo innescato dal marker è
+comunque un dispatch come un altro, conta allo stesso modo.
+
+Idea lasciata aperta per il futuro, non implementata: tradurre il marker in un
+campo schema esplicito (`intento_pendenza: apri|chiudi|invariato`) scritto in fase
+di scrittura invece che ri-derivato dal testo a ogni proiezione — il marker
+testuale resterebbe l'interfaccia comoda per chi scrive, il campo la fonte di
+verità per chi legge.
+
 ### 3.4 `bacheca.py` — implementato e testato
 
 Mirror strutturale di `registro.py` (stesso stile: `carica_schema_*`, `valida_*`,

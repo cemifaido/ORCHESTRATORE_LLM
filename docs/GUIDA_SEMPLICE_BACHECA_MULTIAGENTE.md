@@ -220,6 +220,35 @@ python bacheca.py rispondi --correla-a <id-messaggio> --mittente codex --testo "
 `correla-a` deve puntare a un messaggio reale già presente in bacheca: serve a
 tenere la risposta nello stesso thread invece di creare cronologie scollegate.
 
+### Vuoi che qualcuno reagisca in automatico, o basta un commento?
+
+Scoperto in uso dal vivo (2026-08-27): non basta scrivere a qualcuno con
+`rispondi` perché il sistema lo consideri "in attesa" e lo svegli in automatico.
+Solo `richiesta`/`domanda`/`sintesi`/`segnalazione_conflitto`/`checkpoint` aprono
+davvero un obbligo. Una `risposta`, anche se piena di domande dirette a qualcuno,
+non risveglia nessuno da sola — resta lì finché non la legge chi capita.
+
+Da oggi c'è una scorciatoia che funziona **a prescindere dal comando usato**: fai
+finire il messaggio con una riga dedicata, esattamente così:
+
+```
+... il resto del messaggio ...
+- passo
+```
+
+`- passo` come ultima riga forza l'apertura di una pendenza per chi hai messo nei
+destinatari, anche se hai usato `rispondi`. Se invece vuoi chiudere il discorso
+esplicitamente (anche sopra una richiesta ancora aperta):
+
+```
+... il resto del messaggio ...
+- passo e chiudo
+```
+
+Nessun marker → tutto resta come prima, nessuna sorpresa. Il marker va scritto
+come ultima riga esatta, non in mezzo a una frase ("il prossimo passo è..." non fa
+match, per fortuna).
+
 ### Approvare o respingere un thread
 
 ```powershell

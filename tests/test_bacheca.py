@@ -164,6 +164,58 @@ class BachecaTest(unittest.TestCase):
         self.assertEqual(len(bacheca.messaggi_aperti_per(messaggi, "codex")), 1)
         self.assertEqual(bacheca.messaggi_aperti_per(messaggi, "claude"), [])
 
+    # -- protocollo "passo" (decisione congiunta umano/Codex/Gemini, 2026-08-27) -
+
+    def test_marker_intento_riconosce_passo_e_passo_e_chiudo(self) -> None:
+        self.assertEqual(bacheca_proiezioni.marker_intento("tutto ok\n- passo"), "apri")
+        self.assertEqual(bacheca_proiezioni.marker_intento("tutto ok\n- passo e chiudo"), "chiudi")
+        self.assertIsNone(bacheca_proiezioni.marker_intento("il prossimo passo e' fare X"))
+        self.assertIsNone(bacheca_proiezioni.marker_intento("nessun marker qui"))
+        self.assertIsNone(bacheca_proiezioni.marker_intento(""))
+
+    def test_marker_intento_solo_ultima_riga_non_dentro_il_corpo(self) -> None:
+        """Un 'passo' in mezzo alla prosa non deve mai fare match."""
+        self.assertIsNone(bacheca_proiezioni.marker_intento("- passo e chiudo qui non ci arrivo\naltro testo"))
+        self.assertEqual(bacheca_proiezioni.marker_intento("riga in mezzo con - passo\n- passo e chiudo"), "chiudi")
+
+    def test_marker_passo_riapre_pendenza_anche_su_tipo_risposta(self) -> None:
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="umano", destinatari=["gemini"], tipo="richiesta", testo="Domanda iniziale",
+        )
+        risposta_con_rilancio = bacheca.costruisci_messaggio(
+            mittente="gemini", destinatari=["umano"], tipo="risposta",
+            testo="Ecco la risposta, ma mi serve conferma.\n- passo",
+            thread_id=richiesta["thread_id"],
+        )
+        messaggi = [richiesta, risposta_con_rilancio]
+        # senza il marker questo sarebbe 'resolved' (tipo=risposta non riapre nulla)
+        self.assertEqual(bacheca.stato_per_destinatario(messaggi, richiesta["thread_id"], "umano"), "pending")
+
+    def test_marker_passo_e_chiudo_forza_chiusura_anche_su_richiesta_aperta(self) -> None:
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="umano", destinatari=["codex"], tipo="richiesta", testo="Fai X",
+        )
+        chiusura_informale = bacheca.costruisci_messaggio(
+            mittente="umano", destinatari=["codex"], tipo="richiesta",
+            testo="Anzi lascia stare, non serve piu'.\n- passo e chiudo",
+            thread_id=richiesta["thread_id"],
+        )
+        messaggi = [richiesta, chiusura_informale]
+        # senza il marker resterebbe 'pending' (tipo=richiesta riapre sempre)
+        self.assertEqual(bacheca.stato_per_destinatario(messaggi, richiesta["thread_id"], "codex"), "resolved")
+
+    def test_senza_marker_comportamento_invariato(self) -> None:
+        """Nessuna regressione: in assenza di marker vale solo TIPI_APERTURA."""
+        richiesta = bacheca.costruisci_messaggio(
+            mittente="umano", destinatari=["claude", "codex"], tipo="richiesta", testo="Criticate X",
+        )
+        risposta_claude = bacheca.costruisci_messaggio(
+            mittente="claude", destinatari=["umano"], tipo="risposta",
+            testo="fatto", thread_id=richiesta["thread_id"],
+        )
+        messaggi = [richiesta, risposta_claude]
+        self.assertEqual(bacheca.destinatari_pendenti(messaggi, richiesta["thread_id"]), ["codex"])
+
     def test_thread_chiuso_risolve_tutti_i_destinatari_pendenti(self) -> None:
         richiesta = bacheca.costruisci_messaggio(
             mittente="umano", destinatari=["claude", "codex"], tipo="richiesta", testo="Criticate X",

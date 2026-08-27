@@ -5,11 +5,36 @@ gia' validato e ne derivano stato, destinatari pendenti, lease e riprese.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 
 TIPI_APERTURA = {"richiesta", "domanda", "sintesi", "segnalazione_conflitto", "checkpoint"}
+
+# Protocollo "passo" (decisione congiunta umano/Codex/Gemini, 2026-08-27, thread
+# 5628be18): un livello di intento ADDIZIONALE sopra TIPI_APERTURA, mai
+# sostitutivo - in assenza di marker il comportamento resta quello di sempre.
+# Match solo sull'ULTIMA riga non vuota del messaggio, esatto e case-insensitive:
+# mai una sottostringa nel corpo del testo (evita falsi positivi su "il prossimo
+# passo e'..." in prosa). Il controllo di chiusura va valutato per primo perche'
+# il suo pattern e' un prefisso testuale di quello di apertura.
+_RIGA_PASSO_CHIUDI = re.compile(r"^[-–—]\s*passo\s+e\s+chiudo$", re.IGNORECASE)
+_RIGA_PASSO = re.compile(r"^[-–—]\s*passo$", re.IGNORECASE)
+
+
+def marker_intento(testo: str) -> str | None:
+    """'chiudi' se l'ultima riga e' '- passo e chiudo', 'apri' se e' '- passo',
+    None altrimenti (nessun marker riconosciuto: fallback su TIPI_APERTURA)."""
+    righe = [r.strip() for r in (testo or "").splitlines() if r.strip()]
+    if not righe:
+        return None
+    ultima = righe[-1]
+    if _RIGA_PASSO_CHIUDI.match(ultima):
+        return "chiudi"
+    if _RIGA_PASSO.match(ultima):
+        return "apri"
+    return None
 
 # Fonte unica (D8, revisione architetturale v3, 2026-08-27): prima duplicata
 # alla lettera in bacheca.py e bacheca_comandi.py, rischio di deriva silenziosa
@@ -69,8 +94,14 @@ def stato_per_destinatario(messaggi: list[dict[str, Any]], thread_id: str, agent
     indice_indirizzato_apertura: int | None = None
     indice_inviato: int | None = None
     for indice, messaggio in enumerate(rilevanti):
-        if agente in messaggio["destinatari"] and messaggio["tipo"] in TIPI_APERTURA:
-            indice_indirizzato_apertura = indice
+        if agente in messaggio["destinatari"]:
+            marker = marker_intento(messaggio["testo"])
+            if marker == "chiudi":
+                # Override esplicito: chiude anche una pendenza aperta da un
+                # messaggio precedente nello stesso thread, a prescindere dal tipo.
+                indice_indirizzato_apertura = None
+            elif marker == "apri" or messaggio["tipo"] in TIPI_APERTURA:
+                indice_indirizzato_apertura = indice
         if messaggio["mittente"] == agente:
             indice_inviato = indice
 
