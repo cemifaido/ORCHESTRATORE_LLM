@@ -249,6 +249,43 @@ class PostinoDispatchTest(unittest.TestCase):
             self.assertIsNotNone(record["revisione_profilo"])
             self.assertEqual(record["garanzia"], "enforced")
 
+    def test_super_e_smodata_usano_whitelist_claude_di_scrittura_file(self) -> None:
+        """La garanzia enforced di Claude deve derivare dalla CLI, non dal prompt."""
+        for nome_profilo in ("super", "smodata"):
+            with self.subTest(profilo=nome_profilo), tempfile.TemporaryDirectory() as tmp:
+                radice = Path(tmp)
+                profili_operativi.imposta(radice, nome_profilo)
+                esegui = MagicMock(return_value=MagicMock(returncode=0))
+                with patch("postino.shutil.which", return_value=r"C:\\fake\\claude.cmd"):
+                    esito = postino.dispatch(radice, "claude", "t-postino", esegui=esegui)
+
+                self.assertEqual(esito["esito"], "inviato")
+                self.assertEqual(esito["garanzia"], "enforced")
+                comando = esegui.call_args.args[0]
+                allowlist = next(arg for arg in comando if arg.startswith("--allowedTools="))
+                voci = allowlist.removeprefix("--allowedTools=").split(",")
+                self.assertIn("Edit", voci)
+                self.assertIn("Write", voci)
+                self.assertIn("Bash(git status *)", voci)
+                self.assertIn("Bash(git diff *)", voci)
+                self.assertIn("Bash(git log *)", voci)
+                self.assertNotIn("Bash", voci)
+                self.assertNotIn("git commit", allowlist)
+                self.assertNotIn("git push", allowlist)
+
+    def test_super_e_smodata_registrano_prompt_only_per_codex_e_gemini(self) -> None:
+        for nome_profilo in ("super", "smodata"):
+            for agente in ("codex", "gemini"):
+                with self.subTest(profilo=nome_profilo, agente=agente), tempfile.TemporaryDirectory() as tmp:
+                    radice = Path(tmp)
+                    profili_operativi.imposta(radice, nome_profilo)
+                    esegui = MagicMock(return_value=MagicMock(returncode=0))
+                    with patch("postino.shutil.which", return_value=r"C:\\fake\\agente.cmd"):
+                        esito = postino.dispatch(radice, agente, "t-postino", esegui=esegui)
+
+                    self.assertEqual(esito["esito"], "inviato")
+                    self.assertEqual(esito["garanzia"], "prompt_only")
+
     def test_marker_legacy_non_riattiva_il_dispatch_standard(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             radice = Path(tmp)

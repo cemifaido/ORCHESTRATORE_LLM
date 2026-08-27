@@ -15,15 +15,15 @@ PERCORSO_SCHEMA = Path(__file__).resolve().parent / "schema" / "profilo_operativ
 NOME_FILE = "profilo_operativo.json"
 
 # Un profilo assente o non ancora supportato non deve mai avviare un agente.
-PROFILI_DISPATCH_ABILITATI = {"brainstorming"}
+PROFILI_DISPATCH_ABILITATI = {"brainstorming", "super", "smodata"}
 
 # La UI deve dichiarare il tipo di garanzia effettivo, non solo il nome del profilo.
-# super/smodata restano non disponibili finche' la matrice comandi non e' implementata.
+# In super/smodata soltanto Claude dispone di una whitelist tecnica di scrittura.
 GARANZIE: dict[str, dict[str, str]] = {
     "standard": {agente: "enforced" for agente in ("claude", "codex", "gemini")},
     "brainstorming": {"claude": "enforced", "codex": "prompt_only", "gemini": "prompt_only"},
-    "super": {agente: "non_disponibile" for agente in ("claude", "codex", "gemini")},
-    "smodata": {agente: "non_disponibile" for agente in ("claude", "codex", "gemini")},
+    "super": {"claude": "enforced", "codex": "prompt_only", "gemini": "prompt_only"},
+    "smodata": {"claude": "enforced", "codex": "prompt_only", "gemini": "prompt_only"},
 }
 
 

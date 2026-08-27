@@ -38,10 +38,16 @@ class ProfiliOperativiTest(unittest.TestCase):
     def test_garanzie_e_dispatch_esprimono_lo_stato_reale_corrente(self) -> None:
         brainstorming = profili_operativi.imposta(Path(tempfile.mkdtemp()), "brainstorming")
         super_profilo = {**brainstorming, "profilo": "super"}
+        smodata_profilo = {**brainstorming, "profilo": "smodata"}
         self.assertTrue(profili_operativi.dispatch_abilitato(brainstorming))
-        self.assertFalse(profili_operativi.dispatch_abilitato(super_profilo))
+        self.assertTrue(profili_operativi.dispatch_abilitato(super_profilo))
+        self.assertTrue(profili_operativi.dispatch_abilitato(smodata_profilo))
         self.assertEqual(profili_operativi.garanzie(brainstorming)["codex"], "prompt_only")
-        self.assertEqual(profili_operativi.garanzie(super_profilo)["claude"], "non_disponibile")
+        for profilo in (super_profilo, smodata_profilo):
+            with self.subTest(profilo=profilo["profilo"]):
+                self.assertEqual(profili_operativi.garanzie(profilo)["claude"], "enforced")
+                self.assertEqual(profili_operativi.garanzie(profilo)["codex"], "prompt_only")
+                self.assertEqual(profili_operativi.garanzie(profilo)["gemini"], "prompt_only")
 
     def test_istruzione_hook_usa_il_profilo_della_radice(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
