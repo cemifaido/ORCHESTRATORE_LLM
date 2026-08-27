@@ -1,6 +1,10 @@
 # Dati runtime dell'orchestrazione: mai in Git.
 dati_locali/
 local/
+
+# Snapshot di backup_locale.py: copie degli stessi dati locali sopra, stesso
+# motivo per cui non vanno in Git.
+backup_locale/
 **/eventi.jsonl
 **/events.jsonl
 **/compiti/*.json

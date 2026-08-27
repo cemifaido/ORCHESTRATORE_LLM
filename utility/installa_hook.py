@@ -7,15 +7,31 @@ def scrivi_hook(radice: Path, hook_path: Path) -> None:
     # Contenuto del pre-commit in Python
     contenuto = f"""#!/usr/bin/env python
 # Hook pre-commit generato dall'Orchestratore Centrale.
-# Verifica i quality gate (ruff, mypy, xenon) prima di consentire il commit.
+# Verifica i quality gate (ruff, mypy, xenon) prima di consentire il commit,
+# e rifiuta un commit accidentale diretto sul branch di default (protezione
+# contro l'errore umano/agente, non contro un attacco - vedi CLAUDE.md
+# "crea un branch prima di committare"; chi ha davvero bisogno di bypassare
+# usa git commit --no-verify, gia' un gesto esplicito e consapevole).
 
 import subprocess
 import sys
 from pathlib import Path
 
+BRANCH_PROTETTI = {{"main", "master"}}
+
 def main():
     radice = Path(r"{radice}")
     sentinella = radice / "sentinella.py"
+
+    branch = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=str(radice), text=True, capture_output=True,
+    ).stdout.strip()
+    if branch in BRANCH_PROTETTI:
+        print(f"[BLOCCATO] Commit diretto su '{{branch}}' rifiutato dall'hook pre-commit.")
+        print("Crea prima un branch (es. git checkout -b nome-branch), oppure se e' davvero")
+        print("intenzionale usa 'git commit --no-verify' (bypass esplicito, non accidentale).")
+        return 1
 
     comandi = [
         ("Linting (Ruff)", ["python", str(sentinella), "controllo_lint"]),
