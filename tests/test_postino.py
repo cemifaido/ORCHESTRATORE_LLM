@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import tempfile
 import time
 import unittest
@@ -335,6 +336,40 @@ class PostinoDispatchTest(unittest.TestCase):
                 secondo = postino.autorizza(radice, "claude", "t-postino")
 
             self.assertEqual(secondo, {"esito": "bloccato", "motivo": "debounce"})
+
+    def test_dispatch_nonzero_salva_diagnostica_redatta(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            esegui = MagicMock(return_value=MagicMock(
+                returncode=1,
+                stdout="Errore agy: Authorization: Bearer my_secret_token_123456789 state=oauth_state_123456789",
+            ))
+            with patch("postino.shutil.which", return_value=r"C:\\fake\\agy.cmd"):
+                esito = postino.dispatch(radice, "gemini", "t-postino", esegui=esegui)
+
+            self.assertEqual(esito["esito"], "inviato")
+            self.assertEqual(esito["codice"], 1)
+            self.assertEqual(esito["diagnostica"]["tipo"], "codice_uscita_non_zero")
+            log = Path(esito["diagnostica"]["log_output"]).read_text(encoding="utf-8")
+            self.assertIn("Errore agy", log)
+            self.assertNotIn("my_secret_token_123456789", log)
+            self.assertNotIn("oauth_state_123456789", log)
+            self.assertIn("[REDACTED_SECRET]", log)
+
+    def test_dispatch_timeout_non_propagato_e_diagnosticato(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            with patch("postino.shutil.which", return_value=r"C:\\fake\\agy.cmd"):
+                esito = postino.dispatch(
+                    radice, "gemini", "t-postino",
+                    esegui=MagicMock(side_effect=subprocess.TimeoutExpired("agy", 300)),
+                )
+
+            self.assertEqual(esito["esito"], "errore")
+            self.assertEqual(esito["motivo"], "timeout")
+            self.assertEqual(esito["diagnostica"]["tipo"], "timeout")
+            log = Path(esito["diagnostica"]["log_output"]).read_text(encoding="utf-8")
+            self.assertIn("timeout di 300", log)
 
     def test_dispatch_rifiuta_capability_non_autorizzata(self) -> None:
         # 'locale' e' un agente valido nel sistema bacheca ma non e' mai stato

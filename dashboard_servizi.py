@@ -16,6 +16,7 @@ from fastapi import HTTPException
 import bacheca
 import commit_replay
 import dashboard_config
+import dashboard_freschezza
 import dashboard_flussi
 import dashboard_os
 import dashboard_progetti
@@ -105,6 +106,8 @@ def ottieni_stato(
     eventi_pagina = tutti_eventi[inizio:inizio + per_pagina]
 
     return {
+        "riavvio_dashboard": dashboard_os.leggi_stato_riavvio(dashboard_config.RADICE),
+        "codice_dashboard": dashboard_freschezza.stato_codice_dashboard(),
         "progetti": progetti_arricchiti,
         "globali": {
             "progetti_totali": len(progetti),

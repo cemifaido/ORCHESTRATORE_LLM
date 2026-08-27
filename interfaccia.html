@@ -30,6 +30,7 @@
     </header>
 
     <div class="banner" id="feedbackBanner"></div>
+    <div class="banner" id="codiceStaleBanner" style="display:none; background:rgba(245,158,11,0.16); border:1px solid rgba(245,158,11,0.55); color:#fcd34d;"></div>
 
     <!-- Summary Statistics -->
     <div class="summary-grid">
@@ -301,8 +302,8 @@
               <select id="profiloSelect" style="padding:0.35rem 0.6rem; font-size:0.82rem; font-weight:600; background:var(--bg-card); color:var(--text-main); border:1px solid rgba(148,163,184,0.3); border-radius:6px;">
                 <option value="standard">🔒 standard (fail-closed, nessun dispatch)</option>
                 <option value="brainstorming">💬 brainstorming (discussione / read-only)</option>
-                <option value="super">⚡ super (workspace-write, no Git - non disp.)</option>
-                <option value="smodata">🚀 smodata (ritmo alto, no Git - non disp.)</option>
+                <option value="super">⚡ super (scrittura file, no Git)</option>
+                <option value="smodata">🚀 smodata (ritmo alto, scrittura file, no Git)</option>
               </select>
             </div>
             <div id="profiloDispatchBadge" style="font-size:0.78rem; font-weight:700; padding:0.25rem 0.6rem; border-radius:4px; background:rgba(244,63,94,0.15); border:1px solid rgba(244,63,94,0.4); color:#fb7185;">

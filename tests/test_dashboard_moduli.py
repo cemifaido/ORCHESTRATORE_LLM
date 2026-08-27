@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,6 +21,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import dashboard_config
+import dashboard_freschezza
 import dashboard_flussi
 import dashboard_os
 import dashboard_progetti
@@ -61,6 +63,33 @@ class DashboardConfigTest(unittest.TestCase):
 
         with self.assertRaises(SystemExit):
             dashboard_config.verifica_bind_sicuro("0.0.0.0", "")
+
+
+class DashboardFreschezzaTest(unittest.TestCase):
+    def test_impronta_rileva_modifica_aggiunta_e_rimozione(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            modulo = radice / "modulo.py"
+            modulo.write_text("VERSIONE = 1\n", encoding="utf-8")
+            avvio = dashboard_freschezza._impronta(radice)
+            self.assertEqual(
+                dashboard_freschezza.stato_codice_dashboard(radice=radice, impronta_avvio=avvio)["stato"],
+                "allineato",
+            )
+            modulo.write_text("VERSIONE = 2\n", encoding="utf-8")
+            (radice / "nuovo.py").write_text("x = 1\n", encoding="utf-8")
+            stato = dashboard_freschezza.stato_codice_dashboard(radice=radice, impronta_avvio=avvio)
+            self.assertEqual(stato["stato"], "modificato")
+            self.assertEqual(stato["file_modificati"], ["modulo.py", "nuovo.py"])
+            modulo.unlink()
+            stato = dashboard_freschezza.stato_codice_dashboard(radice=radice, impronta_avvio=avvio)
+            self.assertEqual(stato["file_modificati"], ["modulo.py", "nuovo.py"])
+
+    def test_errore_lettura_e_non_verificabile(self) -> None:
+        with patch.object(dashboard_freschezza, "_impronta", side_effect=OSError("negato")):
+            stato = dashboard_freschezza.stato_codice_dashboard(impronta_avvio={})
+        self.assertEqual(stato["stato"], "non_verificabile")
+        self.assertEqual(stato["file_modificati"], [])
 
 
 class DashboardProgettiTest(unittest.TestCase):
@@ -195,6 +224,27 @@ class DashboardOsTest(unittest.TestCase):
         res_txt = dashboard_os.interpreta_output_sentinella(out_txt, output_err="dettaglio")
         self.assertEqual(res_txt.get("output"), out_txt)
         self.assertEqual(res_txt.get("stderr"), "dettaglio")
+
+    def test_protocollo_riavvio_persistente_e_log_del_figlio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            richiesto = dashboard_os.richiedi_riavvio(radice)
+            stato_richiesto = dashboard_os.leggi_stato_riavvio(radice)
+            assert stato_richiesto is not None
+            self.assertEqual(stato_richiesto["stato"], "richiesto")
+            with patch("dashboard_os.subprocess.Popen", return_value=type("P", (), {"pid": 4321})()) as popen:
+                pid = dashboard_os.avvia_processo_sostituto(radice / "interfaccia.py", radice)
+            self.assertEqual(pid, 4321)
+            self.assertEqual(popen.call_args.args[0], [sys.executable, str(radice / "interfaccia.py")])
+            stato_avviato = dashboard_os.leggi_stato_riavvio(radice)
+            assert stato_avviato is not None
+            self.assertEqual(stato_avviato["stato"], "processo_avviato")
+            self.assertIn("pid=4321", (radice / "dati_locali" / "orchestrazione" / "dashboard_riavvio.log").read_text(encoding="utf-8"))
+            dashboard_os.registra_dashboard_pronto(radice)
+            pronto = dashboard_os.leggi_stato_riavvio(radice)
+            assert pronto is not None
+            self.assertEqual(pronto["id"], richiesto["id"])
+            self.assertEqual(pronto["stato"], "pronto")
 
 
 class DashboardRisvegliTest(unittest.TestCase):

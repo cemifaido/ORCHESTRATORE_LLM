@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import os
@@ -8,7 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import interfaccia
 import bacheca
@@ -883,6 +884,36 @@ class PostinoHeadlessTest(unittest.TestCase):
             self.assertIsInstance(c["interazioni"], int)
 
 
+class WatcherPostinoTest(unittest.TestCase):
+    def test_watcher_offload_il_risveglio_sincrono_su_thread(self) -> None:
+        """Il watcher chiama la route come funzione Python: senza to_thread,
+        postino.dispatch (subprocess bloccante) congela l'event loop."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            messaggi = radice / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+            messaggi.parent.mkdir(parents=True)
+            messaggi.write_text("{}\n", encoding="utf-8")
+            progetto = {"id": "test-proj", "percorso": str(radice)}
+            interfaccia._last_mtimes.clear()
+            interfaccia._last_mtimes["test-proj"] = 0.0
+            try:
+                with (
+                    patch.object(interfaccia, "leggi_progetti", return_value=[progetto]),
+                    patch.object(interfaccia, "esegui_risvegli_bacheca") as risveglio,
+                    patch.object(
+                        interfaccia.asyncio, "sleep",
+                        new=AsyncMock(side_effect=[None, asyncio.CancelledError]),
+                    ),
+                    patch.object(interfaccia.asyncio, "to_thread", new=AsyncMock()) as to_thread,
+                ):
+                    asyncio.run(interfaccia._watcher_postino_loop())
+            finally:
+                interfaccia._last_mtimes.clear()
+
+        to_thread.assert_awaited_once_with(risveglio, progetto_id="test-proj")
+        risveglio.assert_not_called()
+
+
 class PostinoRevisioneEndpointTest(unittest.TestCase):
     """Pulsante 'chiedi una revisione' della bacheca (docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md
     #modalita-revisione): sempre modo='revisione' esplicito, mai il default
@@ -1097,6 +1128,9 @@ class InterfacciaTestClientRoutesTest(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIn("text/html", res.headers.get("content-type", ""))
         self.assertIn("Orchestratore", res.text)
+        self.assertIn('value="super">⚡ super (scrittura file, no Git)', res.text)
+        self.assertIn('value="smodata">🚀 smodata (ritmo alto, scrittura file, no Git)', res.text)
+        self.assertNotIn("non disp.", res.text)
 
     def test_get_index_404_se_file_html_manca(self) -> None:
         with patch.object(interfaccia, "PERCORSO_HTML", Path("/percorso/fantasma/interfaccia.html")):
@@ -1108,6 +1142,8 @@ class InterfacciaTestClientRoutesTest(unittest.TestCase):
         res_js = self.client.get("/static/interfaccia.js")
         self.assertEqual(res_js.status_code, 200)
         self.assertIn("I18N", res_js.text)
+        self.assertIn("aggiornaAvvisoCodice", res_js.text)
+        self.assertIn("codiceStaleBanner", self.client.get("/").text)
 
         res_css = self.client.get("/static/interfaccia.css")
         self.assertEqual(res_css.status_code, 200)
@@ -1130,6 +1166,9 @@ class InterfacciaTestClientRoutesTest(unittest.TestCase):
         self.assertIn("livello_stats", dati)
         self.assertIn("eventi", dati)
         self.assertIn("paginazione", dati)
+        self.assertIn("codice_dashboard", dati)
+        self.assertIn("riavvio_dashboard", dati)
+        self.assertIn(dati["codice_dashboard"]["stato"], {"allineato", "modificato", "non_verificabile"})
 
         self.assertEqual(dati["paginazione"]["pagina"], 1)
         self.assertEqual(dati["paginazione"]["per_pagina"], 50)
@@ -1455,14 +1494,13 @@ class InterfacciaTestClientRoutesTest(unittest.TestCase):
     # -- /api/sistema/riavvia -------------------------------------------------
 
     def test_api_sistema_riavvia_pianifica_thread(self) -> None:
-        with patch("threading.Thread") as mock_thread:
+        with patch("threading.Thread") as mock_thread, \
+             patch.object(interfaccia.dashboard_os, "richiedi_riavvio", return_value={"id": "r-1"}):
             res = self.client.post("/api/sistema/riavvia")
             self.assertEqual(res.status_code, 200)
-            self.assertEqual(res.json(), {"status": "riavvio_in_corso"})
+            self.assertEqual(res.json(), {"status": "riavvio_in_corso", "id_riavvio": "r-1"})
             mock_thread.assert_called_once()
 
 
 if __name__ == "__main__":
     unittest.main()
-
-

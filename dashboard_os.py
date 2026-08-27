@@ -14,8 +14,56 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+NOME_STATO_RIAVVIO = "dashboard_riavvio.json"
+NOME_LOG_RIAVVIO = "dashboard_riavvio.log"
+
+
+def _percorso_stato_riavvio(radice: Path) -> Path:
+    return radice / "dati_locali" / "orchestrazione" / NOME_STATO_RIAVVIO
+
+
+def _adesso_utc() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _scrivi_stato_riavvio(radice: Path, stato: dict[str, Any]) -> None:
+    """Stato atomico, leggibile anche dopo l'uscita del processo precedente."""
+    percorso = _percorso_stato_riavvio(radice)
+    percorso.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=percorso.parent, delete=False) as file:
+        json.dump(stato, file, ensure_ascii=False, sort_keys=True)
+        file.write("\n")
+        temporaneo = Path(file.name)
+    os.replace(temporaneo, percorso)
+
+
+def leggi_stato_riavvio(radice: Path) -> dict[str, Any] | None:
+    try:
+        stato = json.loads(_percorso_stato_riavvio(radice).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return stato if isinstance(stato, dict) else None
+
+
+def richiedi_riavvio(radice: Path) -> dict[str, Any]:
+    stato = {"id": str(uuid.uuid4()), "stato": "richiesto", "aggiornato_utc": _adesso_utc()}
+    _scrivi_stato_riavvio(radice, stato)
+    return stato
+
+
+def registra_dashboard_pronto(radice: Path) -> None:
+    """Il nuovo processo scrive readiness solo dopo l'avvio di FastAPI."""
+    precedente = leggi_stato_riavvio(radice) or {}
+    _scrivi_stato_riavvio(radice, {
+        "id": precedente.get("id"), "stato": "pronto", "pid": os.getpid(), "aggiornato_utc": _adesso_utc(),
+    })
 
 
 def pid_vivo(pid: Any) -> bool:
@@ -91,14 +139,32 @@ def lancia_ide_uri(uri: str) -> None:
     subprocess.Popen([antigravity_cmd, "--open-url", uri])
 
 
-def avvia_processo_sostituto(script_interfaccia: Path, radice: Path) -> None:
-    """Avvia una nuova istanza staccata dell'interfaccia prima di terminare quella corrente."""
-    kwargs: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+def avvia_processo_sostituto(script_interfaccia: Path, radice: Path) -> int:
+    """Avvia l'istanza sostituta e conserva l'output locale per diagnosticarla."""
+    percorso_log = radice / "dati_locali" / "orchestrazione" / NOME_LOG_RIAVVIO
+    percorso_log.parent.mkdir(parents=True, exist_ok=True)
+    stato_precedente = leggi_stato_riavvio(radice) or {}
+    # Va scritto PRIMA della Popen: il figlio puo' raggiungere lo startup prima
+    # che questa funzione torni. Scrivere dopo sovrascriverebbe il suo "pronto".
+    _scrivi_stato_riavvio(radice, {**stato_precedente, "stato": "processo_avviato", "aggiornato_utc": _adesso_utc()})
+    kwargs: dict[str, Any] = {"stdin": subprocess.DEVNULL}
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         kwargs["start_new_session"] = True
-    subprocess.Popen([sys.executable, str(script_interfaccia)], cwd=str(radice), env=os.environ.copy(), **kwargs)
+    with percorso_log.open("a", encoding="utf-8") as log:
+        log.write(f"{_adesso_utc()} avvio processo sostituto\n")
+        kwargs["stdout"] = log
+        kwargs["stderr"] = subprocess.STDOUT
+        try:
+            processo = subprocess.Popen(
+                [sys.executable, str(script_interfaccia)], cwd=str(radice), env=os.environ.copy(), **kwargs
+            )
+        except OSError:
+            _scrivi_stato_riavvio(radice, {**stato_precedente, "stato": "errore_avvio", "aggiornato_utc": _adesso_utc()})
+            raise
+        log.write(f"{_adesso_utc()} processo sostituto pid={processo.pid}\n")
+    return processo.pid
 
 
 def interpreta_output_sentinella(output_std: str, output_err: str = "") -> dict:

@@ -209,8 +209,10 @@ def _riavvia_dopo_risposta() -> None:
 
 @router.post("/api/sistema/riavvia")
 def riavvia_sistema():
+    import interfaccia
+    stato = dashboard_os.richiedi_riavvio(interfaccia.RADICE)
     threading.Thread(target=_riavvia_dopo_risposta, daemon=True).start()
-    return {"status": "riavvio_in_corso"}
+    return {"status": "riavvio_in_corso", "id_riavvio": stato["id"]}
 
 
 @router.post("/api/bacheca/postino/profilo")

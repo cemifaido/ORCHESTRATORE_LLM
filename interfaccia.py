@@ -199,7 +199,13 @@ async def _watcher_postino_loop():
                 if not pid or not p_path_str:
                     continue
                 p_path = Path(p_path_str)
-                if not p_path.exists() or not postino_attivo(p_path):
+                # Il profilo operativo, non il marker legacy, decide cosa fa il
+                # risveglio (esegui_risvegli_bacheca gia' lo consulta): in
+                # standard resta comunque il risveglio passivo senza gating,
+                # decisione esplicita 2026-08-27 (bacheca thread 89fbd0ec) -
+                # niente pre-filtro qui, stesso bug gia' corretto in
+                # dashboard_risvegli.py per lo stesso motivo.
+                if not p_path.exists():
                     continue
                 f_msg = p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
                 if not f_msg.exists():
@@ -212,7 +218,12 @@ async def _watcher_postino_loop():
                 if last_mtime is not None and mtime > last_mtime:
                     _last_mtimes[pid] = mtime
                     try:
-                        esegui_risvegli_bacheca(progetto_id=pid)
+                        # Questa e' una chiamata Python diretta, non una route
+                        # HTTP: FastAPI non la sposta nel suo thread pool. Il
+                        # dispatch puo' attendere una subprocess fino a 300s,
+                        # quindi va isolato per non fermare l'event loop della
+                        # dashboard e le altre richieste.
+                        await asyncio.to_thread(esegui_risvegli_bacheca, progetto_id=pid)
                     except Exception as ex:
                         print(f"[WATCHER POSTINO] Errore risveglio per {pid}: {ex}", file=sys.stderr)
                 else:
@@ -231,6 +242,7 @@ async def _avvia_watcher_postino():
         or os.environ.get("TESTING") == "true"
     )
     if not in_test:
+        dashboard_os.registra_dashboard_pronto(RADICE)
         asyncio.create_task(_watcher_postino_loop())
 
 

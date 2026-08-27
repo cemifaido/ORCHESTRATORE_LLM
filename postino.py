@@ -6,6 +6,7 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -19,6 +20,7 @@ import bacheca
 import capability_policy
 import profili_operativi
 import registro
+import sentinella
 
 
 LIMITI_PREDEFINITI = {"max_turni_thread": 3, "max_invii_giorno": 10, "debounce_secondi": 300}
@@ -318,11 +320,38 @@ def _registra(radice: Path, record: dict[str, Any]) -> None:
     evento = {
         "versione_schema": 1, "id_evento": hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest(),
         "timestamp": registro.adesso_utc(), "id_compito": f"postino-{record['thread_id']}", "agente": "sistema",
-        "tipo_compito": "orchestrazione", "stato": "passato", "esito_gate": "non_eseguito",
+        "tipo_compito": "orchestrazione",
+        "stato": "fallito" if record.get("esito_processo") == "errore" else "passato",
+        "esito_gate": "non_eseguito",
         "verdetto_umano": "non_revisionato", "costo_stimato_usd": 0.0, "origine_costo": "stimato", "latenza_ms": 0,
         "regole_incluse": ["postino"], "note": "dispatch postino", "metadati": {"postino": record},
     }
     registro.aggiungi_evento(radice / "dati_locali" / "orchestrazione" / "eventi.jsonl", evento)
+
+
+def _aggiungi_diagnostica(record: dict[str, Any], radice: Path, tipo: str, output: str) -> None:
+    """Salva l'output del processo soltanto in un log locale redatto.
+
+    Il prompt non entra mai nel testo passato qui: per le eccezioni si annota
+    un messaggio costruito da noi, non ``str(eccezione)`` (che per subprocess
+    puo' includere l'intero comando, e quindi il prompt).
+    """
+    # sentinella redige token/API key; qui copriamo anche i parametri OAuth
+    # effimeri, che una CLI non autenticata puo' stampare nell'URL di login.
+    output = re.sub(
+        r"(?i)\b(state|code|code_challenge)=([^&\s]+)",
+        r"\1=[REDACTED_SECRET]",
+        output,
+    )
+    metadati = sentinella.salva_log_output(
+        record["id"], output,
+        radice / "dati_locali" / "orchestrazione" / "log_postino",
+    )
+    record["diagnostica"] = {
+        "tipo": tipo,
+        "log_output": metadati["log_output"],
+        "sha256_output": metadati["sha256_output"],
+    }
 
 
 def registra_canale(radice: Path, agente: str, thread_id: str, canale: str) -> dict[str, Any]:
@@ -600,20 +629,46 @@ def dispatch(
 
     eseguibile = _risolvi_eseguibile(comandi[agente][0])
     if eseguibile is None:
+        record["esito_processo"] = "errore"
+        _aggiungi_diagnostica(record, radice, "eseguibile_non_trovato", "Eseguibile del dispatcher non trovato sul PATH.")
         _registra(radice, record)
         return {"esito": "errore", "motivo": "eseguibile_non_trovato", **record}
     comando = [eseguibile, *comandi[agente][1:], prompt]
-    risultato = esegui(
-        # encoding esplicito: senza, subprocess.run usa la codepage di sistema
-        # (cp1252 su Windows IT/US) per decodificare stdout/stderr - l'output
-        # UTF-8 reale di claude/codex (emoji, box-drawing) la manda in crash
-        # con UnicodeDecodeError in un thread interno (bug reale trovato in
-        # verifica live, 2026-08-24). errors='replace' evita comunque un crash
-        # su un singolo byte non valido residuo.
-        comando, cwd=radice, text=True, encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=300, shell=False, check=False,
-    )
+    try:
+        risultato = esegui(
+            # encoding esplicito: senza, subprocess.run usa la codepage di sistema
+            # (cp1252 su Windows IT/US) per decodificare stdout/stderr - l'output
+            # UTF-8 reale di claude/codex (emoji, box-drawing) la manda in crash
+            # con UnicodeDecodeError in un thread interno (bug reale trovato in
+            # verifica live, 2026-08-24). errors='replace' evita comunque un crash
+            # su un singolo byte non valido residuo.
+            comando, cwd=radice, text=True, encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=300, shell=False, check=False,
+        )
+    except subprocess.TimeoutExpired as errore:
+        record["esito_processo"] = "errore"
+        output = errore.output or errore.stdout or ""
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
+        _aggiungi_diagnostica(record, radice, "timeout", f"Dispatch oltre il timeout di 300 secondi.\n{output}")
+        _finalizza_invio(radice, id_invio, None)
+        _registra(radice, record)
+        return {"esito": "errore", "motivo": "timeout", **record}
+    except OSError as errore:
+        record["esito_processo"] = "errore"
+        _aggiungi_diagnostica(record, radice, "errore_os", f"Errore OS durante l'avvio del dispatcher: {errore}")
+        _finalizza_invio(radice, id_invio, None)
+        _registra(radice, record)
+        return {"esito": "errore", "motivo": "errore_os", **record}
+    except Exception as errore:
+        record["esito_processo"] = "errore"
+        _aggiungi_diagnostica(record, radice, "errore_imprevisto", f"Errore imprevisto del dispatcher: {type(errore).__name__}")
+        _finalizza_invio(radice, id_invio, None)
+        _registra(radice, record)
+        return {"esito": "errore", "motivo": "errore_imprevisto", **record}
     _finalizza_invio(radice, id_invio, risultato.returncode)
     record["codice"] = risultato.returncode
+    if risultato.returncode != 0:
+        _aggiungi_diagnostica(record, radice, "codice_uscita_non_zero", str(risultato.stdout or ""))
     _registra(radice, record)
     return {"esito": "inviato", **record}

@@ -10,6 +10,10 @@
         restart_in_progress: "⟲ Riavvio in corso...",
         restart_requested: "Riavvio richiesto: attendo che il nuovo processo sia pronto...",
         restart_timeout: "Il server non ha risposto entro 30s dopo il riavvio: controllalo manualmente.",
+        restart_request_failed: "La richiesta di riavvio non ha ricevuto conferma: il server e' rimasto invariato.",
+        code_stale: "⚠ Codice modificato dall'avvio ({files}). Riavvia la dashboard per applicare le modifiche.",
+        code_unverifiable: "⚠ Impossibile verificare se il codice del dashboard e' aggiornato.",
+        btn_restart_now: "Riavvia ora",
         loading_data_error: "Errore nel caricamento dei dati: ",
 
         // Summary cards
@@ -207,6 +211,10 @@
         restart_in_progress: "⟲ Restart in progress...",
         restart_requested: "Restart requested: waiting for new process to be ready...",
         restart_timeout: "The server did not respond within 30s after restart: please check manually.",
+        restart_request_failed: "The restart request was not acknowledged; the server was left unchanged.",
+        code_stale: "⚠ Code changed since startup ({files}). Restart the dashboard to apply changes.",
+        code_unverifiable: "⚠ Unable to verify whether the dashboard code is current.",
+        btn_restart_now: "Restart now",
         loading_data_error: "Error loading data: ",
 
         // Summary cards
@@ -624,10 +632,23 @@
       }
       showFeedback(t("restart_requested"), "success");
 
+      let idRiavvio;
+      const controller = new AbortController();
+      const timeoutRichiesta = setTimeout(() => controller.abort(), 5000);
       try {
-        await fetch("/api/sistema/riavvia", { method: "POST" });
+        const risposta = await fetch("/api/sistema/riavvia", { method: "POST", signal: controller.signal });
+        if (!risposta.ok) throw new Error("riavvio non accettato");
+        idRiavvio = (await risposta.json()).id_riavvio;
+        if (!idRiavvio) throw new Error("id riavvio assente");
       } catch (err) {
-        // Atteso: il processo termina subito
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = t("btn_restart");
+        }
+        showFeedback(t("restart_request_failed"), "error");
+        return;
+      } finally {
+        clearTimeout(timeoutRichiesta);
       }
 
       const attendiRiavvio = async () => {
@@ -635,7 +656,8 @@
           await new Promise(r => setTimeout(r, 1000));
           try {
             const res = await fetch("/api/stato", { cache: "no-store" });
-            if (res.ok) {
+            const stato = res.ok ? await res.json() : null;
+            if (stato?.riavvio_dashboard?.id === idRiavvio && stato.riavvio_dashboard.stato === "pronto") {
               window.location.reload();
               return;
             }
@@ -663,11 +685,35 @@
       }, 5000);
     }
 
+    function aggiornaAvvisoCodice(codice) {
+      const banner = document.getElementById("codiceStaleBanner");
+      if (!banner) return;
+      if (!codice || codice.stato === "allineato") {
+        banner.style.display = "none";
+        banner.replaceChildren();
+        return;
+      }
+      const testo = codice.stato === "modificato"
+        ? t("code_stale", { files: (codice.file_modificati || []).join(", ") || "?" })
+        : t("code_unverifiable");
+      banner.replaceChildren(document.createTextNode(testo + " "));
+      if (codice.stato === "modificato") {
+        const pulsante = document.createElement("button");
+        pulsante.type = "button";
+        pulsante.className = "btn-riavvia";
+        pulsante.textContent = t("btn_restart_now");
+        pulsante.addEventListener("click", riavviaSistema);
+        banner.appendChild(pulsante);
+      }
+      banner.style.display = "block";
+    }
+
     async function aggiornaDati() {
       try {
         const res = await fetch(`/api/stato?pagina=${paginaTimelineCorrente}&per_pagina=50`);
         if (!res.ok) throw new Error(t("loading_data_error"));
         const data = await res.json();
+        aggiornaAvvisoCodice(data.codice_dashboard);
 
         // 1. Stats globali
         const elProj = document.getElementById("valProjects");
