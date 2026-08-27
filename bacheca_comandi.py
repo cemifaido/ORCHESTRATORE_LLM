@@ -564,16 +564,27 @@ def comando_stato(args: argparse.Namespace) -> int:
     return 0
 
 
+def _risolvi_thread_id(messaggi: list[dict[str, Any]], thread_id: str) -> str:
+    """Risolve un thread_id esatto o per prefisso univoco (es. 8 caratteri da riepilogo)."""
+    if any(m["thread_id"] == thread_id for m in messaggi):
+        return thread_id
+    corrispondenze = sorted({m["thread_id"] for m in messaggi if m["thread_id"].startswith(thread_id)})
+    if len(corrispondenze) == 1:
+        return corrispondenze[0]
+    return thread_id
+
+
 def comando_thread(args: argparse.Namespace) -> int:
     messaggi = leggi_messaggi(Path(args.bacheca))
-    cronologia = _messaggi_del_thread(messaggi, args.thread_id)
+    thread_id = _risolvi_thread_id(messaggi, args.thread_id)
+    cronologia = _messaggi_del_thread(messaggi, thread_id)
     if not cronologia:
         print(f"nessun messaggio per thread_id={args.thread_id!r}", file=sys.stderr)
         return 1
     for m in cronologia:
         print(f"[{m['timestamp']}] {m['mittente']} -> {', '.join(m['destinatari'])} ({m['tipo']}): {m['testo']}")
-    print(f"\nStato globale: {stato_thread(messaggi, args.thread_id)}")
-    print(f"Verdetto umano corrente: {verdetto_umano_corrente(messaggi, args.thread_id)}")
+    print(f"\nStato globale: {stato_thread(messaggi, thread_id)}")
+    print(f"Verdetto umano corrente: {verdetto_umano_corrente(messaggi, thread_id)}")
     return 0
 
 

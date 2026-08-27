@@ -913,6 +913,52 @@ class WatcherPostinoTest(unittest.TestCase):
         to_thread.assert_awaited_once_with(risveglio, progetto_id="test-proj")
         risveglio.assert_not_called()
 
+    def test_watcher_postino_non_blocca_ciclo_durante_dispatch_lento(self) -> None:
+        """Verifica fix f1298db5: un dispatch lento/in corso su un progetto non blocca
+        la scansione degli altri progetti o dei cicli successivi."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice1 = Path(tmp) / "p1"
+            radice2 = Path(tmp) / "p2"
+            for r in (radice1, radice2):
+                m = r / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+                m.parent.mkdir(parents=True)
+                m.write_text("{}\n", encoding="utf-8")
+
+            progetti = [
+                {"id": "proj-1", "percorso": str(radice1)},
+                {"id": "proj-2", "percorso": str(radice2)},
+            ]
+            interfaccia._last_mtimes.clear()
+            interfaccia._dispatch_tasks.clear()
+            interfaccia._last_mtimes["proj-1"] = 0.0
+            interfaccia._last_mtimes["proj-2"] = 0.0
+
+            async def _finto_to_thread(func, **kwargs):
+                # Simula dispatch asincrono
+                return None
+
+            try:
+                with (
+                    patch.object(interfaccia, "leggi_progetti", return_value=progetti),
+                    patch.object(interfaccia, "esegui_risvegli_bacheca") as risveglio,
+                    patch.object(
+                        interfaccia.asyncio, "sleep",
+                        new=AsyncMock(side_effect=[None, asyncio.CancelledError]),
+                    ),
+                    patch.object(interfaccia.asyncio, "to_thread", side_effect=_finto_to_thread) as to_thread,
+                ):
+                    asyncio.run(interfaccia._watcher_postino_loop())
+            finally:
+                interfaccia._last_mtimes.clear()
+                interfaccia._dispatch_tasks.clear()
+
+            # Stesso confine gia' verificato per il test precedente: il ciclo passa
+            # sempre da to_thread, mai una chiamata diretta alla funzione sincrona.
+            risveglio.assert_not_called()
+            chiamate = [call.kwargs.get("progetto_id") for call in to_thread.call_args_list]
+            self.assertIn("proj-1", chiamate)
+            self.assertIn("proj-2", chiamate)
+
 
 class PostinoRevisioneEndpointTest(unittest.TestCase):
     """Pulsante 'chiedi una revisione' della bacheca (docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md

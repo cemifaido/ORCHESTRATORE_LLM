@@ -187,6 +187,21 @@ app.include_router(interfaccia_api.router)
 
 # -- Watcher Postino Background -----------------------------------------------
 _last_mtimes: dict[str, float] = {}
+_dispatch_tasks: dict[str, asyncio.Task[None]] = {}
+
+
+async def _esegui_risveglio_task(pid: str) -> None:
+    try:
+        # Questa e' una chiamata Python diretta, non una route HTTP: FastAPI non la
+        # sposta nel suo thread pool. Il dispatch puo' attendere una subprocess fino a
+        # 300s, quindi va isolato per non fermare l'event loop della dashboard e le
+        # altre richieste.
+        await asyncio.to_thread(esegui_risvegli_bacheca, progetto_id=pid)
+    except Exception as ex:
+        print(f"[WATCHER POSTINO] Errore risveglio per {pid}: {ex}", file=sys.stderr)
+    finally:
+        _dispatch_tasks.pop(pid, None)
+
 
 async def _watcher_postino_loop():
     while True:
@@ -217,15 +232,12 @@ async def _watcher_postino_loop():
                 last_mtime = _last_mtimes.get(pid)
                 if last_mtime is not None and mtime > last_mtime:
                     _last_mtimes[pid] = mtime
-                    try:
-                        # Questa e' una chiamata Python diretta, non una route
-                        # HTTP: FastAPI non la sposta nel suo thread pool. Il
-                        # dispatch puo' attendere una subprocess fino a 300s,
-                        # quindi va isolato per non fermare l'event loop della
-                        # dashboard e le altre richieste.
-                        await asyncio.to_thread(esegui_risvegli_bacheca, progetto_id=pid)
-                    except Exception as ex:
-                        print(f"[WATCHER POSTINO] Errore risveglio per {pid}: {ex}", file=sys.stderr)
+                    # Non blocchiamo il ciclo del watcher con un await diretto (f1298db5):
+                    # avviamo un task asincrono dedicato per progetto se non ce n'e' gia'
+                    # uno attivo in corso.
+                    task_esistente = _dispatch_tasks.get(pid)
+                    if task_esistente is None or task_esistente.done():
+                        _dispatch_tasks[pid] = asyncio.create_task(_esegui_risveglio_task(pid))
                 else:
                     _last_mtimes[pid] = mtime
         except asyncio.CancelledError:
