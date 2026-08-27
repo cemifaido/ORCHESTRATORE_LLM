@@ -12,6 +12,7 @@ from typing import Any
 
 from registro import adesso_utc, lista_csv
 from bacheca_proiezioni import (
+    AGENTI_VALIDI,
     a_utc as _a_utc,
     checkpoint_ripristinabile_attivo,
     destinatari_pendenti,
@@ -27,7 +28,6 @@ from bacheca_proiezioni import (
 from bacheca_sintesi import sintetizza_thread
 
 RADICE = Path(__file__).resolve().parent
-AGENTI_VALIDI = ("gemini", "claude", "codex", "locale", "umano", "sistema")
 
 _bacheca_api: Any = None
 

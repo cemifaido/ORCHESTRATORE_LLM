@@ -35,6 +35,30 @@ class RegistroTest(unittest.TestCase):
         errori = registro.valida_evento(evento)
         self.assertTrue(any("campi non previsti" in errore for errore in errori))
 
+    def test_versione_schema_non_supportata_rifiutata_con_motivo_esplicito(self) -> None:
+        """D14 (revisione architetturale v3): dispatch per versione, stesso
+        pattern gia' usato in bacheca.valida_messaggio per messaggio v1/v2 -
+        un motivo deterministico, non un errore generico jsonschema."""
+        evento = self.evento_valido()
+        evento["versione_schema"] = 99
+        errori = registro.valida_evento(evento)
+        self.assertTrue(any("versione_schema non supportata" in errore for errore in errori))
+
+    def test_versione_schema_mancante_o_non_intera_rifiutata(self) -> None:
+        evento = self.evento_valido()
+        del evento["versione_schema"]
+        errori = registro.valida_evento(evento)
+        self.assertTrue(any("versione_schema non supportata" in errore for errore in errori))
+
+    def test_schema_esplicito_bypassa_il_dispatch_per_versione(self) -> None:
+        """Chi passa gia' uno schema (uso storico/di test) deve continuare a
+        funzionare esattamente come prima - il dispatch e' solo il default."""
+        evento = self.evento_valido()
+        evento["versione_schema"] = 99
+        schema = registro.carica_schema_evento()
+        errori = registro.valida_evento(evento, schema=schema)
+        self.assertTrue(any("versione_schema" in errore for errore in errori))
+
     def test_rework_non_e_input_dello_schema(self) -> None:
         evento = self.evento_valido()
         evento["rework"] = "si"

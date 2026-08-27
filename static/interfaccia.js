@@ -109,6 +109,7 @@
 
         // Bacheca
         widget_bacheca_title: "🗂️ Bacheca Multi-Agente",
+        bacheca_read_only_notice: "Questa vista e' di sola lettura: la fase workflow e' derivata dalle evidenze append-only in bacheca e registro. Un'approvazione si registra nella bacheca, non modifica direttamente la fase.",
         label_postino_auto: "📬 Postino Automatico:",
         label_headless_dispatch: "🤖 Dispatch Headless:",
         label_headless_dispatch_title: "Fa rispondere davvero claude/codex in background (claude -p / codex exec), senza aprire finestre. Richiede il Postino Automatico attivo. Gemini non e' supportato (resta a finestra).",
@@ -303,6 +304,7 @@
 
         // Board
         widget_bacheca_title: "🗂️ Multi-Agent Board",
+        bacheca_read_only_notice: "This view is read-only: the workflow phase is derived from append-only board and registry evidence. An approval is recorded on the board; it does not directly change the phase.",
         label_postino_auto: "📬 Automatic Postman:",
         label_headless_dispatch: "🤖 Headless Dispatch:",
         label_headless_dispatch_title: "Runs claude/codex autonomously in background (claude -p / codex exec) without opening windows. Requires Automatic Postman enabled. Gemini not supported (window only).",

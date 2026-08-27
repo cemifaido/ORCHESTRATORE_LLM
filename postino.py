@@ -13,7 +13,7 @@ import time
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import bacheca
 import capability_policy
@@ -470,7 +470,13 @@ def _finalizza_invio(radice: Path, id_invio: str, codice: int | None) -> None:
 
 
 def dispatch(
-    radice: Path, agente: str, thread_id: str, *, modo: str = "routine", esegui=subprocess.run
+    radice: Path,
+    agente: str,
+    thread_id: str,
+    *,
+    modo: str = "routine",
+    esegui=subprocess.run,
+    adesso: Callable[[], datetime] = _adesso,
 ) -> dict[str, Any]:
     """Esegue al massimo un turno autorizzato oppure ritorna un blocco deterministico.
     Un eseguibile non risolvibile (non installato, non sul PATH) e' un esito
@@ -501,7 +507,9 @@ def dispatch(
     if agente not in comandi:
         return {"esito": "bloccato", "motivo": "capability_non_autorizzata"}
 
-    ora = _adesso()
+    # Il clock e' iniettabile per test di integrazione riproducibili; il
+    # default conserva il comportamento dei chiamanti esistenti.
+    ora = adesso()
     prompt = prompt_revisione(agente, thread_id) if modo == "revisione" else prompt_fisso(agente, thread_id)
     id_invio = str(uuid.uuid4())
     record = {

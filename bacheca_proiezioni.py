@@ -11,6 +11,13 @@ from typing import Any
 
 TIPI_APERTURA = {"richiesta", "domanda", "sintesi", "segnalazione_conflitto", "checkpoint"}
 
+# Fonte unica (D8, revisione architetturale v3, 2026-08-27): prima duplicata
+# alla lettera in bacheca.py e bacheca_comandi.py, rischio di deriva silenziosa
+# fra le due copie. Deve restare identico agli enum "mittente"/"agente" in
+# schema/messaggio.v2.json e schema/evento.v1.json - vedi il test dedicato
+# in tests/test_bacheca.py che confronta i tre.
+AGENTI_VALIDI = ("gemini", "claude", "codex", "locale", "umano", "sistema")
+
 
 def messaggi_del_thread(messaggi: list[dict[str, Any]], thread_id: str) -> list[dict[str, Any]]:
     rilevanti = [m for m in messaggi if m["thread_id"] == thread_id]

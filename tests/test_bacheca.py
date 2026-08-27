@@ -31,6 +31,33 @@ def _misurazione_finta(token_totali: int = 400) -> MisurazioneLiteLLM:
     )
 
 
+class AgentiValidiUnicaFonteTest(unittest.TestCase):
+    """D8 (revisione architetturale v3): AGENTI_VALIDI era duplicato alla
+    lettera in bacheca.py e bacheca_comandi.py - ora entrambi lo re-esportano
+    da bacheca_proiezioni.py, unica fonte. Questo test copre il rischio
+    residuo: che quella fonte diverga in silenzio dagli enum equivalenti
+    negli schema JSON (mittente/destinatari in messaggio.v2, agente in
+    evento.v1) - nessuno dei tre puo' "importare" gli altri, quindi la
+    garanzia e' un confronto esplicito, non l'assenza di duplicazione."""
+
+    def setUp(self) -> None:
+        radice = Path(__file__).resolve().parent.parent
+        self.schema_messaggio = json.loads((radice / "schema" / "messaggio.v2.json").read_text(encoding="utf-8"))
+        self.schema_evento = json.loads((radice / "schema" / "evento.v1.json").read_text(encoding="utf-8"))
+
+    def test_bacheca_e_bacheca_comandi_ri_esportano_la_stessa_istanza(self) -> None:
+        self.assertIs(bacheca.AGENTI_VALIDI, bacheca_proiezioni.AGENTI_VALIDI)
+        self.assertIs(bacheca_comandi.AGENTI_VALIDI, bacheca_proiezioni.AGENTI_VALIDI)
+
+    def test_coerente_con_enum_mittente_schema_messaggio_v2(self) -> None:
+        enum_schema = self.schema_messaggio["properties"]["mittente"]["enum"]
+        self.assertEqual(set(bacheca.AGENTI_VALIDI), set(enum_schema))
+
+    def test_coerente_con_enum_agente_schema_evento_v1(self) -> None:
+        enum_schema = self.schema_evento["properties"]["agente"]["enum"]
+        self.assertEqual(set(bacheca.AGENTI_VALIDI), set(enum_schema))
+
+
 class BachecaTest(unittest.TestCase):
     def messaggio_valido(self, **override) -> dict:
         base = bacheca.costruisci_messaggio(

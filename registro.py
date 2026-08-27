@@ -16,6 +16,12 @@ import jsonschema
 RADICE = Path(__file__).resolve().parent
 PERCORSO_REGISTRO_PREDEFINITO = Path("dati_locali") / "orchestrazione" / "eventi.jsonl"
 PERCORSO_SCHEMA_EVENTO = RADICE / "schema" / "evento.v1.json"
+# Dispatch per versione (D14, revisione architetturale v3, 2026-08-27): stesso
+# pattern gia' in uso in bacheca.py per messaggio v1/v2. Oggi un solo schema,
+# ma il meccanismo di lettura duale e' gia' pronto - una v2 futura si aggiunge
+# come voce del dizionario, senza toccare la logica di dispatch qui sotto ne'
+# rompere gli eventi storici gia' scritti con versione_schema=1.
+SCHEMI_EVENTO_PER_VERSIONE = {1: PERCORSO_SCHEMA_EVENTO}
 
 
 def carica_schema_evento(percorso: Path = PERCORSO_SCHEMA_EVENTO) -> dict[str, Any]:
@@ -66,7 +72,15 @@ def messaggio_errore(errore: jsonschema.exceptions.ValidationError, dati: dict[s
 
 
 def valida_evento(evento: dict[str, Any], schema: dict[str, Any] | None = None) -> list[str]:
-    schema = schema or carica_schema_evento()
+    if schema is None:
+        versione = evento.get("versione_schema")
+        percorso_schema = SCHEMI_EVENTO_PER_VERSIONE.get(versione) if isinstance(versione, int) else None
+        if percorso_schema is None:
+            return [
+                f"versione_schema non supportata: {versione!r} "
+                f"(ammesse: {sorted(SCHEMI_EVENTO_PER_VERSIONE)})"
+            ]
+        schema = carica_schema_evento(percorso_schema)
     validatore = validatore_per_schema(schema)
     errori = sorted(validatore.iter_errors(evento), key=lambda e: list(e.absolute_path))
     return [messaggio_errore(errore, evento) for errore in errori]

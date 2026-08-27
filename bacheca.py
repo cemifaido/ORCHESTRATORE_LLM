@@ -22,6 +22,7 @@ import bacheca_sintesi as sintesi  # noqa: E402
 # Re-export di compatibilita' per test e consumatori che patchano il confine LLM.
 litellm = sintesi.litellm
 LIMITE_CARATTERI_THREAD_PROMPT = sintesi.LIMITE_CARATTERI_THREAD_PROMPT
+AGENTI_VALIDI = proiezioni.AGENTI_VALIDI
 
 PERCORSO_BACHECA_PREDEFINITO = Path("dati_locali") / "orchestrazione" / "messaggi.jsonl"
 PERCORSO_SCHEMA_MESSAGGIO = RADICE / "schema" / "messaggio.v1.json"
@@ -30,7 +31,6 @@ PERCORSO_SCHEMA_MESSAGGIO_V2 = RADICE / "schema" / "messaggio.v2.json"
 # la v1 resta congelata, i nuovi checkpoint ripristinabili sono v2, nessuna migrazione.
 SCHEMI_PER_VERSIONE = {1: PERCORSO_SCHEMA_MESSAGGIO, 2: PERCORSO_SCHEMA_MESSAGGIO_V2}
 
-AGENTI_VALIDI = ("gemini", "claude", "codex", "locale", "umano", "sistema")
 TIPI_VALIDI = (
     "richiesta", "risposta", "domanda", "sintesi",
     "presa_in_carico", "chiusura", "annullamento", "segnalazione_conflitto",
