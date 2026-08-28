@@ -731,12 +731,13 @@ class PostinoHeadlessTest(unittest.TestCase):
                 ) as dispatch_mock, patch.object(interfaccia, "_esegui_risveglio_os") as risveglio_os:
                     risultato = interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
 
-            dispatch_mock.assert_called_once_with(
-                p_path, "codex", nuova["thread_id"], id_messaggio_attivatore=nuova["id_messaggio"],
-            )
-            risveglio_os.assert_not_called()
-            self.assertEqual(risultato["risvegli"][0]["status"], "headless")
-            self.assertEqual(risultato["risvegli"][0]["codice"], 0)
+                    dispatch_mock.assert_called_once_with(
+                        p_path, "codex", nuova["thread_id"], id_messaggio_attivatore=nuova["id_messaggio"],
+                        attesa_poll_ms=unittest.mock.ANY,
+                    )
+                    risveglio_os.assert_not_called()
+                    self.assertEqual(risultato["risvegli"][0]["status"], "headless")
+                    self.assertEqual(risultato["risvegli"][0]["codice"], 0)
 
     def test_risveglio_headless_bloccato_da_policy_non_apre_comunque_finestra(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -817,10 +818,11 @@ class PostinoHeadlessTest(unittest.TestCase):
                 ) as dispatch_mock, patch.object(interfaccia, "_esegui_risveglio_os") as risveglio_os:
                     interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
 
-            dispatch_mock.assert_called_once_with(
-                p_path, "gemini", nuova["thread_id"], id_messaggio_attivatore=nuova["id_messaggio"],
-            )
-            risveglio_os.assert_not_called()
+                    dispatch_mock.assert_called_once_with(
+                        p_path, "gemini", nuova["thread_id"], id_messaggio_attivatore=nuova["id_messaggio"],
+                        attesa_poll_ms=unittest.mock.ANY,
+                    )
+                    risveglio_os.assert_not_called()
 
     def test_risveglio_headless_ignora_capability_non_supportata(self) -> None:
         """Un agente non in postino.COMANDI resta sempre sul percorso a

@@ -251,6 +251,21 @@ class PostinoDispatchTest(unittest.TestCase):
             self.assertEqual(record["profilo"], "brainstorming")
             self.assertIsNotNone(record["revisione_profilo"])
             self.assertEqual(record["garanzia"], "enforced")
+            misura = record["misura_fase_0"]
+            self.assertIsInstance(misura["preparazione_dispatch_ms"], float)
+            self.assertIsInstance(misura["cli_spawn_e_runtime_ms"], float)
+            self.assertIsNone(misura["autenticazione_trust_ms"])
+            self.assertIsNone(misura["generazione_ragionamento_ms"])
+
+    def test_dispatch_registra_l_attesa_poll_passata_dal_watcher(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            with patch("postino.shutil.which", return_value=r"C:\\fake\\claude.cmd"):
+                esito = postino.dispatch(
+                    radice, "claude", "t-postino", attesa_poll_ms=2345.678,
+                    esegui=MagicMock(return_value=MagicMock(returncode=0)),
+                )
+            self.assertEqual(esito["misura_fase_0"]["attesa_poll_ms"], 2345.678)
 
     def test_stesso_messaggio_attivatore_non_avvia_due_dispatch(self) -> None:
         """Due dashboard possono osservare lo stesso messaggio prima che il
@@ -405,6 +420,7 @@ class PostinoDispatchTest(unittest.TestCase):
             self.assertEqual(esito["esito"], "errore")
             self.assertEqual(esito["motivo"], "timeout")
             self.assertEqual(esito["diagnostica"]["tipo"], "timeout")
+            self.assertIsInstance(esito["misura_fase_0"]["cli_spawn_e_runtime_ms"], float)
             log = Path(esito["diagnostica"]["log_output"]).read_text(encoding="utf-8")
             self.assertIn("timeout di 300", log)
 

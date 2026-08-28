@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import bacheca
@@ -21,6 +22,24 @@ import postino
 import profili_operativi
 
 AGENTI_BACHECA_DASHBOARD = dashboard_config.AGENTI_BACHECA_DASHBOARD
+
+
+def attesa_poll_ms(timestamp_messaggio: object) -> float | None:
+    """Stima l'attesa fra il messaggio e il giro watcher che lo osserva.
+
+    E' una misura end-to-end del trasporto, non una promessa sulla frequenza
+    del poll: timestamp corrotto o futuro non produce un numero inventato.
+    """
+    if not isinstance(timestamp_messaggio, str):
+        return None
+    try:
+        momento = datetime.fromisoformat(timestamp_messaggio.replace("Z", "+00:00"))
+        if momento.tzinfo is None:
+            return None
+        attesa = (datetime.now(timezone.utc) - momento).total_seconds() * 1000
+    except ValueError:
+        return None
+    return round(attesa, 3) if attesa >= 0 else None
 
 
 def percorso_stato_risvegli(percorso_progetto: Path) -> Path:
@@ -229,11 +248,12 @@ def calcola_ed_esegui_risvegli(
             continue
 
         if dispatch_headless and agente in postino.COMANDI:
+            argomenti_dispatch = {"id_messaggio_attivatore": candidato["id_messaggio"]}
+            attesa = attesa_poll_ms(candidato.get("timestamp"))
+            if attesa is not None:
+                argomenti_dispatch["attesa_poll_ms"] = attesa
             esito_dispatch = postino.dispatch(
-                percorso_progetto,
-                agente,
-                candidato["thread_id"],
-                id_messaggio_attivatore=candidato["id_messaggio"],
+                percorso_progetto, agente, candidato["thread_id"], **argomenti_dispatch,
             )
             if esito_dispatch["esito"] != "inviato":
                 risvegli.append({

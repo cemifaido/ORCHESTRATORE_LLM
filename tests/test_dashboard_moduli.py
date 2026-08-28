@@ -65,6 +65,18 @@ class DashboardConfigTest(unittest.TestCase):
             dashboard_config.verifica_bind_sicuro("0.0.0.0", "")
 
 
+class MisuraPollingTest(unittest.TestCase):
+    def test_timestamp_valido_restituisce_attesa_non_negativa(self) -> None:
+        attesa = dashboard_risvegli.attesa_poll_ms("2026-01-01T00:00:00Z")
+        assert attesa is not None
+        self.assertIsInstance(attesa, float)
+        self.assertGreaterEqual(attesa, 0)
+
+    def test_timestamp_non_valido_non_inventa_una_misura(self) -> None:
+        self.assertIsNone(dashboard_risvegli.attesa_poll_ms("non e' un timestamp"))
+        self.assertIsNone(dashboard_risvegli.attesa_poll_ms(None))
+
+
 class DashboardFreschezzaTest(unittest.TestCase):
     def test_impronta_rileva_modifica_aggiunta_e_rimozione(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

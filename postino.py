@@ -336,6 +336,19 @@ def _registra(radice: Path, record: dict[str, Any]) -> None:
     registro.aggiungi_evento(radice / "dati_locali" / "orchestrazione" / "eventi.jsonl", evento)
 
 
+def _completa_misura_fase_0(
+    record: dict[str, Any], inizio_dispatch: float, inizio_cli: float | None = None,
+) -> None:
+    """Completa soltanto i tempi realmente osservati, inclusi gli errori CLI."""
+    misura = record.get("misura_fase_0")
+    if not isinstance(misura, dict):
+        return
+    ora = time.perf_counter()
+    if inizio_cli is not None:
+        misura["cli_spawn_e_runtime_ms"] = round((ora - inizio_cli) * 1000, 3)
+    misura["dispatch_totale_ms"] = round((ora - inizio_dispatch) * 1000, 3)
+
+
 def _aggiungi_diagnostica(record: dict[str, Any], radice: Path, tipo: str, output: str) -> None:
     """Salva l'output del processo soltanto in un log locale redatto.
 
@@ -622,6 +635,7 @@ def dispatch(
     *,
     modo: str = "routine",
     id_messaggio_attivatore: str | None = None,
+    attesa_poll_ms: float | None = None,
     esegui=subprocess.run,
     adesso: Callable[[], datetime] = _adesso,
 ) -> dict[str, Any]:
@@ -648,6 +662,10 @@ def dispatch(
     _prenota_invio): un pre-check con autorizza() qui sotto e' solo un
     ottimizzazione per evitare di prendere il lock nei casi ovvi (kill switch
     spento), la decisione che conta davvero e' quella dentro il lock."""
+    # ``perf_counter`` e' monotono: questa misura non risente da correzioni
+    # dell'orologio di sistema. Le componenti interne alla CLI restano opache
+    # finche' ogni provider non espone telemetria strutturata; non le stimiamo.
+    inizio_misura = time.perf_counter()
     profilo = profili_operativi.carica(radice)
     motivo_profilo = _motivo_profilo(profilo)
     if motivo_profilo is not None:
@@ -679,6 +697,18 @@ def dispatch(
         "limiti_effettivi": carica_limiti(radice, profilo),
         "garanzia": profili_operativi.garanzie(profilo)[agente],
         "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "codice": None,
+        "misura_fase_0": {
+            "versione_schema": 1,
+            "attesa_poll_ms": attesa_poll_ms,
+            "preparazione_dispatch_ms": None,
+            "cli_spawn_e_runtime_ms": None,
+            "autenticazione_trust_ms": None,
+            "generazione_ragionamento_ms": None,
+            "nota_limite": (
+                "Autenticazione/trust e generazione non sono separabili senza "
+                "telemetria strutturata della CLI del provider."
+            ),
+        },
     }
     if id_messaggio_attivatore is not None:
         record["id_messaggio_attivatore"] = id_messaggio_attivatore
@@ -693,6 +723,10 @@ def dispatch(
         _registra(radice, record)
         return {"esito": "errore", "motivo": "eseguibile_non_trovato", **record}
     comando = [eseguibile, *comandi[agente][1:], prompt]
+    record["misura_fase_0"]["preparazione_dispatch_ms"] = round(
+        (time.perf_counter() - inizio_misura) * 1000, 3
+    )
+    inizio_cli = time.perf_counter()
     try:
         risultato = esegui(
             # encoding esplicito: senza, subprocess.run usa la codepage di sistema
@@ -710,22 +744,26 @@ def dispatch(
         if isinstance(output, bytes):
             output = output.decode("utf-8", errors="replace")
         _aggiungi_diagnostica(record, radice, "timeout", f"Dispatch oltre il timeout di 300 secondi.\n{output}")
+        _completa_misura_fase_0(record, inizio_misura, inizio_cli)
         _finalizza_invio(radice, id_invio, None)
         _registra(radice, record)
         return {"esito": "errore", "motivo": "timeout", **record}
     except OSError as errore:
         record["esito_processo"] = "errore"
         _aggiungi_diagnostica(record, radice, "errore_os", f"Errore OS durante l'avvio del dispatcher: {errore}")
+        _completa_misura_fase_0(record, inizio_misura, inizio_cli)
         _finalizza_invio(radice, id_invio, None)
         _registra(radice, record)
         return {"esito": "errore", "motivo": "errore_os", **record}
     except Exception as errore:
         record["esito_processo"] = "errore"
         _aggiungi_diagnostica(record, radice, "errore_imprevisto", f"Errore imprevisto del dispatcher: {type(errore).__name__}")
+        _completa_misura_fase_0(record, inizio_misura, inizio_cli)
         _finalizza_invio(radice, id_invio, None)
         _registra(radice, record)
         return {"esito": "errore", "motivo": "errore_imprevisto", **record}
     _finalizza_invio(radice, id_invio, risultato.returncode)
+    _completa_misura_fase_0(record, inizio_misura, inizio_cli)
     record["codice"] = risultato.returncode
     if risultato.returncode != 0:
         _aggiungi_diagnostica(record, radice, "codice_uscita_non_zero", str(risultato.stdout or ""))
