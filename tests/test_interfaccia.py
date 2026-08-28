@@ -906,6 +906,63 @@ class WatcherPostinoTest(unittest.TestCase):
 
         segnala.assert_called_once_with()
 
+
+class AutoRiavvioStaleTest(unittest.TestCase):
+    """PIANO §13.2 c / ce982ab4: quando il codice del processo e' disallineato dal
+    disco e non c'e' nessun dispatch in volo, il watcher spawna il sostituto ed
+    esce - invece di lasciare girare codice vecchio in silenzio."""
+
+    def setUp(self) -> None:
+        self._armato = interfaccia._riavvio_stale_armato
+        self._auto = interfaccia._AUTO_RIAVVIO_STALE
+        interfaccia._riavvio_stale_armato = True
+        interfaccia._AUTO_RIAVVIO_STALE = True
+        interfaccia._cicli_stale_consecutivi = 0
+        interfaccia._dispatch_tasks.clear()
+        interfaccia._dispatch_da_ripetere.clear()
+
+    def tearDown(self) -> None:
+        interfaccia._riavvio_stale_armato = self._armato
+        interfaccia._AUTO_RIAVVIO_STALE = self._auto
+        interfaccia._cicli_stale_consecutivi = 0
+
+    def _con_stato(self, stato: str):
+        return patch.object(
+            interfaccia.dashboard_freschezza, "ultimo_stato_noto", return_value={"stato": stato},
+        )
+
+    def test_riavvia_dopo_soglia_cicli_stale_consecutivi_senza_dispatch(self) -> None:
+        with self._con_stato("modificato"), \
+             patch.object(interfaccia, "_riavvio_per_codice_stale") as riavvia:
+            interfaccia._valuta_riavvio_su_stale()
+            riavvia.assert_not_called()  # 1 ciclo: sotto soglia
+            interfaccia._valuta_riavvio_su_stale()
+            riavvia.assert_called_once()  # 2 cicli: riavvia
+
+    def test_non_riavvia_con_dispatch_in_volo(self) -> None:
+        interfaccia._dispatch_tasks["p"] = MagicMock()
+        with self._con_stato("modificato"), \
+             patch.object(interfaccia, "_riavvio_per_codice_stale") as riavvia:
+            interfaccia._valuta_riavvio_su_stale()
+            interfaccia._valuta_riavvio_su_stale()
+            interfaccia._valuta_riavvio_su_stale()
+        riavvia.assert_not_called()
+
+    def test_codice_allineato_azzera_il_contatore(self) -> None:
+        with self._con_stato("modificato"):
+            interfaccia._valuta_riavvio_su_stale()
+        with self._con_stato("allineato"):
+            interfaccia._valuta_riavvio_su_stale()
+        self.assertEqual(interfaccia._cicli_stale_consecutivi, 0)
+
+    def test_non_riavvia_se_non_armato(self) -> None:
+        interfaccia._riavvio_stale_armato = False
+        with self._con_stato("modificato"), \
+             patch.object(interfaccia, "_riavvio_per_codice_stale") as riavvia:
+            for _ in range(5):
+                interfaccia._valuta_riavvio_su_stale()
+        riavvia.assert_not_called()
+
     def test_watcher_offload_il_risveglio_sincrono_su_thread(self) -> None:
         """Il watcher chiama la route come funzione Python: senza to_thread,
         postino.dispatch (subprocess bloccante) congela l'event loop."""

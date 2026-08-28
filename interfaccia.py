@@ -207,6 +207,49 @@ async def _intesta_stato_codice(request: Request, call_next):
 # Registrazione route API
 app.include_router(interfaccia_api.router)
 
+# -- Auto-riavvio su codice disallineato (PIANO §13.2 c / ce982ab4) -----------
+# Il processo che continua a girare con codice vecchio dopo un commit e' il bug
+# piu' ricorrente del 2026-08-28 (~6 volte, una ha invalidato in silenzio meta'
+# di una prova). Con l'header X-Dashboard-Stale la detection e' gratis; qui il
+# watcher AGISCE: quando il codice risulta disallineato per SOGLIA cicli
+# consecutivi (evita di riavviare a meta' di un salvataggio multi-file) e non
+# c'e' nessun dispatch in volo (nessun turno agente da troncare), spawna il
+# processo sostituto ed esce. Disattivabile con ORCHESTRATORE_AUTO_RIAVVIO_STALE=0.
+_AUTO_RIAVVIO_STALE = os.environ.get("ORCHESTRATORE_AUTO_RIAVVIO_STALE", "1") != "0"
+_SOGLIA_CICLI_STALE = 2
+_cicli_stale_consecutivi = 0
+# Armato solo dall'avvio reale del watcher (_avvia_watcher_postino), mai quando
+# i test invocano _watcher_postino_loop() direttamente: os._exit ucciderebbe il
+# runner.
+_riavvio_stale_armato = False
+
+
+def _riavvio_per_codice_stale() -> None:
+    print(
+        "[FRESCHEZZA CODICE] Auto-riavvio: moduli disallineati dal disco e nessun "
+        "dispatch in volo. Avvio il processo sostituto ed esco.",
+        file=sys.stderr,
+    )
+    dashboard_os.richiedi_riavvio(RADICE)
+    dashboard_os.avvia_processo_sostituto(script_interfaccia=SCRIPT_INTERFACCIA, radice=RADICE)
+    os._exit(0)
+
+
+def _valuta_riavvio_su_stale() -> None:
+    """Chiamata a ogni ciclo del watcher, subito dopo segnala_disallineamento()."""
+    global _cicli_stale_consecutivi
+    if not (_riavvio_stale_armato and _AUTO_RIAVVIO_STALE):
+        return
+    stato_codice = dashboard_freschezza.ultimo_stato_noto()
+    if stato_codice.get("stato") != "modificato":
+        _cicli_stale_consecutivi = 0
+        return
+    _cicli_stale_consecutivi += 1
+    nessun_dispatch_in_volo = not _dispatch_tasks and not _dispatch_da_ripetere
+    if _cicli_stale_consecutivi >= _SOGLIA_CICLI_STALE and nessun_dispatch_in_volo:
+        _riavvio_per_codice_stale()
+
+
 # -- Watcher Postino Background -----------------------------------------------
 _last_mtimes: dict[str, float] = {}
 _dispatch_tasks: dict[str, asyncio.Task[None]] = {}
@@ -247,6 +290,7 @@ async def _watcher_postino_loop():
             # del 2026-08-28: il codice per farlo esisteva ma non veniva mai
             # chiamato da nulla).
             dashboard_freschezza.segnala_disallineamento()
+            _valuta_riavvio_su_stale()
             progetti = leggi_progetti()
             for proj in progetti:
                 pid = proj.get("id")
@@ -296,6 +340,8 @@ async def _avvia_watcher_postino():
         or os.environ.get("TESTING") == "true"
     )
     if not in_test:
+        global _riavvio_stale_armato
+        _riavvio_stale_armato = True
         dashboard_os.registra_dashboard_pronto(RADICE)
         asyncio.create_task(_watcher_postino_loop())
 
