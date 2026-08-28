@@ -1047,7 +1047,7 @@
     /* Workflow Stepper & Pratiche Sospese (Lotto 2 Weft) */
     .pratiche-sospese-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(480px, 100%), 1fr));
       gap: 1rem;
       margin-bottom: 1.5rem;
     }
@@ -1055,7 +1055,7 @@
       background: rgba(30, 41, 59, 0.6);
       border: 1px solid rgba(245, 158, 11, 0.35);
       border-radius: 10px;
-      padding: 1rem;
+      padding: 1.25rem;
       position: relative;
     }
     .pratica-badge-attende {

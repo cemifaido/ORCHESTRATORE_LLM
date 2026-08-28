@@ -298,7 +298,9 @@ class DashboardRisvegliTest(unittest.TestCase):
                  patch("interfaccia._esegui_risveglio_os") as risveglio:
                 _, esiti = dashboard_risvegli.calcola_ed_esegui_risvegli(radice, [])
 
-            dispatch.assert_called_once_with(radice, "claude", "t-1")
+            dispatch.assert_called_once_with(
+                radice, "claude", "t-1", id_messaggio_attivatore="m-nuovo",
+            )
             risveglio.assert_not_called()
             self.assertEqual(esiti[0]["status"], "headless")
 

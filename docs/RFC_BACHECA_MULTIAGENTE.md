@@ -197,6 +197,18 @@ di scrittura invece che ri-derivato dal testo a ogni proiezione — il marker
 testuale resterebbe l'interfaccia comoda per chi scrive, il campo la fonte di
 verità per chi legge.
 
+**Fallimento silenzioso corretto (2026-08-28)**: la prima prova dal vivo del
+protocollo (thread `ceefb480`) ha mostrato esattamente il rischio previsto — un
+agente ha scritto il marker in coda alla stessa frase invece che su riga
+propria, il parser rigido (correttamente) non l'ha riconosciuto, e la catena si
+è fermata senza che nessuno se ne accorgesse. `bacheca_proiezioni.marker_quasi_riconosciuto()`
+rileva questo caso (sottostringa simile al marker ma non su riga propria, senza
+falsi positivi su prosa come "il prossimo passo è...") e `bacheca.py aggiungi
+/chiedi/rispondi` stampano un avviso su **stderr** (mai stdout, per non
+sporcare l'output JSON) quando succede. Resta solo un avviso all'autore, mai
+un blocco della scrittura: la bacheca è append-only, un messaggio "quasi
+giusto" resta comunque un messaggio legittimo.
+
 ### 3.4 `bacheca.py` — implementato e testato
 
 Mirror strutturale di `registro.py` (stesso stile: `carica_schema_*`, `valida_*`,

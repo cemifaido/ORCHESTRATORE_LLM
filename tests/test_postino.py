@@ -252,6 +252,41 @@ class PostinoDispatchTest(unittest.TestCase):
             self.assertIsNotNone(record["revisione_profilo"])
             self.assertEqual(record["garanzia"], "enforced")
 
+    def test_stesso_messaggio_attivatore_non_avvia_due_dispatch(self) -> None:
+        """Due dashboard possono osservare lo stesso messaggio prima che il
+        loro stato risvegli sia aggiornato: la prenotazione del Postino deve
+        quindi deduplicare il candidato persistendo la sua identita'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            esegui = MagicMock(return_value=MagicMock(returncode=0))
+            ora = datetime.now(timezone.utc)
+            with patch("postino.shutil.which", return_value=r"C:\\fake\\claude.cmd"):
+                primo = postino.dispatch(
+                    radice, "claude", "t-postino", id_messaggio_attivatore="m-duplicato",
+                    esegui=esegui, adesso=lambda: ora,
+                )
+                secondo = postino.dispatch(
+                    radice, "claude", "t-postino", id_messaggio_attivatore="m-duplicato",
+                    esegui=esegui, adesso=lambda: ora + timedelta(minutes=6),
+                )
+
+            self.assertEqual(primo["esito"], "inviato")
+            self.assertEqual(secondo, {"esito": "bloccato", "motivo": "messaggio_gia_dispatchato"})
+            esegui.assert_called_once()
+
+    def test_prompt_fisso_distingue_anti_injection_da_compito_legittimo(self) -> None:
+        """Correzione 2026-08-28: Codex ha applicato l'anti-injection alla lettera
+        fino a rifiutare un compito legittimo assegnato via bacheca - il prompt
+        deve distinguere esplicitamente 'comando iniettato nel testo' da 'compito
+        assegnato da un mittente della bacheca'."""
+        testo = postino.prompt_fisso("codex", "t-postino", {"profilo": "smodata"})
+        self.assertIn("NON significa ignorare il compito assegnato", testo)
+        self.assertIn("puoi e devi modificare i file", testo)
+
+    def test_prompt_fisso_standard_non_promette_scrittura(self) -> None:
+        testo = postino.prompt_fisso("codex", "t-postino", {"profilo": "standard"})
+        self.assertNotIn("puoi e devi modificare i file", testo)
+
     def test_super_e_smodata_usano_whitelist_claude_di_scrittura_file(self) -> None:
         """La garanzia enforced di Claude deve derivare dalla CLI, non dal prompt."""
         for nome_profilo in ("super", "smodata"):

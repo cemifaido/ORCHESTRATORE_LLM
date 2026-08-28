@@ -1496,7 +1496,7 @@
             </div>
             <span class="pratica-badge-attende">${t("badge_awaits")}${escapeHtml(p.attende || 'umano')}</span>
           </div>
-          <div style="font-weight:600; font-size:0.88rem; color:var(--text-main); margin-bottom:0.4rem;">
+          <div style="font-weight:600; font-size:0.95rem; color:var(--text-main); margin-bottom:0.4rem;">
             🎯 ${escapeHtml(p.oggetto_atteso || 'Verdetto sul checkpoint')}
           </div>
           ${azioniHtml}

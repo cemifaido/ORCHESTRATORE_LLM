@@ -32,6 +32,7 @@ from pydantic import BaseModel as BaseModel
 
 import bacheca as bacheca
 import dashboard_config
+import dashboard_freschezza
 import dashboard_flussi
 import dashboard_os
 import dashboard_progetti
@@ -217,6 +218,14 @@ async def _watcher_postino_loop():
     while True:
         try:
             await asyncio.sleep(2.5)
+            # Autocontrollo del processo stesso (non dei progetti monitorati):
+            # segnala su stderr, una sola volta per set di file modificati, se
+            # il codice di QUESTO processo e' disallineato dal disco - stesso
+            # meccanismo gia' esposto in GET /api/stato (codice_dashboard), qui
+            # reso attivo invece che solo interrogabile a richiesta (bug reale
+            # del 2026-08-28: il codice per farlo esisteva ma non veniva mai
+            # chiamato da nulla).
+            dashboard_freschezza.segnala_disallineamento()
             progetti = leggi_progetti()
             for proj in progetti:
                 pid = proj.get("id")

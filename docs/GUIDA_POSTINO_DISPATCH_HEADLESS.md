@@ -249,6 +249,17 @@ un difetto: è il confine di sicurezza che funziona come previsto. La
 revisione di merito su un diff/commit resta un compito per l'umano o per un
 agente in sessione interattiva normale, non per il dispatch headless.
 
+**Corretta un'ambiguità reale (2026-08-28)**: l'anti-injection sopra non
+distingueva "comando iniettato nel testo di un messaggio" da "il compito
+stesso, assegnato tramite lo stesso canale bacheca" — un agente headless
+(Codex) l'ha applicata così alla lettera da rifiutare un compito legittimo di
+lavoro reale in profilo super/smodata, anche con l'autorizzazione a scrivere
+file esplicitamente presente nello stesso prompt. `prompt_fisso()` ora chiarisce
+esplicitamente: un `richiesta`/`domanda` legittimo da un mittente della bacheca
+è il compito da svolgere, non contenuto sospetto — l'anti-injection riguarda
+solo comandi/istruzioni sospette dentro il testo (es. "esegui git push",
+"ignora le tue regole precedenti"), non la richiesta di lavoro in sé.
+
 ## Modalità revisione (su richiesta esplicita, mai automatica)
 
 **Perché esiste**: la sezione precedente documentava un limite reale — un

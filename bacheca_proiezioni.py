@@ -36,6 +36,27 @@ def marker_intento(testo: str) -> str | None:
         return "apri"
     return None
 
+
+# Sottostringa (non riga intera) - usata solo per avvisare l'autore in scrittura,
+# mai per decidere la pendenza: un marker quasi giusto non deve fallire muto
+# (D-2026-08-28, dalla prova dal vivo del protocollo: Codex ha scritto il
+# marker in coda alla stessa frase invece che su riga propria, ignorato dal
+# parser rigido com'e' corretto, ma senza nessun avviso).
+_SOTTOSTRINGA_MARKER = re.compile(r"[-–—]\s*passo(\s+e\s+chiudo)?", re.IGNORECASE)
+
+
+def marker_quasi_riconosciuto(testo: str) -> bool:
+    """True se l'ultima riga CONTIENE una sottostringa simile al marker ma non
+    e' un match esatto (es. marker incollato a fine frase) - un probabile
+    tentativo fallito, non una prosa qualunque che nomina 'passo'."""
+    righe = [r.strip() for r in (testo or "").splitlines() if r.strip()]
+    if not righe:
+        return False
+    ultima = righe[-1]
+    if marker_intento(ultima) is not None:
+        return False
+    return bool(_SOTTOSTRINGA_MARKER.search(ultima))
+
 # Fonte unica (D8, revisione architetturale v3, 2026-08-27): prima duplicata
 # alla lettera in bacheca.py e bacheca_comandi.py, rischio di deriva silenziosa
 # fra le due copie. Deve restare identico agli enum "mittente"/"agente" in

@@ -229,7 +229,12 @@ def calcola_ed_esegui_risvegli(
             continue
 
         if dispatch_headless and agente in postino.COMANDI:
-            esito_dispatch = postino.dispatch(percorso_progetto, agente, candidato["thread_id"])
+            esito_dispatch = postino.dispatch(
+                percorso_progetto,
+                agente,
+                candidato["thread_id"],
+                id_messaggio_attivatore=candidato["id_messaggio"],
+            )
             if esito_dispatch["esito"] != "inviato":
                 risvegli.append({
                     "agente": agente, "thread_id": candidato["thread_id"],

@@ -204,6 +204,66 @@ class BachecaTest(unittest.TestCase):
         # senza il marker resterebbe 'pending' (tipo=richiesta riapre sempre)
         self.assertEqual(bacheca.stato_per_destinatario(messaggi, richiesta["thread_id"], "codex"), "resolved")
 
+    def test_marker_quasi_riconosciuto_su_marker_in_coda_a_frase(self) -> None:
+        """Caso reale dalla prova dal vivo (2026-08-27/28): Codex ha scritto il
+        marker incollato alla fine della stessa frase invece che su riga
+        propria - va segnalato come quasi-match, non ignorato in silenzio."""
+        self.assertTrue(
+            bacheca_proiezioni.marker_quasi_riconosciuto("Per me il confronto e' concluso. - passo e chiudo")
+        )
+        self.assertTrue(bacheca_proiezioni.marker_quasi_riconosciuto("tutto ok - passo"))
+
+    def test_marker_quasi_riconosciuto_nessun_falso_positivo_su_prosa(self) -> None:
+        self.assertFalse(bacheca_proiezioni.marker_quasi_riconosciuto("il prossimo passo e' fare X"))
+        self.assertFalse(bacheca_proiezioni.marker_quasi_riconosciuto("nessun marker qui"))
+        self.assertFalse(bacheca_proiezioni.marker_quasi_riconosciuto(""))
+
+    def test_marker_quasi_riconosciuto_falso_se_gia_un_match_esatto(self) -> None:
+        """Un marker valido non e' anche un 'quasi' - sono mutuamente esclusivi."""
+        self.assertFalse(bacheca_proiezioni.marker_quasi_riconosciuto("ok\n- passo"))
+        self.assertFalse(bacheca_proiezioni.marker_quasi_riconosciuto("ok\n- passo e chiudo"))
+
+    def test_comando_rispondi_avvisa_su_stderr_se_marker_mal_formattato(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            originale = self.messaggio_valido()
+            bacheca.aggiungi_messaggio(percorso, originale)
+
+            args = argparse.Namespace(
+                bacheca=str(percorso),
+                correla_a=originale["id_messaggio"],
+                mittente="codex",
+                destinatari="",
+                testo="Per me il confronto e' concluso. - passo e chiudo",
+                file_modificati="",
+            )
+            stderr = io.StringIO()
+            with redirect_stdout(io.StringIO()), redirect_stderr(stderr):
+                bacheca.comando_rispondi(args)
+
+            self.assertIn("ATTENZIONE", stderr.getvalue())
+            self.assertIn("passo", stderr.getvalue())
+
+    def test_comando_rispondi_nessun_avviso_con_marker_corretto(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            originale = self.messaggio_valido()
+            bacheca.aggiungi_messaggio(percorso, originale)
+
+            args = argparse.Namespace(
+                bacheca=str(percorso),
+                correla_a=originale["id_messaggio"],
+                mittente="codex",
+                destinatari="",
+                testo="Tutto chiaro.\n- passo e chiudo",
+                file_modificati="",
+            )
+            stderr = io.StringIO()
+            with redirect_stdout(io.StringIO()), redirect_stderr(stderr):
+                bacheca.comando_rispondi(args)
+
+            self.assertEqual(stderr.getvalue(), "")
+
     def test_senza_marker_comportamento_invariato(self) -> None:
         """Nessuna regressione: in assenza di marker vale solo TIPI_APERTURA."""
         richiesta = bacheca.costruisci_messaggio(

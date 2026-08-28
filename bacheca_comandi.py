@@ -17,6 +17,7 @@ from bacheca_proiezioni import (
     checkpoint_ripristinabile_attivo,
     destinatari_pendenti,
     file_occupati,
+    marker_quasi_riconosciuto,
     messaggi_aperti_per,
     messaggi_del_thread as _messaggi_del_thread,
     partecipanti_thread,
@@ -78,6 +79,22 @@ def _richiedi_thread_esistente(messaggi: list[dict[str, Any]], thread_id: str) -
     _b()._richiedi_thread_esistente(messaggi, thread_id)
 
 
+def _avvisa_se_marker_quasi_riconosciuto(testo: str) -> None:
+    """Il marker '- passo'/'- passo e chiudo' fallisce muto se non e' sulla sua
+    riga dedicata (by design, per evitare falsi positivi in prosa) - ma
+    l'autore va avvisato subito, non lasciato a scoprirlo da un thread che non
+    si sveglia. Su stderr apposta: non deve mai sporcare il JSON su stdout che
+    altri comandi/script possono parsare."""
+    if marker_quasi_riconosciuto(testo):
+        print(
+            "ATTENZIONE: l'ultima riga del messaggio contiene qualcosa che somiglia "
+            "a '- passo'/'- passo e chiudo' ma non e' un match esatto (deve essere "
+            "SOLO quello sulla sua riga, niente altro testo) - il marker NON verra' "
+            "riconosciuto. Vedi docs/RFC_BACHECA_MULTIAGENTE.md §3.3bis.",
+            file=sys.stderr,
+        )
+
+
 def comando_aggiungi(args: argparse.Namespace) -> int:
     percorso = Path(args.bacheca)
     correla_a = args.correla_a or None
@@ -103,6 +120,7 @@ def comando_aggiungi(args: argparse.Namespace) -> int:
         ttl_minuti=args.ttl_minuti,
         verdetto_umano=args.verdetto_umano,
     )
+    _avvisa_se_marker_quasi_riconosciuto(args.testo)
     aggiungi_messaggio(percorso, messaggio)
     print(json.dumps(messaggio, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
@@ -122,6 +140,7 @@ def comando_chiedi(args: argparse.Namespace) -> int:
         testo=args.testo,
         thread_id=thread_id,
     )
+    _avvisa_se_marker_quasi_riconosciuto(args.testo)
     aggiungi_messaggio(percorso, messaggio)
     print(json.dumps(messaggio, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
@@ -175,6 +194,7 @@ def comando_rispondi(args: argparse.Namespace) -> int:
         correla_a=args.correla_a,
         file_modificati=lista_csv(args.file_modificati),
     )
+    _avvisa_se_marker_quasi_riconosciuto(args.testo)
     aggiungi_messaggio(percorso, messaggio)
     print(json.dumps(messaggio, ensure_ascii=False, indent=2, sort_keys=True))
     return 0

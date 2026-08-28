@@ -731,7 +731,9 @@ class PostinoHeadlessTest(unittest.TestCase):
                 ) as dispatch_mock, patch.object(interfaccia, "_esegui_risveglio_os") as risveglio_os:
                     risultato = interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
 
-            dispatch_mock.assert_called_once_with(p_path, "codex", nuova["thread_id"])
+            dispatch_mock.assert_called_once_with(
+                p_path, "codex", nuova["thread_id"], id_messaggio_attivatore=nuova["id_messaggio"],
+            )
             risveglio_os.assert_not_called()
             self.assertEqual(risultato["risvegli"][0]["status"], "headless")
             self.assertEqual(risultato["risvegli"][0]["codice"], 0)
@@ -815,7 +817,9 @@ class PostinoHeadlessTest(unittest.TestCase):
                 ) as dispatch_mock, patch.object(interfaccia, "_esegui_risveglio_os") as risveglio_os:
                     interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
 
-            dispatch_mock.assert_called_once_with(p_path, "gemini", nuova["thread_id"])
+            dispatch_mock.assert_called_once_with(
+                p_path, "gemini", nuova["thread_id"], id_messaggio_attivatore=nuova["id_messaggio"],
+            )
             risveglio_os.assert_not_called()
 
     def test_risveglio_headless_ignora_capability_non_supportata(self) -> None:
@@ -885,6 +889,21 @@ class PostinoHeadlessTest(unittest.TestCase):
 
 
 class WatcherPostinoTest(unittest.TestCase):
+    def test_watcher_chiama_segnala_disallineamento_ad_ogni_ciclo(self) -> None:
+        """Bug reale 2026-08-28: la funzione di segnalazione staleness esisteva
+        gia' (dashboard_freschezza.segnala_disallineamento) ma non veniva mai
+        chiamata da nulla - scritta ma orfana. Il watcher deve richiamarla
+        una volta per ciclo, indipendentemente dai progetti monitorati."""
+        with patch.object(interfaccia, "leggi_progetti", return_value=[]), \
+             patch.object(interfaccia.dashboard_freschezza, "segnala_disallineamento") as segnala, \
+             patch.object(
+                 interfaccia.asyncio, "sleep",
+                 new=AsyncMock(side_effect=[None, asyncio.CancelledError]),
+             ):
+            asyncio.run(interfaccia._watcher_postino_loop())
+
+        segnala.assert_called_once_with()
+
     def test_watcher_offload_il_risveglio_sincrono_su_thread(self) -> None:
         """Il watcher chiama la route come funzione Python: senza to_thread,
         postino.dispatch (subprocess bloccante) congela l'event loop."""

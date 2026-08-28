@@ -11,6 +11,7 @@ import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Final
+import sys
 
 import dashboard_config
 
@@ -71,3 +72,44 @@ def stato_codice_dashboard(
         "controllo_utc": controllo_utc,
         "file_modificati": modificati[:20],
     }
+
+
+_ultimo_avviso_modificati: list[str] | None = None
+
+
+def segnala_disallineamento(
+    stato: dict[str, object] | None = None,
+    *,
+    radice: Path = RADICE,
+    impronta_avvio: dict[str, str] = IMPRONTA_AVVIO,
+    file_log: object = sys.stderr,
+) -> bool:
+    """Emette un log esplicito su stderr quando viene rilevato un disallineamento
+    dei moduli runtime su disco rispetto all'avvio. Evita spam ripetendo il log
+    solo se l'insieme dei file modificati cambia. Restituisce True se e' stato
+    emesso un nuovo avviso."""
+    global _ultimo_avviso_modificati
+    if stato is None:
+        stato = stato_codice_dashboard(radice=radice, impronta_avvio=impronta_avvio)
+
+    if stato.get("stato") == "modificato":
+        file_modificati = list(stato.get("file_modificati", []))  # type: ignore
+        if file_modificati != _ultimo_avviso_modificati:
+            _ultimo_avviso_modificati = file_modificati
+            nomi = ", ".join(str(f) for f in file_modificati) if file_modificati else "moduli non specificati"
+            print(
+                f"[FRESCHEZZA CODICE] ATTENZIONE: codice dashboard modificato su disco rispetto all'avvio del processo! "
+                f"Moduli disallineati: {nomi}. Riavviare il processo dashboard per applicare le modifiche.",
+                file=file_log,  # type: ignore
+            )
+            return True
+    elif stato.get("stato") == "allineato":
+        _ultimo_avviso_modificati = None
+    return False
+
+
+def reset_stato_segnalazione() -> None:
+    """Ripristina lo stato interno delle segnalazioni (utile per test o riavvii)."""
+    global _ultimo_avviso_modificati
+    _ultimo_avviso_modificati = None
+
