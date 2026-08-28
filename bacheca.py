@@ -15,6 +15,7 @@ from typing import Any
 RADICE = Path(__file__).resolve().parent
 sys.path.insert(0, str(RADICE))
 
+import registro  # noqa: E402
 from registro import adesso_utc, lista_csv as lista_csv, messaggio_errore, validatore_per_schema  # noqa: E402
 import bacheca_proiezioni as proiezioni  # noqa: E402
 import bacheca_sintesi as sintesi  # noqa: E402
@@ -49,7 +50,7 @@ TIPI_APERTURA = {"richiesta", "domanda", "sintesi", "segnalazione_conflitto", "c
 
 
 def carica_schema_messaggio(percorso: Path = PERCORSO_SCHEMA_MESSAGGIO) -> dict[str, Any]:
-    return json.loads(percorso.read_text(encoding="utf-8"))
+    return json.loads(registro._schema_da_percorso(percorso))
 
 
 def valida_messaggio(messaggio: dict[str, Any], schema: dict[str, Any] | None = None) -> list[str]:

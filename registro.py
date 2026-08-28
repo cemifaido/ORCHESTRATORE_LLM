@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import sys
 import uuid
@@ -24,8 +25,16 @@ PERCORSO_SCHEMA_EVENTO = RADICE / "schema" / "evento.v1.json"
 SCHEMI_EVENTO_PER_VERSIONE = {1: PERCORSO_SCHEMA_EVENTO}
 
 
+@functools.lru_cache(maxsize=None)
+def _schema_da_percorso(percorso: Path) -> str:
+    """Testo canonico dello schema letto da disco, memoizzato per percorso: lo
+    stesso file schema veniva riletto e riparsato una volta per ogni riga di
+    eventi.jsonl / messaggi.jsonl."""
+    return percorso.read_text(encoding="utf-8")
+
+
 def carica_schema_evento(percorso: Path = PERCORSO_SCHEMA_EVENTO) -> dict[str, Any]:
-    return json.loads(percorso.read_text(encoding="utf-8"))
+    return json.loads(_schema_da_percorso(percorso))
 
 
 def valori_ammessi(campo: str) -> list[str]:
@@ -46,12 +55,24 @@ def lista_csv(valore: str) -> list[str]:
     return [parte.strip() for parte in valore.split(",") if parte.strip()]
 
 
-def validatore_per_schema(schema: dict[str, Any]) -> jsonschema.protocols.Validator:
-    """Costruisce un validatore JSON Schema riutilizzabile per qualunque schema del
-    progetto (evento, messaggio, flusso...), non solo per lo schema evento."""
+@functools.lru_cache(maxsize=None)
+def _validatore_da_testo(schema_json: str) -> jsonschema.protocols.Validator:
+    schema = json.loads(schema_json)
     classe = jsonschema.validators.validator_for(schema)
     classe.check_schema(schema)
     return classe(schema, format_checker=jsonschema.FormatChecker())
+
+
+def validatore_per_schema(schema: dict[str, Any]) -> jsonschema.protocols.Validator:
+    """Costruisce un validatore JSON Schema riutilizzabile per qualunque schema del
+    progetto (evento, messaggio, flusso...), non solo per lo schema evento.
+
+    Il validatore (e la meta-validazione ``check_schema``, ~25ms per schema draft
+    2020-12) e' memoizzato sul testo canonico dello schema: senza cache veniva
+    ricostruito da zero per ogni singola riga letta da eventi.jsonl / messaggi.jsonl,
+    con un costo che cresceva linearmente col registro (centinaia di righe ->
+    decine di secondi per una GET /api/bacheca, watcher e hook inclusi)."""
+    return _validatore_da_testo(json.dumps(schema, sort_keys=True))
 
 
 def messaggio_errore(errore: jsonschema.exceptions.ValidationError, dati: dict[str, Any]) -> str:
