@@ -1237,6 +1237,8 @@ class InterfacciaTestClientRoutesTest(unittest.TestCase):
         self.assertEqual(res_js.status_code, 200)
         self.assertIn("I18N", res_js.text)
         self.assertIn("aggiornaAvvisoCodice", res_js.text)
+        self.assertIn("data.postino_headless_attivo === true", res_js.text)
+        self.assertNotIn('nomeProfilo === "brainstorming"', res_js.text)
         self.assertIn("codiceStaleBanner", self.client.get("/").text)
 
         res_css = self.client.get("/static/interfaccia.css")

@@ -1331,9 +1331,12 @@
 
       const badge = document.getElementById("profiloDispatchBadge");
       if (badge) {
-        const dispatchAbilitato = nomeProfilo === "brainstorming";
+        // Il backend e' l'unica fonte di verita' sui profili abilitati: non
+        // duplicare qui la policy, altrimenti profili nuovi restano validi ma
+        // vengono presentati erroneamente come indisponibili dalla dashboard.
+        const dispatchAbilitato = data.postino_headless_attivo === true;
         if (dispatchAbilitato) {
-          badge.textContent = "🟢 DISPATCH ATTIVO (brainstorming)";
+          badge.textContent = `🟢 DISPATCH ATTIVO (${nomeProfilo})`;
           badge.style.background = "rgba(16,185,129,0.15)";
           badge.style.borderColor = "rgba(16,185,129,0.4)";
           badge.style.color = "#34d399";

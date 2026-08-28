@@ -368,14 +368,27 @@ class DashboardProfiliOperativiTest(unittest.TestCase):
                 self.assertIn("garanzie_per_agente", dati_get)
                 self.assertIn("descrizione_profilo", dati_get)
 
-                # 3. POST profilo non valido => HTTP 400
+                # 3. Il flag che la UI usa e' la policy backend: super/smodata
+                # sono attivi, standard resta fail-closed.
+                for profilo, attivo in (("super", True), ("smodata", True), ("standard", False)):
+                    with self.subTest(profilo=profilo):
+                        res = client.post(
+                            "/api/bacheca/postino/profilo",
+                            json={"progetto_id": "test_proj", "profilo": profilo},
+                        )
+                        self.assertEqual(res.status_code, 200)
+                        dati = client.get("/api/bacheca?progetto_id=test_proj").json()
+                        self.assertEqual(dati["profilo"]["profilo"], profilo)
+                        self.assertEqual(dati["postino_headless_attivo"], attivo)
+
+                # 4. POST profilo non valido => HTTP 400
                 res_bad_prof = client.post(
                     "/api/bacheca/postino/profilo",
                     json={"progetto_id": "test_proj", "profilo": "profilo_inventato"},
                 )
                 self.assertEqual(res_bad_prof.status_code, 400)
 
-                # 4. POST progetto inesistente => HTTP 404
+                # 5. POST progetto inesistente => HTTP 404
                 res_bad_proj = client.post(
                     "/api/bacheca/postino/profilo",
                     json={"progetto_id": "non_esiste", "profilo": "standard"},
