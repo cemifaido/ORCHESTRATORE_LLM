@@ -75,6 +75,13 @@ def get_stato(pagina: int = 1, per_pagina: int = 50):
     return dashboard_servizi.ottieni_stato(pagina=pagina, per_pagina=per_pagina, progetti=progetti)
 
 
+@router.get("/api/stato/live")
+def get_stato_live(progetto_id: str = "orchestratore"):
+    import interfaccia
+    progetti = interfaccia.leggi_progetti()
+    return dashboard_servizi.ottieni_stato_live(progetto_id=progetto_id, progetti=progetti)
+
+
 @router.post("/api/progetti")
 def aggiungi_progetto(proj: ProgettoInput):
     import interfaccia

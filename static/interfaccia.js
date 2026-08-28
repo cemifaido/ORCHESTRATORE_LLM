@@ -509,6 +509,8 @@
       document.body.removeChild(area);
     }
 
+    let matrixAnimationId = null;
+
     function initMatrixRain() {
       const canvas = document.getElementById("matrixCanvas");
       if (!canvas) return;
@@ -527,8 +529,18 @@
       const drops = Array(columns).fill(1);
       
       const caratteri = "01M1X0101010101010010101010010101010111010101010101010101ABCDEF";
+      let ultimoTempo = 0;
+      const fpsInterval = 1000 / 30;
       
-      function draw() {
+      function draw(tempoCorrente) {
+        if (document.hidden) {
+          matrixAnimationId = null;
+          return;
+        }
+        matrixAnimationId = requestAnimationFrame(draw);
+        if (tempoCorrente - ultimoTempo < fpsInterval) return;
+        ultimoTempo = tempoCorrente;
+
         ctx.fillStyle = "rgba(2, 4, 10, 0.08)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
@@ -548,16 +560,43 @@
           drops[i]++;
         }
       }
+
+      const avviaMatrix = () => {
+        if (!matrixAnimationId && !document.hidden) {
+          matrixAnimationId = requestAnimationFrame(draw);
+        }
+      };
+
+      const fermaMatrix = () => {
+        if (matrixAnimationId) {
+          cancelAnimationFrame(matrixAnimationId);
+          matrixAnimationId = null;
+        }
+      };
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+          fermaMatrix();
+        } else {
+          avviaMatrix();
+        }
+      });
       
-      setInterval(draw, 33);
+      avviaMatrix();
     }
 
     document.addEventListener("DOMContentLoaded", async () => {
       initMatrixRain();
       impostaLingua(linguaCorrente);
 
-      // Aggiornamento automatico ogni 5 secondi
-      setInterval(aggiornaDati, 5000);
+      // Caricamento iniziale completo
+      await aggiornaDati();
+
+      // Tier Live: ogni 5 secondi (contatori, postino, pendenti, banner)
+      setInterval(aggiornaDatiLive, 5000);
+
+      // Tier Dettaglio: ogni 45 secondi (timeline, grafici, aggregati pesanti)
+      setInterval(aggiornaDatiDettaglio, 45000);
 
       document.getElementById("refreshBtn")?.addEventListener("click", aggiornaDati);
       document.getElementById("addProjectForm")?.addEventListener("submit", aggiungiProgetto);
@@ -612,13 +651,26 @@
       document.getElementById("timelinePrevBtn")?.addEventListener("click", () => {
         if (paginaTimelineCorrente > 1) {
           paginaTimelineCorrente--;
-          aggiornaDati();
+          aggiornaDatiDettaglio();
         }
       });
       document.getElementById("timelineNextBtn")?.addEventListener("click", () => {
         paginaTimelineCorrente++;
-        aggiornaDati();
+        aggiornaDatiDettaglio();
       });
+
+      // IntersectionObserver per refresh on-demand quando la timeline entra in viewport
+      const timelineWidget = document.getElementById("timelineWidget");
+      if (timelineWidget && "IntersectionObserver" in window) {
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              aggiornaDatiDettaglio();
+            }
+          });
+        }, { threshold: 0.1 });
+        observer.observe(timelineWidget);
+      }
     });
 
     async function riavviaSistema() {
@@ -708,77 +760,104 @@
       banner.style.display = "block";
     }
 
-    async function aggiornaDati() {
+    function sincronizzaSelectProgetti(selectEl, listaProgetti) {
+      if (!selectEl || !listaProgetti) return;
+      const opzioniEsistenti = Array.from(selectEl.options).map(o => ({ value: o.value, text: o.textContent }));
+      const opzioniNuove = listaProgetti.map(p => ({ value: p.id, text: p.nome }));
+      
+      const sonoUguali = opzioniEsistenti.length === opzioniNuove.length &&
+        opzioniEsistenti.every((o, i) => o.value === opzioniNuove[i].value && o.text === opzioniNuove[i].text);
+        
+      if (sonoUguali) return;
+
+      const prevSelected = selectEl.value;
+      selectEl.innerHTML = "";
+      opzioniNuove.forEach(opt => {
+        const el = document.createElement("option");
+        el.value = opt.value;
+        el.textContent = opt.text;
+        selectEl.appendChild(el);
+      });
+      if (prevSelected && opzioniNuove.some(o => o.value === prevSelected)) {
+        selectEl.value = prevSelected;
+      }
+    }
+
+    async function aggiornaDatiLive() {
+      if (document.hidden) return;
+      const bachecaSelect = document.getElementById("bachecaProjSelect");
+      const progettoId = (bachecaSelect && bachecaSelect.value) || "orchestratore";
+
+      try {
+        const res = await fetch(`/api/stato/live?progetto_id=${encodeURIComponent(progettoId)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        aggiornaAvvisoCodice(data.codice_dashboard);
+
+        // 1. Stats globali
+        const elProj = document.getElementById("valProjects");
+        if (elProj && data.globali) elProj.textContent = data.globali.progetti_totali;
+        const elEv = document.getElementById("valEvents");
+        if (elEv && data.globali) elEv.textContent = data.globali.eventi_totali;
+        const elLat = document.getElementById("valLatency");
+        if (elLat && data.globali) elLat.textContent = `${(data.globali.latenza_totale || 0).toLocaleString()} ms`;
+
+        // 2. Sincronizzazione select progetti senza rebuild distruttivo
+        if (data.progetti_sommario) {
+          sincronizzaSelectProgetti(document.getElementById("sentinelProj"), data.progetti_sommario);
+          sincronizzaSelectProgetti(document.getElementById("realProjSelect"), data.progetti_sommario);
+          sincronizzaSelectProgetti(document.getElementById("bachecaProjSelect"), data.progetti_sommario);
+        }
+
+        // 3. Bacheca live
+        if (data.bacheca_live) {
+          renderizzaPendingBacheca(data.bacheca_live.pending_per_agente, null);
+          renderizzaProfiloOperativo(data.bacheca_live);
+
+          const occupatiBox = document.getElementById("bachecaOccupati");
+          if (occupatiBox) {
+            const occupati = data.bacheca_live.file_occupati || {};
+            const fileOccupati = Object.keys(occupati);
+            occupatiBox.innerHTML = fileOccupati.length === 0
+              ? t("none_locked")
+              : fileOccupati.map(f => {
+                  const info = occupati[f];
+                  const scadenza = info.scadenza ? formattaOraIt(info.scadenza) : t("lease_no_expiry");
+                  return `<div>- <b>${escapeHtml(f)}</b>: <span class="tag-agent ${escapeHtml(info.agente)}">${escapeHtml(info.agente)}</span> (${t("lease_expires")} ${scadenza})</div>`;
+                }).join("");
+          }
+        }
+      } catch (err) {
+        // Fallback silenzioso per poll live
+      }
+    }
+
+    async function aggiornaDatiDettaglio() {
       try {
         const res = await fetch(`/api/stato?pagina=${paginaTimelineCorrente}&per_pagina=50`);
         if (!res.ok) throw new Error(t("loading_data_error"));
         const data = await res.json();
         aggiornaAvvisoCodice(data.codice_dashboard);
 
-        // 1. Stats globali
+        // Stats globali
         const elProj = document.getElementById("valProjects");
-        if (elProj) elProj.textContent = data.globali.progetti_totali;
+        if (elProj && data.globali) elProj.textContent = data.globali.progetti_totali;
         const elEv = document.getElementById("valEvents");
-        if (elEv) elEv.textContent = data.globali.eventi_totali;
+        if (elEv && data.globali) elEv.textContent = data.globali.eventi_totali;
         const elLat = document.getElementById("valLatency");
-        if (elLat) elLat.textContent = `${data.globali.latenza_totale.toLocaleString()} ms`;
+        if (elLat && data.globali) elLat.textContent = `${(data.globali.latenza_totale || 0).toLocaleString()} ms`;
 
         progettiCorrenti = data.progetti || [];
 
-        // 2. Select Sentinella
-        const sentinelSelect = document.getElementById("sentinelProj");
-        if (sentinelSelect) {
-          const prevSelectedProj = sentinelSelect.value;
-          sentinelSelect.innerHTML = "";
-          data.progetti.forEach(p => {
-            const opt = document.createElement("option");
-            opt.value = p.id;
-            opt.textContent = p.nome;
-            sentinelSelect.appendChild(opt);
-          });
-          if (prevSelectedProj && data.progetti.some(p => p.id === prevSelectedProj)) {
-            sentinelSelect.value = prevSelectedProj;
-          }
-        }
+        // Sincronizza select
+        sincronizzaSelectProgetti(document.getElementById("sentinelProj"), data.progetti);
+        sincronizzaSelectProgetti(document.getElementById("realProjSelect"), data.progetti);
+        sincronizzaSelectProgetti(document.getElementById("bachecaProjSelect"), data.progetti);
 
-        // Popola anche realProjSelect del simulatore reale
-        const realProjSelect = document.getElementById("realProjSelect");
-        if (realProjSelect) {
-          const prevRealProj = realProjSelect.value;
-          realProjSelect.innerHTML = "";
-          data.progetti.forEach(p => {
-            const opt = document.createElement("option");
-            opt.value = p.id;
-            opt.textContent = p.nome;
-            realProjSelect.appendChild(opt);
-          });
-          if (prevRealProj && data.progetti.some(p => p.id === prevRealProj)) {
-            realProjSelect.value = prevRealProj;
-          }
-        }
-
-        // Popola anche il selettore della Bacheca Multi-Agente
-        const bachecaProjSelect = document.getElementById("bachecaProjSelect");
-        if (bachecaProjSelect) {
-          const prevBachecaProj = bachecaProjSelect.value;
-          bachecaProjSelect.innerHTML = "";
-          data.progetti.forEach(p => {
-            const opt = document.createElement("option");
-            opt.value = p.id;
-            opt.textContent = p.nome;
-            bachecaProjSelect.appendChild(opt);
-          });
-          if (prevBachecaProj && data.progetti.some(p => p.id === prevBachecaProj)) {
-            bachecaProjSelect.value = prevBachecaProj;
-          }
-        }
-        caricaBacheca();
-        if (bachecaFeedAttivo) caricaBachecaFeed();
-
-        // Popola/filtra la lista dei comandi
         aggiornaComandiSelect();
 
-        // 3. Progetti list
+        // Progetti list
         const pList = document.getElementById("projectsList");
         if (pList) {
           pList.innerHTML = "";
@@ -786,7 +865,7 @@
             pList.innerHTML = `<div style="text-align: center; color: var(--text-muted);">${t("projects_empty")}</div>`;
           } else {
             data.progetti.forEach(p => {
-              const pStat = data.progetto_stats[p.id] || { esecuzioni: 0, latenza: 0, rework: 0 };
+              const pStat = (data.progetto_stats && data.progetto_stats[p.id]) || { esecuzioni: 0, latenza: 0, rework: 0 };
               const card = document.createElement("div");
               card.className = "project-card";
               const avviso = pStat.errore
@@ -810,7 +889,7 @@
           }
         }
 
-        // 4. Timeline
+        // Timeline
         const tBody = document.getElementById("timelineBody");
         if (tBody) {
           tBody.innerHTML = "";
@@ -846,13 +925,22 @@
         const btnNext = document.getElementById("timelineNextBtn");
         if (btnNext) btnNext.disabled = paginazione.pagina >= paginazione.pagine_totali;
 
-        // 5. Grafici
+        // Grafici
         renderizzaGrafici(data.agente_stats || {}, data.livello_stats || {});
         renderizzaAnelliLivello(data.livello_stats || {});
+
+        // Bacheca
+        caricaBacheca();
+        if (bachecaFeedAttivo) caricaBachecaFeed();
 
       } catch (err) {
         showFeedback(`${t("loading_data_error")}${err.message}`, "error");
       }
+    }
+
+    async function aggiornaDati() {
+      await aggiornaDatiLive();
+      await aggiornaDatiDettaglio();
     }
 
     function aggiornaComandiSelect() {

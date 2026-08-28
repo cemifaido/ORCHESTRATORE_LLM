@@ -435,10 +435,42 @@ class InterfacciaSmokeTest(unittest.TestCase):
         self.assertEqual(res_stato.status_code, 200)
         self.assertIn("progetti", res_stato.json())
 
+        res_live = client.get("/api/stato/live")
+        self.assertEqual(res_live.status_code, 200)
+        dati_live = res_live.json()
+        self.assertIn("globali", dati_live)
+        self.assertIn("progetti_sommario", dati_live)
+        self.assertIn("bacheca_live", dati_live)
+        self.assertIn("riavvio_dashboard", dati_live)
+        self.assertIn("codice_dashboard", dati_live)
+
         res_flussi = client.get("/api/flussi")
         self.assertEqual(res_flussi.status_code, 200)
         self.assertIn("flussi", res_flussi.json())
 
 
+class DashboardServiziLiveTest(unittest.TestCase):
+    def test_ottieni_stato_live(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_dir = Path(tmp)
+            p_reg_dir = p_dir / "dati_locali" / "orchestrazione"
+            p_reg_dir.mkdir(parents=True, exist_ok=True)
+            (p_reg_dir / "eventi.jsonl").write_text(
+                '{"timestamp": "2026-08-28T12:00:00Z", "latenza_ms": 120}\n'
+                '{"timestamp": "2026-08-28T12:01:00Z", "latenza_ms": 80}\n',
+                encoding="utf-8",
+            )
+            progetti = [{"id": "test_p", "nome": "Test P", "percorso": str(p_dir)}]
+            live = dashboard_servizi.ottieni_stato_live(progetto_id="test_p", progetti=progetti)
+
+            self.assertEqual(live["globali"]["progetti_totali"], 1)
+            self.assertEqual(live["globali"]["eventi_totali"], 2)
+            self.assertEqual(live["globali"]["latenza_totale"], 200)
+            self.assertEqual(len(live["progetti_sommario"]), 1)
+            self.assertEqual(live["progetti_sommario"][0]["id"], "test_p")
+            self.assertEqual(live["bacheca_live"]["progetto_id"], "test_p")
+
+
 if __name__ == "__main__":
     unittest.main()
+

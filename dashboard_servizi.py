@@ -127,6 +127,116 @@ def ottieni_stato(
     }
 
 
+def _calcola_statistiche_live_progetti(progetti: list[dict]) -> tuple[int, int]:
+    """Calcola velocemente eventi e latenza totali dai file eventi.jsonl."""
+    eventi_totali = 0
+    latenza_totale = 0
+    for p in progetti:
+        p_path = Path(p.get("percorso", ""))
+        p_reg = p_path / "dati_locali" / "orchestrazione" / "eventi.jsonl"
+        if not p_reg.exists():
+            continue
+        try:
+            with open(p_reg, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    eventi_totali += 1
+                    if '"latenza_ms":' in line:
+                        try:
+                            part = line.split('"latenza_ms":', 1)[1].split(",", 1)[0].split("}", 1)[0].strip()
+                            latenza_totale += int(part)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+    return eventi_totali, latenza_totale
+
+
+def _calcola_bacheca_live(progetto: dict | None, progetto_id: str) -> dict:
+    """Estrae lo stato live della bacheca per il progetto specificato."""
+    bacheca_live: dict = {
+        "progetto_id": progetto_id,
+        "pending_per_agente": {agente: 0 for agente in AGENTI_BACHECA_DASHBOARD},
+        "postino_attivo": False,
+        "postino_headless_attivo": False,
+        "profilo": None,
+        "garanzie_per_agente": {},
+        "file_occupati": {},
+    }
+    if not progetto:
+        return bacheca_live
+
+    p_path = Path(progetto["percorso"])
+    messaggi, errore = bacheca.leggi_messaggi_progetto(p_path)
+    if errore:
+        return bacheca_live
+
+    pending_per_agente = {agente: 0 for agente in AGENTI_BACHECA_DASHBOARD}
+    thread_ids = {m["thread_id"] for m in messaggi}
+    for tid in thread_ids:
+        aspetta = bacheca.destinatari_pendenti(messaggi, tid)
+        for agente in AGENTI_BACHECA_DASHBOARD:
+            if agente in aspetta:
+                pending_per_agente[agente] += 1
+
+    occupati = {
+        f: {
+            "agente": info["agente"],
+            "thread_id": info["thread_id"],
+            "scadenza": info["scadenza"].isoformat() if info["scadenza"] else None,
+        }
+        for f, info in bacheca.file_occupati(messaggi).items()
+    }
+
+    dto_profilo = profili_operativi.carica(p_path)
+    return {
+        "progetto_id": progetto_id,
+        "pending_per_agente": pending_per_agente,
+        "postino_attivo": postino_attivo(p_path),
+        "postino_headless_attivo": postino_headless_attivo(p_path),
+        "profilo": dto_profilo,
+        "garanzie_per_agente": profili_operativi.garanzie(dto_profilo),
+        "file_occupati": occupati,
+    }
+
+
+def ottieni_stato_live(
+    progetto_id: str = "orchestratore",
+    progetti: list[dict] | None = None,
+) -> dict:
+    """Restituisce lo stato compatto ad alta frequenza per il monitoraggio live.
+
+    Evita il parsing dell'intero log eventi e la derivazione completa degli stati
+    di tutti i thread della bacheca.
+    """
+    if progetti is None:
+        progetti = dashboard_progetti.leggi_progetti()
+
+    eventi_totali, latenza_totale = _calcola_statistiche_live_progetti(progetti)
+
+    progetti_sommario = [
+        {"id": p.get("id", ""), "nome": p.get("nome", ""), "percorso": p.get("percorso", "")}
+        for p in progetti
+    ]
+
+    target_progetto = next((p for p in progetti if p.get("id") == progetto_id), None)
+    bacheca_live = _calcola_bacheca_live(target_progetto, progetto_id)
+
+    return {
+        "riavvio_dashboard": dashboard_os.leggi_stato_riavvio(dashboard_config.RADICE),
+        "codice_dashboard": dashboard_freschezza.stato_codice_dashboard(),
+        "globali": {
+            "progetti_totali": len(progetti),
+            "eventi_totali": eventi_totali,
+            "latenza_totale": latenza_totale,
+        },
+        "progetti_sommario": progetti_sommario,
+        "bacheca_live": bacheca_live,
+    }
+
+
 def ottieni_lista_commit(
     progetto_id: str = "orchestratore",
     limite: int = 20,
