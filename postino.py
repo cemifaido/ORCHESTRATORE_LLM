@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 import time
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -35,6 +35,12 @@ LIMITI_PREDEFINITI = {"max_turni_thread": 3, "max_invii_giorno": 300, "debounce_
 # dell'orchestratore non azzerano piu' il contatore: serve piu' margine.
 LIMITI_MASSIMI = {"max_turni_thread": 60, "max_invii_giorno": 300, "debounce_secondi": 300}
 DEBOUNCE_MINIMO_SECONDI = 5
+# Un processo CLI headless ha un timeout di 300 secondi. Il lease deve
+# sopravvivere al processo, ma non bloccare per sempre dopo una sua morte.
+LEASE_DISPATCH_SECONDI = 310
+# DEC.3: una conversazione automatica non puo' autoalimentarsi oltre tre
+# turni senza un nuovo messaggio umano sullo stesso thread.
+MAX_HOP_HEADLESS_CONSECUTIVI = 3
 LIMITI_PER_PROFILO = {
     "standard": LIMITI_PREDEFINITI,
     "brainstorming": LIMITI_PREDEFINITI,
@@ -159,14 +165,17 @@ def _spento(radice: Path, profilo: dict[str, Any] | None = None) -> bool:
 
 def _valuta_policy(
     radice: Path, stato: dict[str, Any], agente: str, thread_id: str, ora: datetime,
-    profilo: dict[str, Any] | None = None,
+    profilo: dict[str, Any] | None = None, canale: str = "headless",
 ) -> str | None:
     """Cuore della decisione di autorizza(), fattorizzato perche' dispatch()
     deve poterlo rivalutare su uno stato appena riletto DENTRO il proprio
     lock (vedi _prenota_invio) senza duplicare la logica dei tetti."""
+    ultimo_tocco_umano = _ultimo_tocco_umano(radice, thread_id)
     return _motivo_blocco(
         stato, agente, thread_id, ora, carica_limiti(radice, profilo),
-        ultimo_tocco_umano=_ultimo_reset_thread(stato, radice, thread_id),
+        ultimo_reset_thread=_ultimo_reset_thread(stato, radice, thread_id),
+        ultimo_tocco_umano=ultimo_tocco_umano,
+        canale=canale,
     )
 
 
@@ -235,10 +244,16 @@ def _ultimo_tocco_umano(radice: Path, thread_id: str) -> datetime | None:
 def _leggi_stato(radice: Path) -> dict[str, Any] | None:
     percorso = _percorso_stato(radice)
     if not percorso.exists():
-        return {"versione_schema": 1, "invii": []}
+        return {"versione_schema": 1, "invii": [], "lease_dispatch": {}}
     try:
         stato = json.loads(percorso.read_text(encoding="utf-8"))
-        return stato if stato.get("versione_schema") == 1 and isinstance(stato.get("invii"), list) else None
+        if stato.get("versione_schema") != 1 or not isinstance(stato.get("invii"), list):
+            return None
+        # Campo aggiunto dopo l'introduzione del lease: gli stati v1 storici
+        # restano validi e vengono migrati pigramente alla prima scrittura.
+        if "lease_dispatch" not in stato:
+            stato["lease_dispatch"] = {}
+        return stato if isinstance(stato["lease_dispatch"], dict) else None
     except (OSError, json.JSONDecodeError):
         return None
 
@@ -508,6 +523,22 @@ def _invii_thread_dopo_tocco_umano(
     return [i for i in thread if datetime.fromisoformat(i["quando"]) > ultimo_tocco_umano]
 
 
+def _hop_headless_consecutivi(
+    invii: list[dict[str, Any]], thread_id: str, ultimo_tocco_umano: datetime | None,
+) -> int:
+    """Conta i dispatch headless del thread dall'ultimo intervento umano.
+
+    E' deliberatamente indipendente da max_turni_thread: in smodata quel
+    budget puo' essere alto, ma una raffica autonoma deve fermarsi subito.
+    I deep-link e la revisione non sono hop headless; solo un messaggio umano
+    azzera la sequenza.
+    """
+    return sum(
+        1 for invio in _invii_thread_dopo_tocco_umano(invii, thread_id, ultimo_tocco_umano)
+        if invio.get("canale", "headless") == "headless"
+    )
+
+
 def _in_debounce(thread: list[dict[str, Any]], agente: str, ora: datetime, limiti: dict[str, int]) -> bool:
     coppia = [i for i in thread if i.get("agente") == agente]
     if not coppia:
@@ -518,19 +549,53 @@ def _in_debounce(thread: list[dict[str, Any]], agente: str, ora: datetime, limit
 
 def _motivo_blocco(
     stato: dict[str, Any], agente: str, thread_id: str, ora: datetime,
-    limiti: dict[str, int], ultimo_tocco_umano: datetime | None = None,
+    limiti: dict[str, int], ultimo_reset_thread: datetime | None = None,
+    ultimo_tocco_umano: datetime | None = None, canale: str = "headless",
 ) -> str | None:
     """Tetto per thread e debounce valgono per TUTTI i canali; il budget
     giornaliero solo per l'headless (vedi helper)."""
     invii = stato["invii"]
     if _budget_headless_esaurito(invii, ora, limiti):
         return "budget_giornaliero"
-    thread = _invii_thread_dopo_tocco_umano(invii, thread_id, ultimo_tocco_umano)
+    thread = _invii_thread_dopo_tocco_umano(invii, thread_id, ultimo_reset_thread)
     if len(thread) >= limiti["max_turni_thread"]:
         return "tetto_thread"
+    if canale == "headless" and _hop_headless_consecutivi(invii, thread_id, ultimo_tocco_umano) >= MAX_HOP_HEADLESS_CONSECUTIVI:
+        return "max_hop_consecutivi"
     if _in_debounce(thread, agente, ora, limiti):
         return "debounce"
     return None
+
+
+def _lease_dispatch_attivo(stato: dict[str, Any], agente: str, ora: datetime) -> bool:
+    """Rimuove un lease sicuramente scaduto e dice se l'agente e' occupato.
+
+    Un lease corrotto resta bloccante: in caso di stato ambiguo e' piu' sicuro
+    saltare un dispatch che avviare due CLI sullo stesso agente.
+    """
+    lease = stato["lease_dispatch"].get(agente)
+    if lease is None:
+        return False
+    try:
+        scade_il = datetime.fromisoformat(lease["scade_il"])
+    except (KeyError, TypeError, ValueError):
+        return True
+    if scade_il <= ora:
+        del stato["lease_dispatch"][agente]
+        return False
+    return True
+
+
+def _libera_lease_dispatch(radice: Path, agente: str, id_invio: str) -> None:
+    """Libera solo il lease della propria prenotazione, mai quello successivo."""
+    with _blocco_stato(radice):
+        stato = _leggi_stato(radice)
+        if stato is None:
+            return
+        lease = stato["lease_dispatch"].get(agente)
+        if isinstance(lease, dict) and lease.get("id_invio") == id_invio:
+            del stato["lease_dispatch"][agente]
+            _scrivi_stato(radice, stato)
 
 
 def _risolvi_eseguibile(nome: str) -> str | None:
@@ -573,6 +638,11 @@ def _prenota_invio(
         motivo_profilo = _motivo_profilo(profilo)
         if motivo_profilo is not None:
             return motivo_profilo
+        # Questo controllo e la creazione del lease condividono lo stesso lock
+        # della prenotazione: due watcher su thread diversi non possono quindi
+        # avviare due CLI concorrenti per lo stesso agente.
+        if record.get("canale") == "headless" and _lease_dispatch_attivo(stato, agente, ora):
+            return "dispatch_in_corso"
         id_messaggio_attivatore = record.get("id_messaggio_attivatore")
         if id_messaggio_attivatore is not None and any(
             invio.get("agente") == agente
@@ -585,10 +655,17 @@ def _prenota_invio(
             # persistente qui, sotto lo stesso lock del budget, rende il
             # candidato at-most-once anche attraverso processi diversi.
             return "messaggio_gia_dispatchato"
-        motivo = _valuta_policy(radice, stato, agente, thread_id, ora, profilo)
+        motivo = _valuta_policy(
+            radice, stato, agente, thread_id, ora, profilo, record.get("canale", "headless"),
+        )
         if motivo is not None:
             return motivo
         stato["invii"].append(record)
+        if record.get("canale") == "headless":
+            stato["lease_dispatch"][agente] = {
+                "id_invio": record["id"],
+                "scade_il": (ora + timedelta(seconds=LEASE_DISPATCH_SECONDI)).isoformat(),
+            }
         _scrivi_stato(radice, stato)
     return None
 
@@ -721,6 +798,7 @@ def dispatch(
         record["esito_processo"] = "errore"
         _aggiungi_diagnostica(record, radice, "eseguibile_non_trovato", "Eseguibile del dispatcher non trovato sul PATH.")
         _registra(radice, record)
+        _libera_lease_dispatch(radice, agente, id_invio)
         return {"esito": "errore", "motivo": "eseguibile_non_trovato", **record}
     comando = [eseguibile, *comandi[agente][1:], prompt]
     record["misura_fase_0"]["preparazione_dispatch_ms"] = round(
@@ -747,6 +825,7 @@ def dispatch(
         _completa_misura_fase_0(record, inizio_misura, inizio_cli)
         _finalizza_invio(radice, id_invio, None)
         _registra(radice, record)
+        _libera_lease_dispatch(radice, agente, id_invio)
         return {"esito": "errore", "motivo": "timeout", **record}
     except OSError as errore:
         record["esito_processo"] = "errore"
@@ -754,6 +833,7 @@ def dispatch(
         _completa_misura_fase_0(record, inizio_misura, inizio_cli)
         _finalizza_invio(radice, id_invio, None)
         _registra(radice, record)
+        _libera_lease_dispatch(radice, agente, id_invio)
         return {"esito": "errore", "motivo": "errore_os", **record}
     except Exception as errore:
         record["esito_processo"] = "errore"
@@ -761,6 +841,7 @@ def dispatch(
         _completa_misura_fase_0(record, inizio_misura, inizio_cli)
         _finalizza_invio(radice, id_invio, None)
         _registra(radice, record)
+        _libera_lease_dispatch(radice, agente, id_invio)
         return {"esito": "errore", "motivo": "errore_imprevisto", **record}
     _finalizza_invio(radice, id_invio, risultato.returncode)
     _completa_misura_fase_0(record, inizio_misura, inizio_cli)
@@ -768,4 +849,5 @@ def dispatch(
     if risultato.returncode != 0:
         _aggiungi_diagnostica(record, radice, "codice_uscita_non_zero", str(risultato.stdout or ""))
     _registra(radice, record)
+    _libera_lease_dispatch(radice, agente, id_invio)
     return {"esito": "inviato", **record}

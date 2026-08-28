@@ -149,6 +149,26 @@ class PostinoPolicyTest(unittest.TestCase):
         )
         self.assertIsNone(motivo)
 
+    def test_max_hop_headless_blocca_anche_in_smodata_e_tocco_umano_reset(self) -> None:
+        """DEC.3: il budget ampio smodata non deve permettere un ping-pong
+        headless oltre tre hop; solo un nuovo messaggio umano lo riapre."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            profili_operativi.imposta(radice, "smodata")
+            _scrivi_invii(radice, [_invio(30 - i, agente=("claude", "codex", "gemini")[i]) for i in range(3)])
+            self.assertEqual(
+                postino.autorizza(radice, "claude", "t-postino"),
+                {"esito": "bloccato", "motivo": "max_hop_consecutivi"},
+            )
+            messaggio = bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["claude"], tipo="richiesta",
+                testo="nuovo intervento umano", thread_id="t-postino",
+            )
+            bacheca.aggiungi_messaggio(
+                radice / "dati_locali" / "orchestrazione" / "messaggi.jsonl", messaggio
+            )
+            self.assertEqual(postino.autorizza(radice, "claude", "t-postino"), {"esito": "autorizzato"})
+
 
 class CaricaLimitiTest(unittest.TestCase):
     """I limiti sono configurabili dal blocco 'postino' di config/comandi.json;
@@ -538,7 +558,7 @@ class PostinoModoRevisioneTest(unittest.TestCase):
             )
             self.assertEqual(stato["invii"][0]["modo"], "routine")
 
-    def test_invio_revisione_azzera_il_tetto_del_thread(self) -> None:
+    def test_invio_revisione_azzera_il_tetto_ma_non_i_max_hop_headless(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             radice = _radice_attiva(tmp)
             # 3 invii routine (default max_turni_thread=3) esauriscono il tetto
@@ -547,15 +567,19 @@ class PostinoModoRevisioneTest(unittest.TestCase):
                 postino.autorizza(radice, "claude", "t-postino"),
                 {"esito": "bloccato", "motivo": "tetto_thread"},
             )
-            # un invio in modalita' revisione ADESSO azzera il tetto, come un tocco umano
+            # La revisione azzera il tetto storico, ma DEC.3 richiede un
+            # messaggio umano per riaprire una sequenza headless.
             invii = json.loads(
                 (radice / "dati_locali" / "orchestrazione" / "postino_stato.json").read_text(encoding="utf-8")
             )["invii"]
             invii.append(_invio(0, modo="revisione"))
             _scrivi_invii(radice, invii)
-            self.assertEqual(postino.autorizza(radice, "claude", "t-postino"), {"esito": "autorizzato"})
+            self.assertEqual(
+                postino.autorizza(radice, "claude", "t-postino"),
+                {"esito": "bloccato", "motivo": "max_hop_consecutivi"},
+            )
 
-    def test_ogni_invio_revisione_azzera_di_nuovo_il_tetto(self) -> None:
+    def test_revisione_non_aggira_il_max_hop_headless(self) -> None:
         """'si azzera anche su ogni risposta scritta da un agente in modalita'
         revisione' (decisione umana, 2026-08-25): non solo il primo turno di
         revisione, ma OGNI turno sposta in avanti il punto di reset."""
@@ -568,9 +592,12 @@ class PostinoModoRevisioneTest(unittest.TestCase):
                 postino.autorizza(radice, "claude", "t-postino"),
                 {"esito": "bloccato", "motivo": "tetto_thread"},
             )
-            invii.append(_invio(1, modo="revisione"))  # nuovo turno di revisione: azzera di nuovo
+            invii.append(_invio(1, modo="revisione"))
             _scrivi_invii(radice, invii)
-            self.assertEqual(postino.autorizza(radice, "claude", "t-postino"), {"esito": "autorizzato"})
+            self.assertEqual(
+                postino.autorizza(radice, "claude", "t-postino"),
+                {"esito": "bloccato", "motivo": "max_hop_consecutivi"},
+            )
 
     def test_invio_revisione_su_altro_thread_non_azzera(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -624,6 +651,25 @@ class ConcorrenzaStatoTest(unittest.TestCase):
             assert stato is not None
             self.assertEqual(len(stato["invii"]), 1)
             self.assertEqual(stato["invii"][0]["id"], "a")
+
+    def test_lease_per_agente_blocca_thread_diverso_e_si_rilascia(self) -> None:
+        """Due watcher possono avere messaggi diversi: il secondo non deve
+        mai avviare una seconda CLI mentre il primo dispatch e' in corso."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            ora = datetime.now(timezone.utc)
+            primo = {
+                "id": "primo", "quando": ora.isoformat(), "agente": "codex", "thread_id": "t-a",
+                "canale": "headless", "modo": "routine", "prompt_sha256": "x", "codice": None,
+            }
+            secondo = {**primo, "id": "secondo", "thread_id": "t-b", "quando": ora.isoformat()}
+
+            self.assertIsNone(postino._prenota_invio(radice, "codex", "t-a", ora, primo))
+            self.assertEqual(
+                postino._prenota_invio(radice, "codex", "t-b", ora, secondo), "dispatch_in_corso",
+            )
+            postino._libera_lease_dispatch(radice, "codex", "primo")
+            self.assertIsNone(postino._prenota_invio(radice, "codex", "t-b", ora, secondo))
 
     def test_finalizza_invio_aggiorna_solo_il_record_giusto(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
