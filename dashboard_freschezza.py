@@ -75,6 +75,26 @@ def stato_codice_dashboard(
 
 
 _ultimo_avviso_modificati: list[str] | None = None
+_ultimo_stato_noto: dict[str, object] | None = None
+
+
+def ultimo_stato_noto(
+    *,
+    radice: Path = RADICE,
+    impronta_avvio: dict[str, str] = IMPRONTA_AVVIO,
+    avvio_utc: str = AVVIO_UTC,
+) -> dict[str, object]:
+    """Ultimo stato calcolato dal ciclo del watcher (aggiornato ~ogni 2.5s da
+    segnala_disallineamento). Se il watcher non ha ancora girato - cold start,
+    o processo senza watcher come nei test - lo calcola una volta al volo:
+    l'header diagnostico non deve mai mancare ne' costringere l'hashing dei
+    moduli a ogni richiesta HTTP."""
+    global _ultimo_stato_noto
+    if _ultimo_stato_noto is None:
+        _ultimo_stato_noto = stato_codice_dashboard(
+            radice=radice, impronta_avvio=impronta_avvio, avvio_utc=avvio_utc,
+        )
+    return _ultimo_stato_noto
 
 
 def segnala_disallineamento(
@@ -87,10 +107,14 @@ def segnala_disallineamento(
     """Emette un log esplicito su stderr quando viene rilevato un disallineamento
     dei moduli runtime su disco rispetto all'avvio. Evita spam ripetendo il log
     solo se l'insieme dei file modificati cambia. Restituisce True se e' stato
-    emesso un nuovo avviso."""
-    global _ultimo_avviso_modificati
+    emesso un nuovo avviso.
+
+    Aggiorna sempre lo stato pubblicato da ultimo_stato_noto() (header
+    X-Dashboard-Stale), anche quando non emette nessun avviso nuovo."""
+    global _ultimo_avviso_modificati, _ultimo_stato_noto
     if stato is None:
         stato = stato_codice_dashboard(radice=radice, impronta_avvio=impronta_avvio)
+    _ultimo_stato_noto = stato
 
     if stato.get("stato") == "modificato":
         file_modificati = list(stato.get("file_modificati", []))  # type: ignore
@@ -110,6 +134,7 @@ def segnala_disallineamento(
 
 def reset_stato_segnalazione() -> None:
     """Ripristina lo stato interno delle segnalazioni (utile per test o riavvii)."""
-    global _ultimo_avviso_modificati
+    global _ultimo_avviso_modificati, _ultimo_stato_noto
     _ultimo_avviso_modificati = None
+    _ultimo_stato_noto = None
 

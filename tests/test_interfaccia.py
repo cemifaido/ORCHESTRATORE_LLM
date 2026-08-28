@@ -1131,6 +1131,51 @@ class AutenticazioneBindEspostoTest(unittest.TestCase):
         self.assertEqual(chiave_giusta.status_code, 200)
 
 
+class HeaderStaleCodiceTest(unittest.TestCase):
+    """ce982ab4 / PIANO §12.2: ogni risposta HTTP dichiara se il processo dashboard
+    gira con codice disallineato dal disco, cosi' un client (CLI, test, browser)
+    lo scopre senza doverlo indovinare."""
+
+    def setUp(self) -> None:
+        interfaccia.dashboard_freschezza.reset_stato_segnalazione()
+
+    def tearDown(self) -> None:
+        interfaccia.dashboard_freschezza.reset_stato_segnalazione()
+
+    def test_header_presente_e_false_quando_allineato(self) -> None:
+        from fastapi.testclient import TestClient
+
+        with patch.object(
+            interfaccia.dashboard_freschezza, "ultimo_stato_noto",
+            return_value={"stato": "allineato", "file_modificati": []},
+        ):
+            res = TestClient(interfaccia.app).get("/")
+        self.assertEqual(res.headers["X-Dashboard-Stale"], "false")
+        self.assertEqual(res.headers["X-Dashboard-Code-Status"], "allineato")
+
+    def test_header_true_quando_codice_modificato(self) -> None:
+        from fastapi.testclient import TestClient
+
+        with patch.object(
+            interfaccia.dashboard_freschezza, "ultimo_stato_noto",
+            return_value={"stato": "modificato", "file_modificati": ["postino.py"]},
+        ):
+            res = TestClient(interfaccia.app).get("/api/stato")
+        self.assertEqual(res.headers["X-Dashboard-Stale"], "true")
+        self.assertEqual(res.headers["X-Dashboard-Code-Status"], "modificato")
+
+    def test_header_non_fa_mai_fallire_la_risposta(self) -> None:
+        from fastapi.testclient import TestClient
+
+        with patch.object(
+            interfaccia.dashboard_freschezza, "ultimo_stato_noto", side_effect=RuntimeError("boom"),
+        ):
+            res = TestClient(interfaccia.app).get("/")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.headers["X-Dashboard-Stale"], "false")
+        self.assertEqual(res.headers["X-Dashboard-Code-Status"], "non_verificabile")
+
+
 class GeneraPromptRisveglioLLMTest(unittest.TestCase):
     """Guardrail di sicurezza (revisione esterna, 2026-08-25, M4): la cronologia
     del thread e' contenuto non fidato che finisce nel prompt e il "prompt"

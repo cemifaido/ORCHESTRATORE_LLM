@@ -103,6 +103,23 @@ class DashboardFreschezzaTest(unittest.TestCase):
         self.assertEqual(stato["stato"], "non_verificabile")
         self.assertEqual(stato["file_modificati"], [])
 
+    def test_ultimo_stato_noto_usa_la_cache_del_watcher_e_il_reset_la_pulisce(self) -> None:
+        dashboard_freschezza.reset_stato_segnalazione()
+        try:
+            finto: dict[str, object] = {
+                "stato": "modificato", "avvio_utc": "x", "controllo_utc": "y", "file_modificati": ["a.py"],
+            }
+            dashboard_freschezza.segnala_disallineamento(finto)
+            # ultimo_stato_noto restituisce l'ultimo stato passato al watcher, non
+            # ricalcola dal disco (che qui sarebbe "allineato" o "modificato" su altri file).
+            self.assertEqual(dashboard_freschezza.ultimo_stato_noto(), finto)
+            dashboard_freschezza.reset_stato_segnalazione()
+            with patch.object(dashboard_freschezza, "stato_codice_dashboard", return_value={"stato": "allineato"}) as calc:
+                self.assertEqual(dashboard_freschezza.ultimo_stato_noto()["stato"], "allineato")
+                calc.assert_called_once()  # cold start: calcola una volta
+        finally:
+            dashboard_freschezza.reset_stato_segnalazione()
+
 
 class DashboardProgettiTest(unittest.TestCase):
     def test_leggi_e_salva_progetti(self) -> None:

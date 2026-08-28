@@ -183,6 +183,27 @@ async def _richiedi_chiave_su_bind_esposto(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def _intesta_stato_codice(request: Request, call_next):
+    """Espone su OGNI risposta se il codice del processo dashboard e' disallineato
+    dal disco (ce982ab4 / PIANO §12.2): il bug "dashboard che gira con codice
+    vecchio dopo un commit" e' stato osservato ~6 volte il 2026-08-28 e va scoperto
+    da un client (CLI, test, browser), non a caso durante un test.
+
+    Lo stato viene dalla cache aggiornata dal watcher (dashboard_freschezza.
+    ultimo_stato_noto), non ricalcolato per richiesta: nessun hashing dei moduli
+    nel percorso HTTP caldo."""
+    risposta = await call_next(request)
+    try:
+        stato = dashboard_freschezza.ultimo_stato_noto()
+        risposta.headers["X-Dashboard-Code-Status"] = str(stato["stato"])
+        risposta.headers["X-Dashboard-Stale"] = "true" if stato["stato"] == "modificato" else "false"
+    except Exception:  # noqa: BLE001 - un header diagnostico non deve mai far fallire una risposta
+        risposta.headers["X-Dashboard-Code-Status"] = "non_verificabile"
+        risposta.headers["X-Dashboard-Stale"] = "false"
+    return risposta
+
+
 # Registrazione route API
 app.include_router(interfaccia_api.router)
 
