@@ -77,6 +77,35 @@ class MisuraPollingTest(unittest.TestCase):
         self.assertIsNone(dashboard_risvegli.attesa_poll_ms(None))
 
 
+class AzioneSuDispatchFallitoTest(unittest.TestCase):
+    """Un dispatch headless non-'inviato' non deve far ritentare il watcher
+    all'infinito (bug 2026-08-31: agy degraded -> loop; agy timeout -> finestre)."""
+
+    def test_canale_chiuso_cade_su_os_wake(self) -> None:
+        t: dict[str, int] = {}
+        self.assertEqual(
+            dashboard_risvegli._azione_su_dispatch_fallito("capability_non_verificata", "gemini", "m1", t),
+            "os_wake",
+        )
+        self.assertEqual(t, {})  # nessun conteggio per un canale strutturalmente chiuso
+
+    def test_limite_voluto_molla_subito(self) -> None:
+        t: dict[str, int] = {}
+        for motivo in ("tetto_thread", "max_hop_consecutivi", "budget_giornaliero"):
+            self.assertEqual(
+                dashboard_risvegli._azione_su_dispatch_fallito(motivo, "codex", "m1", t), "molla",
+            )
+
+    def test_transitorio_ritenta_poi_molla(self) -> None:
+        t: dict[str, int] = {}
+        n = dashboard_risvegli.MAX_TENTATIVI_DISPATCH
+        esiti = [
+            dashboard_risvegli._azione_su_dispatch_fallito("timeout", "gemini", "m1", t)
+            for _ in range(n + 1)
+        ]
+        self.assertEqual(esiti, ["ritenta"] * (n - 1) + ["molla", "molla"])
+
+
 class DashboardFreschezzaTest(unittest.TestCase):
     def test_impronta_rileva_modifica_aggiunta_e_rimozione(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

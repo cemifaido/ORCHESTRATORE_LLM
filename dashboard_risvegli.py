@@ -23,6 +23,39 @@ import profili_operativi
 
 AGENTI_BACHECA_DASHBOARD = dashboard_config.AGENTI_BACHECA_DASHBOARD
 
+# Un dispatch headless che non torna "inviato" non deve far ritentare il watcher
+# ogni ciclo all'infinito (bug 2026-08-31: agy 'degraded' -> loop di blocchi;
+# agy in timeout -> finestre orfane ad ogni giro). Tre categorie di 'motivo':
+# - canale strutturalmente chiuso per quell'agente: si cade sul risveglio OS
+#   (clipboard + deep-link), che marca comunque notificato -> nessun retry;
+# - limite deliberato (tetto thread, tetto hop, budget, gia' dispatchato): stop
+#   e marca notificato, senza aggirare il limite col risveglio OS;
+# - transitorio (timeout, errore OS, lease occupato, debounce...): ritenta fino a
+#   MAX_TENTATIVI_DISPATCH, poi molla e marca notificato.
+MOTIVI_CANALE_CHIUSO = frozenset({
+    "capability_non_verificata", "capability_non_automatica", "capability_assente",
+    "capability_scaduta", "canale_capability_sconosciuto", "catalogo_non_leggibile",
+    "catalogo_non_valido", "capability_non_autorizzata", "eseguibile_non_trovato",
+    "profilo_standard", "profilo_non_disponibile",
+})
+MOTIVI_LIMITE_VOLUTO = frozenset({
+    "tetto_thread", "max_hop_consecutivi", "budget_giornaliero", "messaggio_gia_dispatchato",
+})
+MAX_TENTATIVI_DISPATCH = 3
+
+
+def _azione_su_dispatch_fallito(
+    motivo: object, agente: str, id_messaggio: str, tentativi: dict[str, int]
+) -> str:
+    """'os_wake' | 'molla' | 'ritenta' per un dispatch non-'inviato'."""
+    if motivo in MOTIVI_CANALE_CHIUSO:
+        return "os_wake"
+    if motivo in MOTIVI_LIMITE_VOLUTO:
+        return "molla"
+    chiave = f"{agente}:{id_messaggio}"
+    tentativi[chiave] = tentativi.get(chiave, 0) + 1
+    return "molla" if tentativi[chiave] >= MAX_TENTATIVI_DISPATCH else "ritenta"
+
 
 def attesa_poll_ms(timestamp_messaggio: object) -> float | None:
     """Stima l'attesa fra il messaggio e il giro watcher che lo osserva.
@@ -224,6 +257,9 @@ def calcola_ed_esegui_risvegli(
     percorso_stato = percorso_stato_risvegli(percorso_progetto)
     stato, gia_inizializzato = leggi_stato_risvegli(percorso_stato)
     notificati = stato.setdefault("notificati", {})
+    tentativi = stato.setdefault("tentativi_falliti", {})
+    if not isinstance(tentativi, dict):
+        tentativi = stato["tentativi_falliti"] = {}
 
     if not gia_inizializzato:
         for agente, items in pendenti.items():
@@ -256,13 +292,36 @@ def calcola_ed_esegui_risvegli(
                 percorso_progetto, agente, candidato["thread_id"], **argomenti_dispatch,
             )
             if esito_dispatch["esito"] != "inviato":
+                azione = _azione_su_dispatch_fallito(
+                    esito_dispatch.get("motivo"), agente, candidato["id_messaggio"], tentativi,
+                )
+                if azione == "ritenta":
+                    stato_modificato = True  # il contatore tentativi va persistito
+                    risvegli.append({
+                        "agente": agente, "thread_id": candidato["thread_id"],
+                        "status": "bloccato", "motivo": esito_dispatch.get("motivo"),
+                    })
+                    continue
+                if azione == "os_wake":
+                    esito_os = interfaccia._esegui_risveglio_os(
+                        agente, candidato["cronologia"], claude_session_id,
+                    )
+                    status_finale = esito_os.get("status")
+                else:  # molla: transitorio ripetuto o limite deliberato
+                    status_finale = "rinuncia"
+                gia_notificati.add(candidato["id_messaggio"])
+                notificati[agente] = sorted(gia_notificati)
+                tentativi.pop(f"{agente}:{candidato['id_messaggio']}", None)
+                stato_modificato = True
                 risvegli.append({
                     "agente": agente, "thread_id": candidato["thread_id"],
-                    "status": "bloccato", "motivo": esito_dispatch.get("motivo"),
+                    "id_messaggio": candidato["id_messaggio"],
+                    "status": status_finale, "motivo": esito_dispatch.get("motivo"),
                 })
                 continue
             gia_notificati.add(candidato["id_messaggio"])
             notificati[agente] = sorted(gia_notificati)
+            tentativi.pop(f"{agente}:{candidato['id_messaggio']}", None)
             stato_modificato = True
             risvegli.append({
                 "agente": agente,
@@ -276,6 +335,7 @@ def calcola_ed_esegui_risvegli(
         esito = interfaccia._esegui_risveglio_os(agente, candidato["cronologia"], claude_session_id)
         gia_notificati.add(candidato["id_messaggio"])
         notificati[agente] = sorted(gia_notificati)
+        tentativi.pop(f"{agente}:{candidato['id_messaggio']}", None)
         stato_modificato = True
         risvegli.append({
             "agente": agente,

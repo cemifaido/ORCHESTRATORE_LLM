@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import interfaccia
 import bacheca
+import dashboard_risvegli
 import profili_operativi
 import registro
 
@@ -762,6 +763,67 @@ class PostinoHeadlessTest(unittest.TestCase):
             risveglio_os.assert_not_called()
             self.assertEqual(risultato["risvegli"][0]["status"], "bloccato")
             self.assertEqual(risultato["risvegli"][0]["motivo"], "debounce")
+
+    def test_dispatch_bloccato_da_capability_cade_su_os_wake_e_non_ricicla(self) -> None:
+        """Bug 2026-08-31: capability 'degraded' -> il watcher ritentava il
+        dispatch ogni ciclo all'infinito. Ora cade sul risveglio OS (che marca
+        notificato) e il messaggio non viene piu' ripreso."""
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti, _ = self._progetto_con_richiesta(tmp, agente="gemini")
+            p_path = Path(tmp)
+            profili_operativi.imposta(p_path, "smodata")
+
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")  # baseline
+                nuova = bacheca.costruisci_messaggio(
+                    mittente="umano", destinatari=["gemini"], tipo="richiesta", testo="nuovo",
+                )
+                bacheca.aggiungi_messaggio(
+                    p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl", nuova
+                )
+                with patch.object(
+                    interfaccia.postino, "dispatch",
+                    return_value={"esito": "bloccato", "motivo": "capability_non_verificata"},
+                ) as dispatch_mock, patch.object(
+                    interfaccia, "_esegui_risveglio_os", return_value={"status": "eseguito"}
+                ) as risveglio_os:
+                    primo = interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+                    secondo = interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+
+            risveglio_os.assert_called_once()  # fallback una volta sola
+            self.assertEqual(dispatch_mock.call_count, 1)  # nessun retry al secondo giro
+            self.assertEqual(primo["risvegli"][0]["status"], "eseguito")
+            self.assertEqual(secondo["risvegli"], [])
+
+    def test_dispatch_in_timeout_ripetuto_molla_dopo_il_tetto(self) -> None:
+        """Un timeout transitorio (agy) viene ritentato, ma non all'infinito:
+        dopo MAX_TENTATIVI_DISPATCH il messaggio viene marcato notificato."""
+        with tempfile.TemporaryDirectory() as tmp:
+            progetti, _ = self._progetto_con_richiesta(tmp, agente="codex")
+            p_path = Path(tmp)
+            profili_operativi.imposta(p_path, "smodata")
+
+            with patch.object(interfaccia, "leggi_progetti", return_value=progetti):
+                interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")  # baseline
+                nuova = bacheca.costruisci_messaggio(
+                    mittente="umano", destinatari=["codex"], tipo="richiesta", testo="nuovo",
+                )
+                bacheca.aggiungi_messaggio(
+                    p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl", nuova
+                )
+                with patch.object(
+                    interfaccia.postino, "dispatch",
+                    return_value={"esito": "errore", "motivo": "timeout"},
+                ) as dispatch_mock, patch.object(interfaccia, "_esegui_risveglio_os") as risveglio_os:
+                    esiti = [
+                        interfaccia.esegui_risvegli_bacheca(progetto_id="test_proj")
+                        for _ in range(dashboard_risvegli.MAX_TENTATIVI_DISPATCH + 2)
+                    ]
+
+            self.assertEqual(dispatch_mock.call_count, dashboard_risvegli.MAX_TENTATIVI_DISPATCH)
+            risveglio_os.assert_not_called()  # timeout non e' un canale chiuso
+            self.assertEqual(esiti[dashboard_risvegli.MAX_TENTATIVI_DISPATCH - 1]["risvegli"][0]["status"], "rinuncia")
+            self.assertEqual(esiti[-1]["risvegli"], [])
 
     def test_risveglio_standard_esegue_focus_passivo_senza_prenotazione(self) -> None:
         """Decisione umana + Codex + Gemini (2026-08-27, thread bacheca
