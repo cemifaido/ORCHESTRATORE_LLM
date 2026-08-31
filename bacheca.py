@@ -266,6 +266,36 @@ _radice_progetto_da_bacheca = comandi._radice_progetto_da_bacheca
 comando_valida = comandi.comando_valida
 
 
+def comando_piano(args: Any) -> int:
+    """Dispatcher del sottocomando `piano` (S14.3). Vedi piano_comandi.py."""
+    import json as _json
+
+    import piano_comandi
+    percorso = Path(args.bacheca)
+    if args.sotto_piano == "crea-passo":
+        m = piano_comandi.crea_passo(
+            percorso, piano_id=args.piano_id, passo_id=args.passo_id,
+            descrizione=args.descrizione, attore=args.attore, proprietario=args.proprietario,
+            write_set=args.write_set, read_set=args.read_set, thread_id=args.thread_id,
+        )
+        print(_json.dumps({"esito": "ok", "thread_id": m["thread_id"], "id_messaggio": m["id_messaggio"]}, ensure_ascii=False))
+        return 0
+    if args.sotto_piano == "mostra":
+        print(_json.dumps(piano_comandi.mostra_piano(percorso, args.thread_id), ensure_ascii=False, indent=2))
+        return 0
+    if args.sotto_piano == "prendi-passo":
+        esito = piano_comandi.prendi_passo(percorso, args.thread_id, args.passo_id, args.attore)
+    elif args.sotto_piano == "offri-passo":
+        esito = piano_comandi.offri_passo(percorso, args.thread_id, args.passo_id, args.attore, args.a)
+    else:  # approva-handoff
+        esito = piano_comandi.approva_handoff(percorso, args.thread_id, args.passo_id, args.attore)
+    stampabile = {k: v for k, v in esito.items() if k != "messaggio"}
+    if "messaggio" in esito:
+        stampabile["id_messaggio"] = esito["messaggio"]["id_messaggio"]
+    print(_json.dumps(stampabile, ensure_ascii=False))
+    return 0 if esito.get("esito") in ("ok", "gia_applicato") else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     # L7 risolto (2026-08-25): print() su un terminale Windows non-UTF-8
     # sostituisce silenziosamente gli accenti nel testo dei messaggi mostrati
@@ -399,6 +429,34 @@ def main(argv: list[str] | None = None) -> int:
 
     valida = sotto.add_parser("valida", help="Valida tutta la bacheca contro lo schema")
     valida.set_defaults(funzione=comando_valida)
+
+    piano = sotto.add_parser("piano", help="Piano dichiarato: passi posseduti + collisione (S14.3)")
+    piano_sotto = piano.add_subparsers(dest="sotto_piano", required=True)
+    p_crea = piano_sotto.add_parser("crea-passo", help="Aggiunge un passo al piano di un thread")
+    p_crea.add_argument("--piano-id", required=True)
+    p_crea.add_argument("--passo-id", required=True)
+    p_crea.add_argument("--descrizione", required=True)
+    p_crea.add_argument("--attore", required=True, choices=["gemini", "claude", "codex", "umano"])
+    p_crea.add_argument("--proprietario", default=None, choices=["gemini", "claude", "codex", "umano"])
+    p_crea.add_argument("--write-set", default="", help="CSV di path/glob relativi alla root")
+    p_crea.add_argument("--read-set", default="")
+    p_crea.add_argument("--thread-id", default=None)
+    for nome, aiuto in (
+        ("prendi-passo", "Acquisisce un passo non iniziato e senza proprietario (CAS atomico)"),
+        ("approva-handoff", "Approva un handoff aperto (solo proprietario attuale o umano)"),
+    ):
+        sp = piano_sotto.add_parser(nome, help=aiuto)
+        sp.add_argument("--thread-id", required=True)
+        sp.add_argument("--passo-id", required=True)
+        sp.add_argument("--attore", required=True, choices=["gemini", "claude", "codex", "umano"])
+    p_offri = piano_sotto.add_parser("offri-passo", help="Propone un handoff (in_corso) o delega la presa (non iniziato)")
+    p_offri.add_argument("--thread-id", required=True)
+    p_offri.add_argument("--passo-id", required=True)
+    p_offri.add_argument("--attore", required=True, choices=["gemini", "claude", "codex", "umano"])
+    p_offri.add_argument("--a", required=True, choices=["gemini", "claude", "codex", "umano"])
+    p_mostra = piano_sotto.add_parser("mostra", help="Stato proiettato del piano di un thread")
+    p_mostra.add_argument("--thread-id", required=True)
+    piano.set_defaults(funzione=comando_piano)
 
     args = parser.parse_args(argv)
     try:

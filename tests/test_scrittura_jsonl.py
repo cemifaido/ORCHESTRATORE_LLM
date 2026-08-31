@@ -57,6 +57,21 @@ class AggiungiRigaJsonlTest(unittest.TestCase):
             scrittura_jsonl.aggiungi_riga_jsonl(percorso, {"a": 1})
             self.assertFalse(scrittura_jsonl._percorso_lock(percorso).exists())
 
+    def test_transazione_jsonl_calcola_sotto_lock_e_none_non_scrive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "dati.jsonl"
+            scrittura_jsonl.aggiungi_riga_jsonl(percorso, {"n": 0})
+
+            def calcola() -> dict:
+                # legge lo stato corrente DENTRO la transazione
+                righe = percorso.read_text(encoding="utf-8").splitlines()
+                return {"n": len(righe)}
+
+            self.assertEqual(scrittura_jsonl.transazione_jsonl(percorso, calcola), {"n": 1})
+            self.assertEqual(scrittura_jsonl.transazione_jsonl(percorso, lambda: None), None)
+            self.assertEqual(len(percorso.read_text(encoding="utf-8").splitlines()), 2)
+            self.assertFalse(scrittura_jsonl._percorso_lock(percorso).exists())
+
     def test_lock_abbandonato_viene_rimosso_dopo_il_timeout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             percorso = Path(tmp) / "dati.jsonl"

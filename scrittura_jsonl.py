@@ -107,8 +107,41 @@ def aggiungi_riga_jsonl(
             raise ValueError("; ".join(errori))
     percorso.parent.mkdir(parents=True, exist_ok=True)
     with _blocco(percorso, timeout_secondi=timeout_lock_secondi):
-        with percorso.open("a", encoding="utf-8", newline="\n") as file:
-            file.write(json.dumps(record, ensure_ascii=False, sort_keys=True))
-            file.write("\n")
-            file.flush()
-            os.fsync(file.fileno())
+        _scrivi_riga(percorso, record)
+
+
+def _scrivi_riga(percorso: Path, record: dict[str, Any]) -> None:
+    with percorso.open("a", encoding="utf-8", newline="\n") as file:
+        file.write(json.dumps(record, ensure_ascii=False, sort_keys=True))
+        file.write("\n")
+        file.flush()
+        os.fsync(file.fileno())
+
+
+def transazione_jsonl(
+    percorso: Path,
+    calcola_record: Callable[[], dict[str, Any] | None],
+    *,
+    valida: Callable[[dict[str, Any]], list[str]] | None = None,
+    timeout_lock_secondi: float = TIMEOUT_LOCK_SECONDI_PREDEFINITO,
+) -> dict[str, Any] | None:
+    """Compare-and-set su un JSONL: esegue `calcola_record()` **sotto il lock
+    del file**, cosi' che la lettura dello stato corrente, la verifica di una
+    precondizione e l'append siano un'unica sezione critica serializzata fra
+    processi (S14.3, docs/RFC_PIANO_STEP_POSSEDUTI.md).
+
+    `calcola_record` deve leggere lo stato dall'interno (il lock e' gia' preso)
+    e ritornare il record da appendere, oppure None se la precondizione non e'
+    soddisfatta (in tal caso non si scrive nulla). Ritorna il record scritto o
+    None."""
+    percorso.parent.mkdir(parents=True, exist_ok=True)
+    with _blocco(percorso, timeout_secondi=timeout_lock_secondi):
+        record = calcola_record()
+        if record is None:
+            return None
+        if valida is not None:
+            errori = valida(record)
+            if errori:
+                raise ValueError("; ".join(errori))
+        _scrivi_riga(percorso, record)
+        return record
