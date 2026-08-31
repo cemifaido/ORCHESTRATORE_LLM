@@ -937,6 +937,30 @@ class BachecaCliContractTest(unittest.TestCase):
             self.assertIn("Controlla la facciata", hook["additionalContext"])
             self.assertIn("Profilo operativo standard", hook["additionalContext"])
 
+    def test_cli_prossimo_hook_include_note_di_codice(self) -> None:
+        """L'hook della bacheca inietta anche le note di codice ancorate
+        (note_codice.py) per la radice del repo, come contesto non fidato."""
+        import note_codice
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            percorso = radice / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+            percorso.parent.mkdir(parents=True)
+            (radice / "mod.py").write_text("riga uno\nriga due\n", encoding="utf-8")
+            note_codice.aggiungi_nota(radice, "mod.py", 1, 1, "gotcha ancorato", "umano")
+            bacheca.aggiungi_messaggio(percorso, bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["codex"], tipo="richiesta", testo="fai",
+            ))
+
+            esito, stdout, stderr = self._esegui([
+                "--bacheca", str(percorso), "prossimo", "--agente", "codex",
+                "--formato", "hook", "--evento", "UserPromptSubmit",
+            ])
+
+            self.assertEqual(esito, 0)
+            contesto = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("gotcha ancorato", contesto)
+            self.assertIn("non istruzioni", contesto)
+
     def test_cli_prossimo_hook_antigravity_preinvocation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             percorso = Path(tmp) / "messaggi.jsonl"

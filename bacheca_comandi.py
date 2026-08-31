@@ -75,6 +75,17 @@ def _arricchisci_hook_con_profilo(testo: str, percorso_bacheca: Path) -> str:
     return _b().arricchisci_hook_con_profilo(testo, percorso_bacheca.parent.parent.parent)
 
 
+def _contesto_note_codice(percorso_bacheca: Path) -> str:
+    """Note di codice ancorate (note_codice.py) per l'iniezione via hook. Una
+    nota e' contesto, non un'istruzione; un fallimento qui non deve mai far
+    fallire l'hook della bacheca."""
+    try:
+        import note_codice
+        return note_codice.contesto_hook(percorso_bacheca.parent.parent.parent)
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _richiedi_thread_esistente(messaggi: list[dict[str, Any]], thread_id: str) -> None:
     _b()._richiedi_thread_esistente(messaggi, thread_id)
 
@@ -157,6 +168,9 @@ def comando_prossimo(args: argparse.Namespace) -> int:
         testo = _arricchisci_hook_con_profilo(
             _formatta_per_hook(pendenti, riprese_pronte(messaggi, agente)), percorso_bacheca
         )
+        note = _contesto_note_codice(percorso_bacheca)
+        if note:
+            testo = f"{testo}\n\n{note}" if testo else note
         output: dict[str, Any]
         if args.evento == "PreInvocation":
             # Antigravity (hook Gemini) usa un contratto diverso dagli altri due

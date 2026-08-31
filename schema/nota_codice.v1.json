@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orchestratore.locale/schema/nota_codice.v1.json",
+  "title": "Nota di codice ancorata v1",
+  "description": "Post-it breve (gotcha, decisione, convenzione) ancorato a un blocco di righe di un file. L'ancora e' percorso + range + hash del contenuto: se quel blocco cambia, la nota diventa 'da rivedere' invece di restare a mentire. Il simbolo e' SOLO descrittivo (il resolving dei simboli e' fragile, non ci si basa per l'aggancio). Archivio append-only (dati_locali/orchestrazione/note_codice.jsonl): un aggiornamento e' un nuovo record con lo stesso id, vince l'ultimo. Vedi docs/PROPOSTA_RIUSO_IDEE_AMOEBA.md Proposta 2 e docs/PIANO_INDUSTRIALIZZAZIONE.md sezione 14.1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["versione_schema", "id", "ancora", "testo", "autore", "creata_il"],
+  "properties": {
+    "versione_schema": { "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "description": "Identificativo stabile della nota; un nuovo record con lo stesso id la aggiorna."
+    },
+    "ancora": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["percorso", "riga_inizio", "riga_fine", "hash_blocco"],
+      "properties": {
+        "percorso": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^/\\\\][^\\\\]*$",
+          "description": "Path relativo alla root del repo, separatori POSIX (es. 'postino.py', 'schema/messaggio.v1.json'). Mai assoluto, mai con '\\\\' o segmenti '..' (verificato anche dal modulo)."
+        },
+        "riga_inizio": { "type": "integer", "minimum": 1 },
+        "riga_fine": { "type": "integer", "minimum": 1 },
+        "hash_blocco": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "description": "blake2b digest_size=20 delle righe [riga_inizio, riga_fine] (1-based, estremi inclusi) al momento della creazione/aggiornamento."
+        }
+      }
+    },
+    "simbolo": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "Solo descrittivo, es. 'postino.py::_blocco_stato'. NON usato per ritrovare il blocco."
+    },
+    "testo": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 600,
+      "description": "Breve: il gotcha/decisione/convenzione. Non un documento."
+    },
+    "autore": {
+      "type": "string",
+      "enum": ["claude", "codex", "gemini", "umano"]
+    },
+    "creata_il": { "type": "string", "format": "date-time" }
+  }
+}
