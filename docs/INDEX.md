@@ -11,12 +11,18 @@ Questo indice è il punto di ingresso per copiare o collegare la documentazione 
 - [Conformità ToS della bacheca](CONFORMITA_TOS_BACHECA.md) — guardrail contrattuali e operativi per usare abbonamenti flat/IDE plugin senza trasformarli in API non ufficiali; sezione "Aggiornamento 2026-08-24" per l'automazione headless con canali ufficiali documentati.
 - [Regole generali di programmazione](REGOLE_GENERALI_PROGRAMMAZIONE_DA_RISPETTARE_SEMPRE.MD) — regole obbligatorie importate come base del framework.
 - [Proposta: riuso idee Weft](PROPOSTA_RIUSO_IDEE_WEFT.md) — origine comune di checkpoint ripristinabile, flusso dichiarato e postino: due idee di design (attesa umana come stato ripristinabile, workflow come dati validabili) prese dal linguaggio Weft senza adottarlo.
+- [Proposta: riuso idee Amoeba](PROPOSTA_RIUSO_IDEE_AMOEBA.md) — Amoeba (multiplayer IDE commerciale) replica il posizionamento del progetto: non adottabile, ma da cui si estraggono il piano a passi posseduti (§14.3) e le note di codice ancorate (§14.1).
 
 ## Bacheca multi-agente
 
 - [RFC Bacheca multi-agente](RFC_BACHECA_MULTIAGENTE.md) — disegno tecnico e stato dell'MVP della messaggistica strutturata fra Claude/Codex/Gemini/locale/umano senza API a pagamento.
 - [RFC messaggio v2: checkpoint ripristinabile](RFC_MESSAGGIO_V2_RIPRESA.md) — campo `ripresa` sui checkpoint: l'attesa di un verdetto umano diventa uno stato ripristinabile, `approva`/`respingi` stampano da soli il prossimo passo previsto per l'esito ricevuto.
 - [Esperimento Sveglia e Polling Asincrono](ESPERIMENTO_SVEGLIA_POLLING.md) — report storico dell'esperimento, chiuso con rimozione di endpoint, pulsanti e poller automatici (superato poi dal Postino, vedi sotto).
+
+## Piano dichiarato e passi posseduti (S14.3)
+
+- [RFC: piano dichiarato e passi posseduti](RFC_PIANO_STEP_POSSEDUTI.md) — bozza tecnica (Codex): campo opzionale `piano` su `messaggio.v1` proiettato da eventi; normalizzazione write_set/read_set; regola di overlap conservativa; compare-and-set atomico per `prendi-passo`/`offri-passo`. Slice (a) implementata (`bacheca_proiezioni.deriva_piano`, `piano_overlap.py`, `piano_comandi.py`), enforcement del dispatch ancora da agganciare.
+- [nota_codice.v1](../schema/nota_codice.v1.json) — post-it ancorati a un blocco di righe (S14.1): `ancora` percorso+range+hash, iniettati via hook, marcati `da_rivedere` quando il codice si muove.
 
 ## Flusso dichiarato
 
@@ -38,7 +44,7 @@ Questo indice è il punto di ingresso per copiare o collegare la documentazione 
 
 - [Evento v1](../schema/evento.v1.json) — riga JSONL del registro.
 - [Compito v1](../schema/compito.v1.json) — stato runtime di un compito.
-- [Messaggio v1](../schema/messaggio.v1.json) — riga JSONL della bacheca multi-agente, in uso da `bacheca.py` ([RFC Bacheca multi-agente](RFC_BACHECA_MULTIAGENTE.md)).
+- [Messaggio v1](../schema/messaggio.v1.json) — riga JSONL della bacheca multi-agente, in uso da `bacheca.py` ([RFC Bacheca multi-agente](RFC_BACHECA_MULTIAGENTE.md)); dal 2026-08-31 include il campo opzionale `piano` ([RFC piano](RFC_PIANO_STEP_POSSEDUTI.md)), retrocompatibile.
 - [Messaggio v2](../schema/messaggio.v2.json) — v1 congelata più il campo `ripresa` sui checkpoint ([RFC messaggio v2](RFC_MESSAGGIO_V2_RIPRESA.md)); il lettore instrada per versione, nessuna migrazione dello storico.
 - [Flusso v1](../schema/flusso.v1.json) — passi di un flusso dichiarato ([Piano: flusso dichiarato](PIANO_FLUSSO_DICHIARATO.md)).
 
@@ -51,11 +57,14 @@ Questo indice è il punto di ingresso per copiare o collegare la documentazione 
 - [registro.py](../registro.py) — append e validazione eventi.
 - [sentinella.py](../sentinella.py) — esecuzione whitelistata dei gate.
 - [genera_cruscotto.py](../genera_cruscotto.py) — riepilogo Markdown.
-- [bacheca.py](../bacheca.py) — CLI della bacheca multi-agente (messaggi, thread, prossimi lavori, prese in carico, approvazioni, checkpoint ripristinabili v2).
+- [bacheca.py](../bacheca.py) — CLI della bacheca multi-agente (messaggi, thread, prossimi lavori, prese in carico, approvazioni, checkpoint ripristinabili v2, sottocomando `piano` per i passi posseduti S14.3).
 - [postino.py](../postino.py) — motore di policy e dispatch headless del [Postino](GUIDA_POSTINO_DISPATCH_HEADLESS.md): `autorizza`/`dispatch`/`registra_canale`.
 - [valida_flussi.py](../valida_flussi.py) — validatore read-only dei [flussi dichiarati](PIANO_FLUSSO_DICHIARATO.md).
 - [adattatori/litellm.py](../adattatori/litellm.py) — adapter opzionale LiteLLM (chiamate a pagamento e locali, estrazione testo/misurazione condivisa).
 - [triage_locale.py](../triage_locale.py) — classificazione routine/escalation di un output a costo zero col modello locale.
+- [note_codice.py](../note_codice.py) — note di codice ancorate (S14.1): `aggiungi`/`elenco`/`verifica`/`hook`; stato derivato dall'hash del blocco.
+- [piano_overlap.py](../piano_overlap.py) — normalizzazione set di file + regola di collisione fra passi del piano (S14.3), calcolo puro fail-closed.
+- [piano_comandi.py](../piano_comandi.py) — comandi `bacheca.py piano` (crea/prendi/offri-passo, approva-handoff) con compare-and-set atomico.
 - [commit_replay.py](../commit_replay.py) — correla un commit reale alla finestra di eventi del registro, per il replay in dashboard.
 - [utility/installa_hook.py](../utility/installa_hook.py) — installa l'hook Git pre-commit del quality gate.
 - [esempi/chiamata_agente_litellm.py](../esempi/chiamata_agente_litellm.py) — esempio eseguibile di chiamata LiteLLM con fallback mock.
