@@ -104,6 +104,58 @@
       "additionalProperties": true,
       "default": {},
       "description": "Stesso pattern di evento.v1.json: sacco libero per dati diagnostici che non meritano un campo dedicato nello schema (es. fonte_hook, modello_locale, token_totali, hash dell'output, severita' di un conflitto)."
+    },
+    "piano": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["azione", "piano_id", "passo_id"],
+      "description": "OPZIONALE (S14.3, vedi docs/RFC_PIANO_STEP_POSSEDUTI.md). Un'operazione sul piano del thread. Event-sourced come tutto il resto: la proiezione (bacheca_proiezioni.deriva_piano) ricostruisce lo stato dei passi applicando questi eventi in ordine append-only; un evento la cui precondizione non combacia con lo stato proiettato viene IGNORATO (race persa), non fa fallire nulla. I messaggi v1 senza questo campo restano validi.",
+      "properties": {
+        "azione": {
+          "type": "string",
+          "enum": ["crea_passo", "aggiorna_passo", "proponi_handoff", "approva_handoff"]
+        },
+        "piano_id": { "type": "string", "minLength": 1 },
+        "passo_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Immutabile entro piano_id."
+        },
+        "attore": {
+          "type": "string",
+          "enum": ["gemini", "claude", "codex", "umano"],
+          "description": "Chi emette l'evento. Distinto da 'proprietario' (chi possiede il lavoro)."
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifica UNA richiesta di transizione, non il passo. Stessa chiave + payload diverso = errore."
+        },
+        "precondizione": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "CAS: l'evento si applica solo se lo stato proiettato del passo corrisponde.",
+          "properties": {
+            "versione": { "type": "integer", "minimum": 0 },
+            "stato": { "type": "string", "enum": ["non_iniziato", "in_corso", "fatto", "bloccato"] }
+          }
+        },
+        "campi": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Valori del passo da impostare (crea_passo) o aggiornare (aggiorna_passo).",
+          "properties": {
+            "descrizione": { "type": "string", "minLength": 1 },
+            "proprietario": {
+              "type": ["string", "null"],
+              "enum": ["gemini", "claude", "codex", "umano", null]
+            },
+            "stato": { "type": "string", "enum": ["non_iniziato", "in_corso", "fatto", "bloccato"] },
+            "write_set": { "type": "array", "items": { "type": "string" } },
+            "read_set": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
     }
   }
 }

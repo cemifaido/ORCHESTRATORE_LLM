@@ -235,3 +235,109 @@ def messaggi_aperti_per(messaggi: list[dict[str, Any]], agente: str) -> list[dic
     ]
     risultato.sort(key=lambda messaggio: messaggio["timestamp"])
     return risultato
+
+
+# -- Piano dichiarato e passi posseduti (S14.3) -----------------------------
+# Proiezione degli eventi `piano` di un thread. Vedi docs/RFC_PIANO_STEP_POSSEDUTI.md.
+# Un evento la cui precondizione non combacia con lo stato corrente e' una race
+# persa: viene ignorato, mai un'eccezione. Questa e' SOLO derivazione, nessun
+# enforcement del dispatch (arriva in un incremento successivo).
+STATI_PASSO = ("non_iniziato", "in_corso", "fatto", "bloccato")
+
+
+def _precondizione_soddisfatta(passo: dict[str, Any], precondizione: dict[str, Any]) -> bool:
+    if "versione" in precondizione and precondizione["versione"] != passo["versione"]:
+        return False
+    return not ("stato" in precondizione and precondizione["stato"] != passo["stato"])
+
+
+def _applica_campi(passo: dict[str, Any], campi: dict[str, Any]) -> None:
+    for chiave in ("descrizione", "proprietario", "stato"):
+        if chiave in campi:
+            passo[chiave] = campi[chiave]
+    for chiave in ("write_set", "read_set"):
+        if chiave in campi:
+            passo[chiave] = list(campi[chiave])
+
+
+def _passo_dell_evento(stato: dict[str, Any], evento: dict[str, Any]) -> dict[str, Any] | None:
+    passo = stato["passi"].get(evento.get("passo_id"))
+    if passo is None or not _precondizione_soddisfatta(passo, evento.get("precondizione", {})):
+        return None
+    return passo
+
+
+def _ev_crea_passo(stato: dict[str, Any], evento: dict[str, Any]) -> None:
+    pid, campi = evento.get("passo_id"), evento.get("campi", {})
+    if pid and pid not in stato["passi"]:
+        stato["passi"][pid] = {
+            "id": pid, "descrizione": campi.get("descrizione", ""),
+            "proprietario": campi.get("proprietario"),
+            "stato": campi.get("stato", "non_iniziato"),
+            "write_set": list(campi.get("write_set", [])),
+            "read_set": list(campi.get("read_set", [])), "versione": 0,
+        }
+
+
+def _ev_aggiorna_passo(stato: dict[str, Any], evento: dict[str, Any]) -> None:
+    passo = _passo_dell_evento(stato, evento)
+    if passo is None:
+        return
+    _applica_campi(passo, evento.get("campi", {}))
+    passo["versione"] += 1
+    stato["handoff_aperti"] = [h for h in stato["handoff_aperti"] if h["passo_id"] != passo["id"]]
+
+
+def _ev_proponi_handoff(stato: dict[str, Any], evento: dict[str, Any]) -> None:
+    passo = _passo_dell_evento(stato, evento)
+    if passo is None:
+        return
+    stato["handoff_aperti"].append({
+        "passo_id": passo["id"], "a": evento.get("campi", {}).get("proprietario"),
+        "da": passo["proprietario"], "attore": evento.get("attore"), "versione": passo["versione"],
+    })
+
+
+def _ev_approva_handoff(stato: dict[str, Any], evento: dict[str, Any]) -> None:
+    passo = _passo_dell_evento(stato, evento)
+    aperto = next((h for h in stato["handoff_aperti"] if h["passo_id"] == evento.get("passo_id")), None)
+    if passo is None or aperto is None:
+        return
+    passo["proprietario"] = aperto["a"]
+    passo["versione"] += 1
+    stato["handoff_aperti"].remove(aperto)
+
+
+_HANDLER_PIANO = {
+    "crea_passo": _ev_crea_passo, "aggiorna_passo": _ev_aggiorna_passo,
+    "proponi_handoff": _ev_proponi_handoff, "approva_handoff": _ev_approva_handoff,
+}
+
+
+def deriva_piano(messaggi: list[dict[str, Any]], thread_id: str) -> dict[str, Any] | None:
+    """Stato corrente del piano di un thread, o None se il thread non ne ha uno.
+
+    Ritorna {'piano_id', 'passi': {id: {id, descrizione, proprietario, stato,
+    write_set, read_set, versione}}, 'handoff_aperti': [...]}. Un evento la cui
+    precondizione non combacia con lo stato corrente e' una race persa: ignorato.
+    """
+    eventi = [
+        m["piano"] for m in messaggi_del_thread(messaggi, thread_id)
+        if isinstance(m.get("piano"), dict)
+    ]
+    if not eventi:
+        return None
+    piano_id = eventi[0].get("piano_id")
+    stato: dict[str, Any] = {"piano_id": piano_id, "passi": {}, "handoff_aperti": []}
+    for evento in eventi:
+        if evento.get("piano_id") != piano_id:
+            continue  # un thread = un piano; eventi di un altro piano_id sono rumore
+        handler = _HANDLER_PIANO.get(evento.get("azione"))
+        if handler is not None:
+            handler(stato, evento)
+    return stato
+
+
+def passi_in_corso(piano: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """I passi 'in_corso' di un piano proiettato (input alla regola di collisione)."""
+    return [p for p in piano["passi"].values() if p["stato"] == "in_corso"] if piano else []

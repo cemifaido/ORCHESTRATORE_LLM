@@ -136,6 +136,7 @@ def costruisci_messaggio(
     verdetto_umano: str = "non_revisionato",
     metadati: dict[str, Any] | None = None,
     ripresa: dict[str, Any] | None = None,
+    piano: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     id_messaggio = str(uuid.uuid4())
     messaggio = {
@@ -159,6 +160,9 @@ def costruisci_messaggio(
         # (additionalProperties=false), un checkpoint ripristinabile e' sempre v2.
         messaggio["versione_schema"] = 2
         messaggio["ripresa"] = ripresa
+    if piano is not None:
+        # 'piano' e' compatibile v1 (S14.3): campo opzionale, non bump di versione.
+        messaggio["piano"] = piano
     return messaggio
 
 
@@ -179,6 +183,8 @@ riprese_pronte = proiezioni.riprese_pronte
 _a_utc = proiezioni.a_utc
 file_occupati = proiezioni.file_occupati
 messaggi_aperti_per = proiezioni.messaggi_aperti_per
+deriva_piano = proiezioni.deriva_piano
+passi_in_corso = proiezioni.passi_in_corso
 
 
 def _formatta_per_hook(
