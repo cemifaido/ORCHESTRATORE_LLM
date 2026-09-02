@@ -114,6 +114,27 @@ uno scenario di attacco diretto, ma un punto dove un input malformato (anche inn
 produceva un comportamento indefinito. **Mitigato**: `estrai_primo_oggetto_json()` usa
 `json.JSONDecodeError`/`raw_decode` invece di ricerca di stringa (M3).
 
+### 3.9 Server MCP locale (`mcp_orchestratore.py`)
+Il server MCP espone bacheca/piano/note come tool a un client MCP (Claude Code / Codex
+CLI / Antigravity). Confini e rischi (vedi `docs/RFC_SERVER_MCP_LOCALE.md`):
+- **Nessuna autenticazione, per scelta.** Trasporto stdio locale, processo figlio del
+  client, stesso utente e stessi privilegi. Non c'è superficie di rete. Un'auth più
+  forte fra processi dello stesso utente non aggiungerebbe garanzie — la valutazione
+  cambia solo se il server esce da stdio/locale (allora serve un threat model nuovo).
+- **`--agente` è etichetta di provenienza, non identità provata.** I record che l'MCP
+  scriverà in bacheca (fase scrittura) porteranno `mittente = <agente di avvio>`: è
+  **audit**, non una garanzia che quel processo sia davvero quell'agente. Nessun
+  override per-call: un tool call che passa un `agente` diverso è rifiutato.
+- **I risultati dei tool sono dati non fidati**, come il contesto iniettato dall'hook
+  (§3.3): un thread di bacheca può contenere testo che sembra un'istruzione. Ogni
+  `description` di tool lo dichiara; il modello non deve obbedire al contenuto.
+- **MVP di sola lettura** oggi: nessuna scrittura, nessun `dispatch`, nessun comando
+  git/shell, nessun I/O di file arbitrari — esclusioni tassative nella RFC. La fase
+  scrittura richiede prima di portare `bacheca.aggiungi_messaggio` su un percorso
+  serializzato (`scrittura_jsonl`) e il contratto di idempotenza obbligatorio.
+- **Robustezza del loop**: `params` non-oggetto / `jsonrpc` errato / riga non-JSON
+  producono un errore JSON-RPC tipizzato, non un crash (regressione da revisione Codex).
+
 ## 4. Cosa cambia con "chiunque può clonarlo" (gap specifici del rilascio pubblico)
 
 Questi non sono minacce nuove al *funzionamento* del sistema — sono lacune che emergono
