@@ -238,9 +238,11 @@ logica vera sta tutta nelle funzioni di dominio.
    - **B1 Claude Code: PASS** — `.mcp.json` nella root; server connesso alla
      sessione, `bacheca_pendenti` e `note_codice_elenco` chiamati e verificati.
    - **B3 Antigravity: PASS** — Gemini in Antigravity ha chiamato
-     `bacheca_pendenti` via MCP, risposta JSON-RPC valida (`isError: false`).
-     `.agents/mcp_config.json` **NON** viene letto: Antigravity usa la sua UI
-     (Settings → Customizations → Installed MCP Servers → "Open MCP Config").
+     `bacheca_pendenti` via MCP, risposta JSON-RPC valida (`isError: false`); la
+     UI mostra `orchestratore` connesso con 4 tool. Config in
+     **`~/.gemini/config/mcp_config.json`** (globale), editabile anche da
+     Settings → Customizations → Installed MCP Servers. `.agents/mcp_config.json`
+     **NON** viene letto dall'IDE — rimosso.
    - **B2 Codex CLI: registrato** — `.codex/config.toml` di progetto funziona
      (`codex mcp list` mostra `orchestratore`), manca la chiamata da dentro
      `codex` per il pass pieno.

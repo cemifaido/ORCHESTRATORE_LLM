@@ -28,7 +28,7 @@
   },
 
   "antigravity": {
-    "_dove": ".agents/mcp_config.json (confermato da doc primaria, Codex 2026-09-02) - supporta command/args/env/cwd",
+    "_dove": "~/.gemini/config/mcp_config.json (globale) - verificato dal vivo 2026-09-02. Si edita anche dalla UI: Settings > Customizations > Installed MCP Servers > Open MCP Config / Add MCP+. NB: e' globale, non per-workspace; .agents/mcp_config.json NON viene letto dall'IDE.",
     "mcpServers": {
       "orchestratore": {
         "command": "python",
