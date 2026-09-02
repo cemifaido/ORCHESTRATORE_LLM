@@ -21,14 +21,14 @@ Operativo Postino"), che sostituisce entrambi i vecchi interruttori:
 |---|---|---|
 | **standard** | Nessuna automazione. Il risveglio resta solo passivo (focus finestra + prompt negli appunti, umano incolla e invia) — identico al vecchio "Postino spento", sempre disponibile, nessun limite. | **Attivo**, default per ogni progetto nuovo |
 | **brainstorming** | Dispatch headless reale (l'agente risponde da solo in bacheca), limiti di ritmo larghi. | **Attivo** |
-| **super** | Come brainstorming, in più l'agente può scrivere file — mai comandi Git in scrittura. | Selezionabile ma **non ancora attivo**: manca la whitelist di comandi che decide davvero cosa può fare un agente in scrittura (vedi "Limiti noti") |
-| **smodata** | Stessa capacità di "super", limiti di ritmo praticamente rimossi (mai davvero infiniti — un tetto assoluto in codice impedisce un loop/costo incontrollato anche qui). | Selezionabile ma **non ancora attivo**, stesso motivo di "super" |
+| **super** | Come brainstorming, in più l'agente può scrivere file — mai comandi Git in scrittura. | **Attivo** dal 2026-08-27 (commit `8cd66d0`, matrice comandi `postino.COMANDI_SCRITTURA_FILE`). Per Claude il perimetro di scrittura è `enforced` (Edit/Write + Bash solo nelle forme nominate, nessun Bash generico); per Codex e Gemini resta `prompt_only` (vedi "Limiti noti") |
+| **smodata** | Stessa capacità di "super", limiti di ritmo praticamente rimossi (mai davvero infiniti — un tetto assoluto in codice impedisce un loop/costo incontrollato anche qui). | **Attivo** dal 2026-08-27, stessa matrice comandi di "super" |
 
 Per **super** e **smodata**, la dashboard mostra onestamente, per ciascun
-agente (Claude/Codex/Gemini), se la garanzia sarebbe `enforced` (vincolo
-tecnico vero), `prompt_only` (solo un'istruzione nel prompt, nessun blocco
-tecnico) o `non_disponibile` (oggi, per tutti — il dispatch non parte
-comunque finché non esiste la whitelist). Non promette mai la stessa
+agente (Claude/Codex/Gemini), se la garanzia è `enforced` (vincolo
+tecnico vero) o `prompt_only` (solo un'istruzione nel prompt, nessun blocco
+tecnico). Oggi: Claude `enforced`, Codex e Gemini `prompt_only`
+(`profili_operativi.GARANZIE`). Non promette mai la stessa
 protezione per tutti e tre gli agenti sotto un'unica etichetta: Claude ha
 oggi il perimetro più restringibile per davvero (`--allowedTools`), Codex e
 Gemini restano più spesso legati alla sola disciplina del prompt.
@@ -45,20 +45,20 @@ Colonne capacità = cosa il profilo *autorizza* in linea di principio.
 Colonne agente = cosa quella capacità *garantisce davvero* per ciascuno, non
 solo cosa promette a parole — `enforced` (vincolo tecnico imposto dallo
 strumento), `prompt_only` (solo istruzione nel prompt, nessun blocco
-tecnico), `non_disponibile` (il dispatch non parte, a prescindere).
+tecnico). `non_disponibile` resta l'esito quando il dispatch non parte a
+prescindere (profilo `standard`, o capability dell'agente non `verified`).
 
 | Profilo | Dispatch headless | Scrittura file | Git in scrittura | Claude | Codex | Gemini |
 |---|---|---|---|---|---|---|
 | **standard** | mai | mai | mai | — (nessuna automazione, nulla da garantire) | — | — |
 | **brainstorming** | sì (solo risposta in bacheca) | mai | mai | `enforced` | `prompt_only` | `prompt_only` |
-| **super** | sì, con scrittura file | sì | mai | `non_disponibile` oggi → `enforced` una volta pronta la whitelist | `non_disponibile` oggi → resterà `prompt_only` anche a regime (`--sandbox` di Codex non espone una whitelist granulare) | `non_disponibile` oggi → resterà `prompt_only` anche a regime (bypass permessi, nessun perimetro scoped) |
+| **super** | sì, con scrittura file | sì | mai | `enforced` (Edit/Write + Bash solo nelle forme nominate, nessun Bash generico → niente Git in scrittura per via indiretta) | `prompt_only` (`--sandbox workspace-write` di Codex non espone una whitelist granulare) | `prompt_only` (bypass permessi, nessun perimetro scoped) |
 | **smodata** | sì, con scrittura file | sì | mai | come "super" | come "super" | come "super" |
 
-Righe "una volta pronta la whitelist"/"a regime" descrivono l'esito atteso
-della fase C (bacheca thread `89fbd0ec`/`40f2528b`, in corso con Codex al
-momento di scrivere questo): per Codex e Gemini `prompt_only` **resta** anche
-a lavoro finito — non è uno stato transitorio, è un limite reale degli
-strumenti oggi disponibili, verificato non assunto (vedi "Limiti noti").
+Per Codex e Gemini `prompt_only` **non è uno stato transitorio**: è un limite
+reale degli strumenti oggi disponibili (verificato, non assunto — vedi
+"Limiti noti"). La fase C (matrice comandi, bacheca thread
+`89fbd0ec`/`40f2528b`) è stata chiusa nel commit `8cd66d0` del 2026-08-27.
 
 Endpoint: `POST /api/bacheca/postino/profilo` (`{progetto_id, profilo}`),
 sostituisce i due vecchi `postino/toggle`/`postino/headless/toggle`. Cambia
@@ -389,12 +389,16 @@ lunedì, chiunque (umano o agente) può lanciarlo quando vuole.
   diverse. Se `agy` risolve questo difetto in una versione futura, si può
   restringere il perimetro di Gemini come già fatto per claude/codex; fino
   ad allora resta sul bypass totale, decisione rivedibile.
-- **"Super" e "smodata" selezionabili ma inerti**: manca ancora la matrice
-  comandi che decide davvero cosa un agente può scrivere in quei profili — un
-  progetto messo in "super" oggi si comporta come "standard" (nessun dispatch
-  parte, la dashboard lo dichiara onestamente con `non_disponibile`), non
-  come un rischio nascosto. Fase C della sequenza concordata con Codex,
-  bacheca thread `89fbd0ec`/`40f2528b`, in corso.
+- **Perimetro di scrittura per Codex e Gemini in "super"/"smodata"**: la
+  matrice comandi (`postino.COMANDI_SCRITTURA_FILE`) esiste ed è attiva dal
+  2026-08-27 (commit `8cd66d0`, fase C — bacheca thread
+  `89fbd0ec`/`40f2528b`, chiusa), ma solo per Claude è un vincolo `enforced`
+  (Edit/Write + Bash whitelistato). Per Codex (`--sandbox workspace-write`) e
+  Gemini (`--dangerously-skip-permissions`) il dispatch **parte** in questi
+  profili, ma il freno sulla scrittura resta la sola disciplina del prompt
+  (`prompt_only`): le loro CLI non offrono una whitelist granulare
+  equivalente. Non è uno stato transitorio — la dashboard lo dichiara
+  onestamente in `garanzie_per_agente`.
 - **`postino.registra_canale()` senza chiamanti runtime**: effetto
   collaterale della migrazione al profilo operativo — il risveglio passivo
   in "standard" ci passa deliberatamente accanto (per restare senza limiti,

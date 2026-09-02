@@ -877,9 +877,13 @@ sarebbe stato un fix per un bug che non esisteva lì.
   `BeforeAgent` in `.gemini/settings.json` e `PreInvocation` in `.agents/hooks.json`,
   entrambi senza iniezione nel contesto. Resta il fallback manuale assistito dalla
   dashboard.
-- **Revisione dello schema da parte di Gemini**: non ancora fatta. Questo documento e
-  `schema/messaggio.v1.json` sono pensati per essere un punto di partenza concreto da
-  criticare, non una versione finale.
+- **Revisione dello schema da parte di Gemini**: nessun passo formale dedicato al
+  solo `schema/messaggio.v1.json` di base è mai stato registrato. Gemini ha però
+  rivisto e approvato le due estensioni successive dello schema: il campo `ripresa`
+  di `messaggio.v2` (`docs/RFC_MESSAGGIO_V2_RIPRESA.md`) e il campo opzionale `piano`
+  (bacheca thread `fedf15e7`, 2026-08-31 — vedi `docs/RFC_PIANO_STEP_POSSEDUTI.md`).
+  Il nucleo v1 resta di fatto stabile e in uso da agosto 2026; una revisione a
+  freddo dedicata è a bassa priorità.
 
 ## 8. Infrastruttura locale toccata per questi esperimenti (progetto `un altro progetto locale`)
 
@@ -989,8 +993,11 @@ piano, riflette cosa è stato costruito davvero, in ordine cronologico:
 8. **Fatto**: rimosso dalla dashboard il vecchio pannello/form/route **"Lancia
    Compito Reale"** e rimosso `capoturno.py` dal repository (consolidamento su Postino).
    Rimane **"Replay di un Commit Reale"**, solo visualizzazione su eventi già registrati.
-9. **Da fare**: revisione di questo documento e dello schema da parte di Gemini —
-   non ancora avvenuta.
+9. **Parzialmente fatto**: nessuna revisione formale dedicata al solo nucleo
+   `messaggio.v1`, ma Gemini ha rivisto e approvato le estensioni `ripresa`
+   (`messaggio.v2`) e `piano` (thread bacheca `fedf15e7`, 2026-08-31). Il nucleo
+   v1 è stabile e in uso; una revisione a freddo dedicata è a bassa priorità
+   (vedi §7).
 10. **Fatto**: verifica empirica dell'hook Antigravity/Gemini (§4.3) chiusa con
    esito negativo per gli hook, ma positivo per il fallback manuale; la dashboard
    ora rende visibili i pending per Gemini e copia il comando di pull.
