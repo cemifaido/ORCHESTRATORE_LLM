@@ -20,6 +20,7 @@ from registro import adesso_utc, lista_csv as lista_csv, messaggio_errore, valid
 import bacheca_proiezioni as proiezioni  # noqa: E402
 import bacheca_sintesi as sintesi  # noqa: E402
 import profili_operativi  # noqa: E402
+import scrittura_jsonl  # noqa: E402
 
 # Re-export di compatibilita' per test e consumatori che patchano il confine LLM.
 litellm = sintesi.litellm
@@ -69,13 +70,14 @@ def valida_messaggio(messaggio: dict[str, Any], schema: dict[str, Any] | None = 
 
 
 def aggiungi_messaggio(percorso: Path, messaggio: dict[str, Any]) -> None:
-    errori = valida_messaggio(messaggio)
-    if errori:
-        raise ValueError("; ".join(errori))
-    percorso.parent.mkdir(parents=True, exist_ok=True)
-    with percorso.open("a", encoding="utf-8", newline="\n") as file:
-        file.write(json.dumps(messaggio, ensure_ascii=False, sort_keys=True))
-        file.write("\n")
+    """Valida e appende un messaggio, sotto lock di file per serializzare le
+    scritture concorrenti (watcher della dashboard, server MCP, piu' CLI): un
+    append "abbastanza piccolo da essere atomico" NON e' un'assunzione sicura su
+    Windows (H5, revisione sicurezza v3). Stesso serializzatore di prima
+    (`sort_keys=True`), in piu' lock + fsync. Il lock NON e' reentrante: non
+    chiamare questa funzione da dentro un `scrittura_jsonl.transazione_jsonl`
+    sullo stesso file."""
+    scrittura_jsonl.aggiungi_riga_jsonl(percorso, messaggio, valida=valida_messaggio)
 
 
 def leggi_messaggi(percorso: Path) -> list[dict[str, Any]]:

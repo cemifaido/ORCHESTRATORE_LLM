@@ -12,10 +12,10 @@ atomiche" sia sufficiente e' un'assunzione fragile su Windows - un lock
 leggero a costo quasi zero (stesso pattern gia' verificato in postino.py) e'
 piu' economico di un bug di interleaving da diagnosticare dopo.
 
-Non c'e' ancora una migrazione di registro.py/bacheca.py verso questo
-modulo: e' il contratto per i NUOVI moduli che nasceranno dallo split;
-l'adozione nei moduli esistenti resta una decisione dei lotti che li
-toccano, non applicata qui (vedi discussione bacheca thread D2)."""
+`bacheca.aggiungi_messaggio` e' migrata a questo modulo (2026-09-02, rilievo
+Codex durante la revisione del server MCP: prima era un `open("a")` nudo).
+`consegne_risveglio.py` lo usa dalla nascita. `registro.aggiungi_evento` NON
+e' ancora migrato: e' una decisione del lotto che lo tocchera'."""
 from __future__ import annotations
 
 import contextlib

@@ -4,6 +4,7 @@ import argparse
 import io
 import json
 import tempfile
+import threading
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import timedelta
@@ -14,6 +15,7 @@ import bacheca
 import bacheca_comandi
 import bacheca_proiezioni
 import bacheca_sintesi
+import scrittura_jsonl
 from adattatori.litellm import MisurazioneLiteLLM
 
 
@@ -29,6 +31,44 @@ def _misurazione_finta(token_totali: int = 400) -> MisurazioneLiteLLM:
         modello="qwen2.5-7b-instruct-q3_k_m.gguf", provider="locale", costo_usd=0.0,
         token_prompt=300, token_completion=token_totali - 300, token_totali=token_totali,
     )
+
+
+class AggiungiMessaggioConcorrenteTest(unittest.TestCase):
+    """`aggiungi_messaggio` ora passa per scrittura_jsonl (lock + fsync): N
+    scrittori concorrenti devono produrre N righe valide, non un file corrotto
+    o una riga persa per interleaving (rilievo Codex 2026-09-02: prima era un
+    open('a') nudo)."""
+
+    def test_scritture_concorrenti_non_corrompono_la_bacheca(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            n = 25
+
+            def scrivi(i: int) -> None:
+                bacheca.aggiungi_messaggio(percorso, bacheca.costruisci_messaggio(
+                    mittente="umano", destinatari=["claude"], tipo="richiesta",
+                    testo=f"m{i}", thread_id="T",
+                ))
+
+            fili = [threading.Thread(target=scrivi, args=(i,)) for i in range(n)]
+            for f in fili:
+                f.start()
+            for f in fili:
+                f.join()
+
+            righe = percorso.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(righe), n)
+            testi = sorted(json.loads(r)["testo"] for r in righe)
+            self.assertEqual(testi, sorted(f"m{i}" for i in range(n)))
+            self.assertFalse(scrittura_jsonl._percorso_lock(percorso).exists())
+
+    def test_messaggio_invalido_non_scrive_e_non_crea_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            with self.assertRaises(ValueError):
+                bacheca.aggiungi_messaggio(percorso, {"versione_schema": 1, "tipo": "boh"})
+            self.assertFalse(percorso.exists())
+            self.assertFalse(scrittura_jsonl._percorso_lock(percorso).exists())
 
 
 class AgentiValidiUnicaFonteTest(unittest.TestCase):

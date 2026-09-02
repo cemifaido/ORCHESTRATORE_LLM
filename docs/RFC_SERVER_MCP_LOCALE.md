@@ -148,10 +148,13 @@ Scenari simultanei possibili:
 - una CLI `bacheca.py` lanciata a mano.
 
 `piano_prendi_passo` è già serializzato da `scrittura_jsonl.transazione_jsonl`
-dentro `piano_comandi`. Le scritture di bacheca **oggi non lo sono**
-(`aggiungi_messaggio` è un `open("a")` nudo): prima della fase scrittura vanno
-portate su un percorso serializzato. Il server **non** aggiunge lock propri: se lo
-facesse, avrebbe due gerarchie di lock e un possibile deadlock.
+dentro `piano_comandi`. `bacheca.aggiungi_messaggio` è stata migrata a
+`scrittura_jsonl` (commit del 2026-09-02) — le scritture di bacheca ora prendono
+il lock di file; il prerequisito della fase scrittura è soddisfatto. Il server
+**non** aggiunge lock propri: se lo facesse, avrebbe due gerarchie di lock e un
+possibile deadlock. **Nota**: `aggiungi_messaggio` non è reentrante — i tool di
+scrittura che devono leggere-e-scrivere atomico (idempotenza) useranno
+`transazione_jsonl` direttamente, non `aggiungi_messaggio` sotto lock.
 
 **Idempotenza delle scritture** (contratto da revisione Codex). Obbligatoria per
 *ogni* scrittura, non opzionale. Chiave con scope `(mittente, thread_id,
@@ -238,8 +241,9 @@ logica vera sta tutta nelle funzioni di dominio.
    che via hook?
 3bis. **PRIMA della fase scrittura** (vincolo Codex): smoke reale del server
    avviato da Codex CLI e da Antigravity — non solo dal test Python — oppure
-   decidere la migrazione all'SDK `mcp`. Portare le scritture di bacheca su un
-   percorso serializzato (`scrittura_jsonl`).
+   decidere la migrazione all'SDK `mcp`. ~~Portare le scritture di bacheca su un
+   percorso serializzato~~ **FATTO** (`bacheca.aggiungi_messaggio` → `scrittura_jsonl`,
+   2026-09-02).
 4. **Scrittura** — `bacheca_rispondi`, `bacheca_prendi` (con `correla_a`),
    `piano_prendi_passo`, `piano_offri_passo`. `idempotency_key` **obbligatoria**
    (contratto nella sezione Concorrenza); `agente` mai da tool call.

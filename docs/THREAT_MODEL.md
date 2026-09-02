@@ -88,6 +88,9 @@ perdere aggiornamenti (lost update). **Mitigato**: lock a file (`os.O_CREAT | os
 atomico sia su Windows sia POSIX) più scrittura atomica (`tempfile` + `os.replace`), con
 soglia di abbandono del lock indipendente dal timeout del chiamante (bug corretto
 2026-08-26 sia in `postino.py` sia nel nuovo contratto condiviso `scrittura_jsonl.py`).
+`bacheca.aggiungi_messaggio` è stata allineata al contratto condiviso il 2026-09-02
+(prima era un `open("a")` nudo — rilievo Codex durante la revisione del server MCP);
+`consegne_risveglio.py` lo usa dalla nascita.
 
 ### 3.6 Path traversal / SSRF
 - La cartella di lavoro di un comando sentinella deve stare dentro la radice del
