@@ -59,3 +59,6 @@ Thumbs.db
 
 # Bozze di lavoro non ancora condivise nel repository
 docs/PIANO_INDUSTRIALIZZAZIONE.md
+
+# Dati generati dal fixture demo (rigenerabili con allestisci.py)
+esempi/demo_dashboard/progetto/
