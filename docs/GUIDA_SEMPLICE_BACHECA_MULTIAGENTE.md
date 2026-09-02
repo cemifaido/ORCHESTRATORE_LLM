@@ -211,6 +211,21 @@ sovrapposizione). Per vedere chi sta lavorando su cosa in questo momento:
 python bacheca.py occupati
 ```
 
+### Dividere un lavoro senza pestarsi i piedi
+
+Per un lavoro con più persone o agenti, il thread può contenere un **piano
+dichiarato**: una corsia per ogni passo, con chi lo possiede, il suo stato e i
+file che può leggere o modificare. Prendere un passo è atomico: se un altro
+agente lo ha appena preso, il secondo riceve un conflitto invece di lavorare su
+una copia ambigua.
+
+Prima di svegliare automaticamente un agente, il sistema confronta i set di
+file dei passi in corso. Se una scrittura tocca — o potrebbe toccare — una
+lettura o una scrittura di un altro passo, non invia il lavoro: lascia una
+segnalazione di conflitto e aspetta una correzione del piano o una decisione
+umana. Due sole letture sullo stesso file possono convivere. La dashboard fa
+vedere le corsie e l'avviso, ma la regola che blocca è nel watcher.
+
 ### Rispondere
 
 ```powershell
@@ -219,6 +234,24 @@ python bacheca.py rispondi --correla-a <id-messaggio> --mittente codex --testo "
 
 `correla-a` deve puntare a un messaggio reale già presente in bacheca: serve a
 tenere la risposta nello stesso thread invece di creare cronologie scollegate.
+È anche la prova che la consegna è stata davvero presa in carico: la dashboard
+passa, per quella coppia agente/messaggio, da `in_attesa` a
+`attenzione_richiamata`, poi `acquisito_da_hook` e infine `preso_in_carico`.
+Una rinuncia del watcher appare invece come `chiuso_senza_consegna`; non cancella
+una risposta successiva dell'agente.
+
+### Usare la bacheca dal client MCP
+
+Claude Code, Codex e Gemini/Antigravity possono usare il server MCP stdio locale
+già configurato per il progetto. In una sessione l'agente può leggere pendenti,
+thread, piano e note di codice, oppure rispondere/prendere un messaggio e un
+passo: in tutto otto tool MCP. Le scritture sono idempotenti, quindi un retry con
+la stessa chiave e lo stesso contenuto non duplica il messaggio.
+
+Non è un'automazione generale del computer: il server non offre file arbitrari,
+dispatch, Git o comandi di test. La CLI resta disponibile e necessaria per i
+client senza MCP. Anche tramite MCP, il testo della bacheca resta contesto non
+fidato da valutare, non istruzioni da eseguire automaticamente.
 
 ### Vuoi che qualcuno reagisca in automatico, o basta un commento?
 
@@ -398,8 +431,8 @@ decisione: sta sempre all'umano valutare.
 
 Nella dashboard esistente (`.\avvia_dashboard.ps1`, di solito `http://127.0.0.1:8095/`)
 c'è un pannello "🗂️ Bacheca Multi-Agente": tabella dei thread con stato e chi
-aspetta, banner se c'è un conflitto segnalato, elenco dei file in carico, e cliccando
-su un thread la sua cronologia completa.
+aspetta, badge di consegna per agente, piano a corsie e avvisi di collisione,
+elenco dei file in carico, e cliccando su un thread la sua cronologia completa.
 
 Tre cose in più, pensate per non dover controllare a mano ogni volta:
 

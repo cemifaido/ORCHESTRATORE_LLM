@@ -30,6 +30,22 @@ Gli agenti commerciali possono usare le sessioni e le CLI ufficiali per cui l'ut
 
 `bacheca.py` conserva messaggi, risposte, prese in carico dei file, thread e verdetti in JSONL validato. Un thread può fermarsi in attesa di un gate o di una decisione e poi riprendere senza ricostruire a memoria il contesto. Puoi vedere i messaggi pendenti per ciascun lavoratore, i file già in carico e lo stato globale del lavoro.
 
+### Piano dichiarato: chi tocca cosa
+
+Un thread può portare un **piano a corsie**: passi con un proprietario e un insieme di file (`write_set`/`read_set`) dichiarati. `bacheca.py piano` permette di creare un passo, prenderlo (compare-and-set atomico: due agenti sullo stesso passo, il secondo perde la corsa) e offrirlo a un altro con un handoff che si trasferisce solo su approvazione esplicita. Prima di un dispatch automatico il watcher confronta il passo dell'agente con quelli già in corso: se i file si sovrappongono non dispatcha e apre una segnalazione, invece di far pestare i piedi a due agenti sullo stesso file. La regola è conservativa — un dubbio è un blocco, mai un falso via libera.
+
+### Stati di consegna: dal risveglio alla presa in carico
+
+Un risveglio non è una consegna. Per ogni coppia `(agente, messaggio)` il sistema traccia una progressione — `in_attesa` → `attenzione_richiamata` (il watcher ha agito) → `acquisito_da_hook` (l'agente l'ha visto nel contesto) → `preso_in_carico` (ha risposto) — più il terminale `chiuso_senza_consegna` quando si rinuncia. Gli eventi vivono in un log append-only; la dashboard mostra lo stato accanto a ogni destinatario in attesa. Un risveglio OS ha un cooldown per non rubare il primo piano di continuo.
+
+### Server MCP locale: la bacheca come strumento nativo
+
+`mcp_orchestratore.py` è un server MCP su stdio (nessun demone, nessuna porta): espone bacheca, piano e note di codice come **tool tipizzati** che ogni client MCP-capace — Claude Code, Codex CLI, Antigravity — usa nativamente. Gli agenti leggono i thread pendenti e rispondono senza sillabare comandi di shell; le scritture sono idempotenti (una `idempotency_key` rende sicuro il retry). Il server chiama le funzioni di dominio interne, mai un subprocess della CLI, e riusa gli stessi lock. Esclusi tassativamente: I/O di file arbitrari, dispatch, comandi Git. Non fa partire turni: risponde a tool call dentro un turno già in corso.
+
+### Note di codice ancorate al blocco
+
+`note_codice.py` tiene post-it brevi (gotcha, decisioni, convenzioni) agganciati a un blocco di righe di un file. L'ancora è percorso + intervallo + hash del contenuto: quando quel blocco cambia, la nota passa da `attiva` a `da_rivedere` invece di restare a mentire come un commento dimenticato. Le note dell'area su cui un agente sta lavorando gli arrivano nel contesto via hook.
+
 ### Workflow dichiarati e verificabili
 
 Il flusso standard — compito, gate, triage, registrazione, approvazione umana e chiusura — non vive solo in un documento: è un dato JSON con schema e validatore. Questo rende controllabili dipendenze, artefatti prodotti, punti di stop e azioni irreversibili prima di eseguire il lavoro.
@@ -40,7 +56,7 @@ La **Sentinella** esegue esclusivamente comandi presenti in una whitelist. Il ga
 
 ### Il postino, con un profilo scelto da te per ogni progetto
 
-La dashboard può rilevare un messaggio pendente e preparare il risveglio del destinatario. Quanto in automatico gestire dipende da un **profilo operativo per progetto**, scelto da un menu in dashboard, non da interruttori sparsi: `standard` (nessuna automazione, come oggi appena installato), `brainstorming` (l'agente risponde da solo in bacheca, con ritmo limitato), `super`/`smodata` (in arrivo: anche scrittura file, mai comandi Git in scrittura). Ogni progetto nuovo parte in `standard` — l'automazione è sempre una scelta esplicita, mai il default. Anche al massimo del ritmo resta un tetto assoluto in codice, mai davvero illimitato, e la dashboard dichiara onestamente, per ciascun assistente, se un vincolo è tecnico o solo una convenzione nel prompt — non promette la stessa protezione per tutti quando non è vera.
+La dashboard può rilevare un messaggio pendente e preparare il risveglio del destinatario. Quanto in automatico gestire dipende da un **profilo operativo per progetto**, scelto da un menu in dashboard, non da interruttori sparsi: `standard` (nessuna automazione, come oggi appena installato), `brainstorming` (l'agente risponde da solo in bacheca, con ritmo limitato), `super`/`smodata` (anche scrittura file, mai comandi Git in scrittura). Ogni progetto nuovo parte in `standard` — l'automazione è sempre una scelta esplicita, mai il default. Anche al massimo del ritmo resta un tetto assoluto in codice, mai davvero illimitato, e la dashboard dichiara onestamente, per ciascun assistente, se un vincolo è tecnico (`enforced`, oggi solo per Claude via `--allowedTools`) o solo una convenzione nel prompt (`prompt_only`, Codex e Gemini) — non promette la stessa protezione per tutti quando non è vera. Un dispatch che non va a buon fine non fa ritentare all'infinito il watcher: ricade sul risveglio passivo o rinuncia dopo pochi tentativi.
 
 Esiste inoltre una modalità di revisione esplicita: un agente può ispezionare diff, log e quality gate e riportare risultati reali, senza modificare file, fare commit o accedere alla rete. Non viene avviata automaticamente.
 
@@ -59,17 +75,34 @@ Un controllo schedulabile verifica nuove versioni di Claude, Codex e Gemini, rec
 ## Architettura in un colpo d'occhio
 
 ```text
-Umano ─┐
+Umano ─┐        ┌─ hook (contesto) ─┐   ┌─ server MCP (tool) ─┐
 Claude ├──► Bacheca JSONL ──► Postino opzionale ──► agente destinatario
-Codex  ┤          │                    │
-Gemini ┘          │                    └── limiti, debounce, kill switch
-                  ▼
-            Registro JSONL ◄── Sentinella / quality gate / triage locale
-                  │
-                  └──► Dashboard e replay dei commit
+Codex  ┤       │  │  piano a corsie + regola di collisione
+Gemini ┘       │  │  stati di consegna (in_attesa → preso_in_carico)
+               │  └── limiti, debounce, cooldown, kill switch
+               ▼
+         Registro JSONL ◄── Sentinella / quality gate / triage locale
+               │
+               └──► Dashboard e replay dei commit
 ```
 
 Ruoli suggeriti, non obbligatori: Gemini per interfaccia e documentazione, Claude per servizi e refactor, Codex per revisione/sicurezza/casi limite, modello locale per triage e sintesi, umano per contesto e azioni irreversibili.
+
+## Squadra all'opera
+
+Il piano dichiarato di un thread, con le tre corsie a `write_set` disgiunti e l'avanzamento:
+
+![Widget "corsie" di un piano dichiarato](docs/immagini/piano-corsie.png)
+
+Quando due passi in corso scrivono lo stesso file, la dashboard lo segnala — è un avviso, non un blocco:
+
+![Avviso di collisione fra passi del piano](docs/immagini/piano-collisione.png)
+
+Il pannello della bacheca: profilo operativo, messaggi pendenti per agente, garanzie reali e conflitti aperti:
+
+![Pannello della bacheca multi-agente](docs/immagini/bacheca-3-agenti.png)
+
+*(Le schermate arrivano dal progetto demo `esempi/demo_dashboard/allestisci.py` — dati finti, nessuna conversazione reale.)*
 
 ## Avvio in 5 minuti
 
@@ -120,6 +153,7 @@ Il launcher avvia FastAPI in locale e apre `http://127.0.0.1:8095`. I log restan
 | Senza GPU | `LLM_LOCALE_ABILITATO=false` | Gate deterministici; nessuna dipendenza dal modello locale |
 | Con LLM locale | `llama-server` sulla porta 8090 | Triage e sintesi gratuiti, offline, senza scrittura di codice |
 | Dispatch headless | Profilo `brainstorming` (o superiore) su un progetto | Turni automatici limitati e auditabili; da scegliere solo dopo la verifica dei prerequisiti |
+| Bacheca come strumento nativo | Server MCP collegato ai client (`config/mcp.esempio.json`) | Gli agenti leggono i pendenti e rispondono con tool tipizzati, senza shell; non avvia turni |
 
 ### CLI degli agenti (facoltative)
 
@@ -164,6 +198,22 @@ python .\bacheca.py valida
 python .\registro.py valida
 ```
 
+Dichiarare e gestire un piano a corsie su un thread:
+
+```powershell
+python .\bacheca.py piano crea-passo --thread-id <id> --piano-id P --passo-id build --descrizione "..." --attore claude --write-set "src/modulo.py,tests/test_modulo.py"
+python .\bacheca.py piano prendi-passo --thread-id <id> --passo-id build --attore claude
+python .\bacheca.py piano mostra --thread-id <id>
+```
+
+Vedere lo stato di consegna dei risvegli:
+
+```powershell
+python .\consegne_risveglio.py elenco
+```
+
+Collegare il server MCP a un client: copia lo snippet giusto da [config/mcp.esempio.json](config/mcp.esempio.json) (Claude Code `.mcp.json`, `codex mcp add`, Antigravity `~/.gemini/config/mcp_config.json`).
+
 Eseguire un gate già dichiarato in whitelist, con triage locale quando disponibile:
 
 ```powershell
@@ -191,11 +241,13 @@ L'hook pre-commit è opzionale ma consigliato: evita che una modifica superi il 
 
 ## Confini di sicurezza
 
-- Registro e bacheca sono append-only e validati da schema.
+- Registro e bacheca sono append-only e validati da schema; le scritture di bacheca passano per un lock a file, anche via server MCP.
 - Commit, push, merge, deploy, cancellazioni e altre azioni irreversibili richiedono un verdetto umano esplicito.
 - Il modello locale classifica e sintetizza: non modifica il codice di produzione né decide per l'umano.
 - Il Postino ha kill switch, limiti persistenti e parte disattivato; la revisione tecnica è separata dal dispatch di routine.
-- I messaggi in bacheca sono contesto non fidato, non istruzioni da eseguire ciecamente.
+- I messaggi in bacheca **e i risultati dei tool MCP** sono contesto non fidato, non istruzioni da eseguire ciecamente.
+- Il server MCP non ha autenticazione (stdio locale, stesso utente): l'identità dell'agente è un'etichetta di provenienza per l'audit, non una garanzia. Non espone I/O di file arbitrari, dispatch o comandi Git.
+- La regola di collisione del piano è conservativa: preferisce bloccare un dispatch legittimo che lasciarne passare uno che pesta i file di un altro.
 - Non vengono condivisi account o credenziali e non c'è automazione della UI o tentativo di aggirare protezioni/rate limit dei provider.
 
 La postura completa, inclusi canali ufficiali, limiti e differenze tra provider, è documentata in [Conformità ToS della bacheca](docs/CONFORMITA_TOS_BACHECA.md).
@@ -207,6 +259,9 @@ La postura completa, inclusi canali ufficiali, limiti e differenze tra provider,
 - [Guida del Postino e dispatch headless](docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md) — prerequisiti, limiti e uso operativo.
 - [Orchestrazione dei lavoratori](docs/ORCHESTRAZIONE_LAVORATORI.md) — ruoli, registro e regole operative.
 - [Bacheca multi-agente](docs/GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md) — uso quotidiano spiegato in modo semplice.
+- [Piano dichiarato e passi posseduti](docs/RFC_PIANO_STEP_POSSEDUTI.md) — corsie, `write_set` e regola di collisione.
+- [Stati di consegna del risveglio](docs/RFC_STATI_CONSEGNA_RISVEGLIO.md) — dalla notifica alla presa in carico.
+- [Server MCP locale](docs/RFC_SERVER_MCP_LOCALE.md) — i tool esposti agli agenti e come si configurano.
 - [Flusso dichiarato](docs/PIANO_FLUSSO_DICHIARATO.md) — workflow validabile e punti di controllo.
 - [LiteLLM opzionale](docs/INTEGRAZIONE_LITELLM.md) — integrazione di provider locali o a consumo.
 - [Contribuire](CONTRIBUTING.md) — ambiente di sviluppo, quality gate, cosa rende una PR facile da accettare.

@@ -152,10 +152,24 @@ pannello dedicato nella dashboard.
 python bacheca.py chiedi --a codex --testo "Obiettivo: ... Contesto: ... Output atteso: ... Vincoli: ..."
 python bacheca.py stato
 python bacheca.py prossimo --agente claude
+python bacheca.py rispondi --correla-a <id> --mittente claude --testo "..."
+python bacheca.py prendi --thread-id <id> --agente codex --correla-a <id-del-risveglio>
 python bacheca.py approva --thread-id <id> --testo "Va bene, procedi."
 ```
 Guida completa senza dettagli tecnici: `docs/GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md`.
 Disegno tecnico completo: `docs/RFC_BACHECA_MULTIAGENTE.md`.
+
+**Piano a corsie su un thread** (`docs/RFC_PIANO_STEP_POSSEDUTI.md`): quando più
+agenti lavorano insieme, si dichiara chi tocca cosa con `write_set` disgiunti.
+```powershell
+python bacheca.py piano crea-passo --thread-id <id> --piano-id P --passo-id build --descrizione "..." --attore claude --write-set "src/x.py,tests/test_x.py"
+python bacheca.py piano prendi-passo --thread-id <id> --passo-id build --attore claude
+python bacheca.py piano offri-passo --thread-id <id> --passo-id build --attore claude --a codex
+python bacheca.py piano mostra --thread-id <id>
+```
+Prima di un dispatch automatico il watcher blocca un passo che si sovrappone a
+uno già in corso e apre una `segnalazione_conflitto` (avviso, non blocco per
+l'umano).
 
 **Nella dashboard**, il pannello "🗂️ Bacheca Multi-Agente" (sopra la Timeline
 eventi) mostra: tabella dei thread con stato e chi aspetta, banner se c'è un
@@ -168,12 +182,19 @@ Due funzioni in più nel pannello:
 - **▶ Rivivi**: riproduce animatamente la cronologia di un thread nel pannello
   "Live Agent Handoff" (stesso meccanismo del replay di un commit reale, §6 sopra).
 
-**Hook automatici**: se configurati (`.claude/settings.json`, `.codex/hooks.json`),
-Claude Code e Codex leggono da soli i messaggi in sospeso all'avvio di una sessione
-o all'invio di un prompt — verificato che funziona davvero, non solo in teoria.
-Gemini/Antigravity per ora resta manuale (`bacheca.py prossimo --agente gemini`)
-per questo meccanismo specifico — ma vedi sotto: il postino copre anche Gemini in
-un altro modo.
+**Hook automatici**: se configurati (`.claude/settings.json`, `.codex/hooks.json`,
+`.agents/hooks.json` per Antigravity), tutti e tre gli agenti ricevono i messaggi
+in sospeso nel contesto all'avvio di una sessione o all'invio di un prompt —
+verificato dal vivo. Quando l'hook include un messaggio nel contesto, lo stato di
+consegna di quella coppia passa a `acquisito_da_hook` (vedi §9).
+
+**Server MCP** (`docs/RFC_SERVER_MCP_LOCALE.md`): oltre agli hook (mono-direzionali),
+`mcp_orchestratore.py` espone la bacheca come tool nativi. Con la config del
+client (`config/mcp.esempio.json`), l'agente chiama `bacheca_pendenti`,
+`bacheca_thread`, `piano_stato`, `note_codice_elenco` (lettura) e
+`bacheca_rispondi`, `bacheca_prendi`, `piano_prendi_passo`, `piano_offri_passo`
+(scrittura idempotente) senza sillabare comandi di shell. Non fa partire turni:
+risponde a tool call dentro un turno già in corso.
 
 ---
 
@@ -181,24 +202,47 @@ un altro modo.
 
 Tutto il punto 7 sopra richiede comunque che tu apra una sessione perché l'hook
 scatti. Il postino va oltre: quando c'è un messaggio pendente in bacheca, un
-processo in background lancia davvero l'agente giusto (`claude -p`, `codex exec`,
-`agy -p`), che legge, decide e scrive la risposta da solo — nessun pannello da
-aprire, nessun invio da premere. Copre tutti e tre gli agenti, Gemini incluso.
+processo in background lancia davvero l'agente giusto (`claude -p`, `codex exec`),
+che legge, decide e scrive la risposta da solo — nessun pannello da aprire.
+Per Gemini il dispatch headless (`agy -p`) è **degradato su Windows**: il postino
+ricade sul risveglio OS (focus finestra + prompt negli appunti).
 
-Spento di default: due interruttori nel pannello "🗂️ Bacheca Multi-Agente" della
-dashboard, entrambi da accendere esplicitamente — "📬 Postino Automatico" (il
-watcher più il vecchio risveglio a finestra) e "🤖 Dispatch Headless" (il
-lancio reale in background, inerte se il primo è spento). Un thread non riceve
-più di un certo numero di risvegli automatici consecutivi senza un tuo
-intervento — scrivere qualcosa tu nel thread azzera il conteggio.
+Non ci sono più i due vecchi interruttori: c'è **un profilo operativo per
+progetto**, dal menu della dashboard — `standard` (nessuna automazione, default),
+`brainstorming` (risposta headless in bacheca, ritmo largo), `super`/`smodata`
+(anche scrittura file, mai Git). Un thread non riceve più di
+`MAX_HOP_HEADLESS_CONSECUTIVI` risvegli automatici consecutivi senza un tuo
+intervento; un dispatch che fallisce non fa ritentare all'infinito (ricade sul
+risveglio OS o rinuncia dopo pochi tentativi); un risveglio OS ha un cooldown.
 
-Per design l'agente svegliato dal postino può solo leggere/rispondere in
-bacheca — mai commit, push, cancellazioni o rete; se il compito richiede di
-modificare codice davvero, lascia un checkpoint e si ferma. Quando serve invece
-che un socio **verifichi** davvero il lavoro (rilegga un diff, rieseguisse i
-test/il linter), esiste una seconda modalità attivabile solo su richiesta
-esplicita (mai dal watcher), che allarga il perimetro a questi controlli di
-sola lettura — mai a scrittura.
+Per design l'agente svegliato dal postino in `standard`/`brainstorming` può solo
+leggere/rispondere in bacheca — mai commit, push, cancellazioni o rete. In
+`super`/`smodata` può anche scrivere file (per Claude con perimetro `enforced`,
+per Codex/Gemini `prompt_only`). Esiste una modalità **revisione** attivabile
+solo su richiesta esplicita (mai dal watcher): allarga il perimetro a
+diff/log/gate di sola lettura, mai a scrittura.
 
-Guida operativa completa (prerequisiti, come si accende, come si replica su
-un'altra macchina): `docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`.
+Guida operativa completa: `docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md`.
+
+---
+
+## 9. Stati di consegna e identità dei processi
+
+**Stati di consegna** (`docs/RFC_STATI_CONSEGNA_RISVEGLIO.md`): un risveglio non è
+una consegna. Per ogni coppia `(agente, messaggio)` c'è una progressione —
+`in_attesa` → `attenzione_richiamata` (il watcher ha agito) → `acquisito_da_hook`
+(l'agente l'ha visto nel contesto) → `preso_in_carico` (ha risposto con
+`correla_a` che punta al risveglio) — più il terminale `chiuso_senza_consegna`.
+La dashboard mostra lo stato accanto a ogni destinatario in attesa.
+
+```powershell
+python consegne_risveglio.py elenco          # stato di ogni coppia nota
+python consegne_risveglio.py reset --agente gemini --id-messaggio <id>
+python consegne_risveglio.py rigenera-cache  # ricostruisce risvegli_notificati.json dal log
+```
+
+**Identità dei processi**: su Windows i PID si riciclano in fretta.
+`dashboard_os.stato_processo` verifica la tupla PID + istante di creazione +
+percorso dell'eseguibile e ritorna `vivo` / `morto` / `non_verificabile`
+(fail-closed): un PID che combacia ma con un altro istante di creazione è un
+processo diverso, trattato come morto.

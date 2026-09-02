@@ -42,11 +42,15 @@ Un orchestratore che coordina più assistenti AI, un modello AI locale
 gratuito e te, sullo stesso progetto — usando gli abbonamenti che hai già,
 senza bisogno di API a pagamento a consumo.
 
-In pratica, quattro pezzi che lavorano insieme:
+In pratica, cinque pezzi che lavorano insieme:
 
 **1. Una bacheca condivisa.** Un file semplice dove gli assistenti si
 lasciano messaggi — richieste, risposte, revisioni — come bigliettini su una
-bacheca fisica. Tutto tracciato, niente si perde, nessuna chat caotica.
+bacheca fisica. Tutto tracciato, niente si perde, nessuna chat caotica. Per i
+lavori grandi dichiara anche le corsie: chi fa quale passo e quali file può
+toccare. Se due corsie rischiano di sovrapporsi, il sistema ferma il risveglio
+automatico e chiede di risolvere il conflitto, invece di lasciare due assistenti
+a pestarsi le modifiche.
 
 **2. Il postino.** Invece di essere tu a svegliare ogni assistente e
 passargli il messaggio, un processo in background se ne accorge da solo e fa
@@ -65,6 +69,14 @@ esito, ogni tua approvazione finisce in un archivio consultabile. In ogni
 momento sai cosa è successo, chi lo ha fatto e perché — inclusi i momenti in
 cui sei intervenuto tu.
 
+**5. Una consegna verificabile.** Non basta sapere che un messaggio è stato
+spedito: il sistema distingue fra attesa, richiamo dell'attenzione, lettura
+dall'hook e presa in carico esplicita. La dashboard rende visibile il punto in
+cui si è fermato il passaggio della palla. Gli agenti possono inoltre usare una
+piccola integrazione locale standard (MCP) per leggere e scrivere la bacheca
+direttamente dalla loro sessione, senza trasformarla in un telecomando per file,
+Git o altri processi.
+
 ## Cosa cambia per te
 
 - **Molto meno tempo a fare da postino.** Il lavoro di instradamento e
@@ -73,7 +85,8 @@ cui sei intervenuto tu.
   cancellazioni, scelte importanti: sempre e solo con il tuo via libera
   esplicito. Tutto il resto è automatico.
 - **Trasparenza totale.** Niente succede in silenzio: ogni azione automatica
-  è tracciata, ripercorribile, spiegabile.
+  è tracciata, ripercorribile, spiegabile. E vedi se un incarico è soltanto
+  stato inviato, letto o davvero preso in carico.
 - **Sicurezza per progettazione, non per promessa.** L'automazione è chiusa
   in un perimetro stretto (limiti di frequenza, interruttore di emergenza,
   nessuna azione distruttiva permessa) — non "confidiamo che si comporti

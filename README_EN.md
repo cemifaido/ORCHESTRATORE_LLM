@@ -30,6 +30,22 @@ Commercial agents can use their official CLIs and existing authenticated session
 
 `bacheca.py` stores messages, responses, file locks, threads, and verdicts in validated JSONL. A thread can pause awaiting a quality gate or human review, then resume without relying on human memory to reconstruct context. You can monitor pending messages for each worker, inspect locked files, and view global project status.
 
+### Declared Plan: Who Touches What
+
+A thread can carry a **plan with lanes**: steps with an owner and a declared set of files (`write_set`/`read_set`). `bacheca.py piano` creates a step, takes it (atomic compare-and-set: two agents on the same step, the second one loses the race), or offers it to another via a handoff that only transfers on explicit approval. Before an automated dispatch the watcher compares the agent's step against the ones already in progress: if the files overlap it does not dispatch and raises a flag, instead of letting two agents step on the same file. The rule is conservative — a doubt is a block, never a false clearance.
+
+### Delivery States: From Wake-Up to Ownership
+
+A wake-up is not a delivery. For each `(agent, message)` pair the system tracks a progression — `in_attesa` → `attenzione_richiamata` (the watcher acted) → `acquisito_da_hook` (the agent saw it in context) → `preso_in_carico` (it replied) — plus the terminal `chiuso_senza_consegna` when giving up. Events live in an append-only log; the dashboard shows the state next to every pending recipient. An OS wake-up has a cooldown so it doesn't keep stealing focus.
+
+### Local MCP Server: The Board as a Native Tool
+
+`mcp_orchestratore.py` is an MCP server over stdio (no daemon, no port): it exposes the board, the plan, and code notes as **typed tools** that any MCP-capable client — Claude Code, Codex CLI, Antigravity — uses natively. Agents read pending threads and reply without spelling out shell commands; writes are idempotent (an `idempotency_key` makes retries safe). The server calls internal domain functions, never a CLI subprocess, and reuses the same locks. Strictly excluded: arbitrary file I/O, dispatch, Git commands. It does not start turns: it answers tool calls inside a turn already underway.
+
+### Code Notes Anchored to a Block
+
+`note_codice.py` keeps short stickies (gotchas, decisions, conventions) attached to a block of lines in a file. The anchor is path + range + content hash: when that block changes, the note flips from `attiva` to `da_rivedere` instead of lying like a forgotten comment. Notes for the area an agent is working on reach it in context via a hook.
+
 ### Declared & Verifiable Workflows
 
 The standard lifecycle — task, gate, triage, logging, human approval, and closure — does not just live in documentation: it is structured JSON with a strict schema and validator. This ensures dependencies, produced artifacts, halt conditions, and irreversible actions are verified before execution.
@@ -40,7 +56,7 @@ The **Sentinel** (`sentinella.py`) executes strictly whitelisted commands. The d
 
 ### The Postman, With a Profile You Choose Per Project
 
-The dashboard can detect pending messages and focus the target agent's window. How much automation runs is set by an **operational profile per project**, chosen from a dashboard menu rather than scattered toggles: `standard` (no automation, the default for every new project), `brainstorming` (the agent replies on its own in the board, at a limited pace), `super`/`smodata` (coming: file writes too, Git write commands never). Every new project starts in `standard` — automation is always an explicit opt-in, never the default. Even at the fastest pace there is an absolute cap in code, never truly unlimited, and the dashboard honestly states, per assistant, whether a constraint is technically enforced or only a prompt convention — it never claims the same protection for all three when it isn't real.
+The dashboard can detect pending messages and focus the target agent's window. How much automation runs is set by an **operational profile per project**, chosen from a dashboard menu rather than scattered toggles: `standard` (no automation, the default for every new project), `brainstorming` (the agent replies on its own in the board, at a limited pace), `super`/`smodata` (file writes too, Git write commands never). Every new project starts in `standard` — automation is always an explicit opt-in, never the default. Even at the fastest pace there is an absolute cap in code, never truly unlimited, and the dashboard honestly states, per assistant, whether a constraint is technically enforced (`enforced`, today only Claude via `--allowedTools`) or only a prompt convention (`prompt_only`, Codex and Gemini) — it never claims the same protection for all three when it isn't real. A dispatch that fails does not make the watcher retry forever: it falls back to the passive wake-up or gives up after a few attempts.
 
 A standalone technical review mode allows an agent to inspect diffs, test logs, and quality gates to report real findings without modifying source files, making git commits, or accessing the network.
 
@@ -59,17 +75,34 @@ A scheduled checker inspects new releases of Claude, Codex, and Gemini, retrieve
 ## Architecture at a Glance
 
 ```text
-Human  ─┐
+Human  ─┐        ┌─ hook (context) ─┐   ┌─ MCP server (tools) ─┐
 Claude ├──► JSONL Board ──► Optional Postman ──► Target Agent
-Codex  ┤          │                 │
-Gemini ┘          │                 └── limits, debounce, kill switch
-                  ▼
-            JSONL Audit Log ◄── Sentinel / quality gate / local triage
-                  │
-                  └──► Dashboard & commit replay
+Codex  ┤       │  │  plan with lanes + collision rule
+Gemini ┘       │  │  delivery states (in_attesa → preso_in_carico)
+               │  └── limits, debounce, cooldown, kill switch
+               ▼
+         JSONL Audit Log ◄── Sentinel / quality gate / local triage
+               │
+               └──► Dashboard & commit replay
 ```
 
 Suggested roles (guidelines, not strict constraints): Gemini for UI and documentation, Claude for services and refactoring, Codex for meticulous review/security/edge cases, local LLM for triage and summaries, human for domain context and irreversible actions.
+
+## Squadra at Work
+
+A thread's declared plan, with three lanes over disjoint `write_set`s and their progress:
+
+![A declared plan's "lanes" widget](docs/immagini/piano-corsie.png)
+
+When two in-progress steps write the same file, the dashboard flags it — a warning, not a block:
+
+![Plan step collision warning](docs/immagini/piano-collisione.png)
+
+The board panel: operational profile, pending messages per agent, real guarantees and open conflicts:
+
+![Multi-agent board panel](docs/immagini/bacheca-3-agenti.png)
+
+*(Screenshots come from the demo project `esempi/demo_dashboard/allestisci.py` — fake data, no real conversations.)*
 
 ## 5-Minute Quickstart
 
@@ -120,6 +153,7 @@ The launcher starts FastAPI locally and opens `http://127.0.0.1:8095`. Logs are 
 | Without GPU | `LLM_LOCALE_ABILITATO=false` | Deterministic quality gates; zero local LLM dependency |
 | With Local LLM | `llama-server` running on port 8090 | Free, offline triage and synthesis without code editing |
 | Headless Dispatch | `brainstorming` profile (or higher) on a project | Limited, auditable automated turns; choose only after verifying prerequisites |
+| Board as a native tool | MCP server wired to the clients (`config/mcp.esempio.json`) | Agents read pending items and reply with typed tools, no shell; does not start turns |
 
 ### Agent CLIs (Optional)
 
@@ -176,6 +210,22 @@ Manually record an audit event:
 python .\registro.py aggiungi --id-compito test --agente codex --tipo-compito revisione --stato accettato --esito-gate superato --note "Code review completed."
 ```
 
+Declare and manage a plan with lanes on a thread:
+
+```powershell
+python .\bacheca.py piano crea-passo --thread-id <id> --piano-id P --passo-id build --descrizione "..." --attore claude --write-set "src/module.py,tests/test_module.py"
+python .\bacheca.py piano prendi-passo --thread-id <id> --passo-id build --attore claude
+python .\bacheca.py piano mostra --thread-id <id>
+```
+
+Inspect the delivery state of wake-ups, and wire the MCP server to a client:
+
+```powershell
+python .\consegne_risveglio.py elenco
+```
+
+For MCP client config, copy the right snippet from [config/mcp.esempio.json](config/mcp.esempio.json) (Claude Code `.mcp.json`, `codex mcp add`, Antigravity `~/.gemini/config/mcp_config.json`).
+
 ## Quality Gates
 
 Install `requirements-dev.txt` (or let the setup wizard do it), then run:
@@ -191,11 +241,13 @@ The pre-commit hook is optional but recommended: it prevents uninspected changes
 
 ## Security Boundaries
 
-- Audit registry and message boards are append-only and strictly schema-validated.
+- Audit registry and message boards are append-only and strictly schema-validated; board writes go through a file lock, MCP server included.
 - Commits, pushes, merges, deployments, file deletions, and other irreversible operations require explicit human approval.
 - The local LLM classifies and summarizes: it never directly alters production code or overrides human judgment.
 - The Postman includes kill switches, persistent limits, and defaults to off; technical review is strictly isolated from automated dispatch.
-- Board messages are untrusted inputs, not commands to be blindly executed.
+- Board messages **and MCP tool results** are untrusted inputs, not commands to be blindly executed.
+- The MCP server has no authentication (local stdio, same user): the agent identity is a provenance label for the audit trail, not a guarantee. It exposes no arbitrary file I/O, dispatch, or Git commands.
+- The plan collision rule is conservative: it would rather block a legitimate dispatch than let one through that steps on another's files.
 - No shared accounts or credentials, zero browser automation, and no attempt to bypass provider rate limits or security mechanisms.
 
 The full security posture, official channels, limits, and provider specifics are documented in [Board ToS Compliance](docs/CONFORMITA_TOS_BACHECA.md).
@@ -207,6 +259,9 @@ The full security posture, official channels, limits, and provider specifics are
 - [Postman & Headless Dispatch](docs/GUIDA_POSTINO_DISPATCH_HEADLESS.md) — Prerequisites, safety limits, and operational usage.
 - [Worker Orchestration](docs/ORCHESTRAZIONE_LAVORATORI.md) — Agent roles, audit registry, and team workflows.
 - [Multi-Agent Board Guide](docs/GUIDA_SEMPLICE_BACHECA_MULTIAGENTE.md) — Everyday board usage made simple.
+- [Declared Plan & Owned Steps](docs/RFC_PIANO_STEP_POSSEDUTI.md) — Lanes, `write_set`, and the collision rule (Italian).
+- [Wake-Up Delivery States](docs/RFC_STATI_CONSEGNA_RISVEGLIO.md) — From notification to ownership (Italian).
+- [Local MCP Server](docs/RFC_SERVER_MCP_LOCALE.md) — Tools exposed to agents and how to configure them (Italian).
 - [Declared Workflows](docs/PIANO_FLUSSO_DICHIARATO.md) — Verifiable workflows, phases, and checkpoint gates.
 - [Optional LiteLLM Integration](docs/INTEGRAZIONE_LITELLM.md) — Connecting local or pay-per-token providers.
 - [Contributing](CONTRIBUTING.md) — dev environment, quality gate, what makes a PR easy to accept (Italian).

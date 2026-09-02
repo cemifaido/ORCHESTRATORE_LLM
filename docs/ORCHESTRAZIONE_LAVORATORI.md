@@ -177,6 +177,46 @@ processo in background lancia davvero l'agente giusto in headless (mai per
 azioni irreversibili, sempre con tetti anti-loop e opt-in esplicito, spento di
 default) — vedi [Guida: il postino e il dispatch headless](GUIDA_POSTINO_DISPATCH_HEADLESS.md).
 
+### Piano dichiarato, consegna e MCP locale
+
+Un thread può dichiarare un **piano a corsie**: passi append-only con
+proprietario, stato, `write_set` e, se utile, `read_set`. L'assegnazione non è
+solo un accordo informale: prima di un dispatch automatico il watcher valuta il
+piano. Un'intersezione (o un'intersezione non dimostrabilmente assente) fra le
+scritture e le letture/scritture di un altro passo `in_corso` blocca il dispatch,
+pubblica una segnalazione di conflitto e non tenta retry automatici. I soli set
+di lettura sovrapposti non sono un conflitto. Questa regola è prudente per
+design: set ambigui o incompleti non ricevono un via libera automatico.
+
+La dashboard mostra il piano proiettato e le collisioni come informazioni; il
+blocco effettivo avviene nel watcher, non nel browser. Il possesso di un passo è
+un'operazione atomica (CAS), e un handoff resta una proposta finché il
+proprietario o l'umano non la approva. Specifica e limiti:
+[RFC Piano dichiarato e passi posseduti](RFC_PIANO_STEP_POSSEDUTI.md).
+
+Ogni consegna a un agente ha inoltre uno stato derivato, non una semplice
+spunta: `in_attesa` → `attenzione_richiamata` → `acquisito_da_hook` →
+`preso_in_carico`. La prova forte dell'ultimo stato è una risposta o presa in
+carico con `correla_a` uguale all'ID della notifica; il campo
+`consegna_per_agente` porta questa informazione al DTO e ai badge della
+dashboard. Esiste anche `chiuso_senza_consegna` per una rinuncia del watcher:
+ferma i suoi tentativi, ma non annulla una prova successiva dell'agente.
+
+Per i tre client è disponibile anche un server **MCP stdio locale**: legge lo
+stato della bacheca e del piano e può scrivere messaggi di coordinamento in modo
+tipizzato. Espone otto tool: `bacheca_pendenti`, `bacheca_thread`, `piano_stato`,
+`note_codice_elenco`, `bacheca_rispondi`, `bacheca_prendi`,
+`piano_prendi_passo` e `piano_offri_passo`. È additivo rispetto alla CLI e non
+espone file I/O, dispatch, comandi Git o gate. I contenuti letti restano dati non
+fidati; l'identità dell'agente è fissata all'avvio del server. Vedi
+[RFC Server MCP locale](RFC_SERVER_MCP_LOCALE.md).
+
+Il watcher usa inoltre un controllo di identità del processo, non il solo PID:
+`dashboard_os.stato_processo` restituisce `vivo`, `morto` o
+`non_verificabile`, verificando quando possibile PID, istante di creazione ed
+eseguibile. Il terzo stato è trattato in modo fail-closed per non scambiare un
+PID riciclato o non ispezionabile per il processo atteso.
+
 Anche il modello locale (`triage_locale.py`) ora registra un evento (`--agente locale`,
 `tipo_compito=monitoraggio`) per ogni classificazione: prima il suo lavoro spariva in
 stdout, ora ha la stessa visibilità degli altri tre nella dashboard/registro.
