@@ -233,6 +233,13 @@ logica vera sta tutta nelle funzioni di dominio.
    verdetto umano. Supporto MCP stdio dei tre client confermato: `codex mcp add`
    verificato da Codex sul suo strumento (`codex mcp add [OPTIONS] <NAME> (--url |
    -- <COMMAND>...)`), Antigravity `.agents/mcp_config.json` da doc primaria.
+   **Smoke reale (2026-09-02)**: `.mcp.json` (Claude Code), `.codex/config.toml`
+   (Codex, config di progetto), `.agents/mcp_config.json` (Antigravity) — tutti
+   con `--radice`/`--agente` espliciti, tutti gitignored, template in
+   `config/mcp.esempio.json`. **B1 Claude Code: PASS** — server connesso alla
+   sessione, `bacheca_pendenti` e `note_codice_elenco` chiamati e verificati.
+   **B2 Codex CLI: registrato** (`codex mcp list` mostra `orchestratore`), manca
+   la chiamata da dentro `codex`. **B3 Antigravity: in verifica.**
 2. **`bacheca.py prendi --correla-a`** — FATTO (commit `3387866`, Slice A).
 3. **MVP di sola lettura** — FATTO e rivisto (`mcp_orchestratore.py`, 12 test
    incl. smoke subprocess). `config/mcp.esempio.json` ha i quattro snippet
