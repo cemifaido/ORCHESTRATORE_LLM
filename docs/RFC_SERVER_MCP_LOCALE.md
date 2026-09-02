@@ -1,15 +1,15 @@
 # RFC (bozza) — Server MCP locale per bacheca, piano e registro
 
-**Stato:** MVP di sola lettura implementato e rivisto (2026-09-02,
-`mcp_orchestratore.py`). Gemini approva; **Codex approva il loop senza SDK
-SOLO come MVP read-only e timeboxed** — non come base della fase scrittura: un
-protocollo fatto a mano richiede compatibilità continua, quindi **prima delle
-scritture serve uno smoke reale con Codex CLI e Antigravity, oppure la migrazione
-all'SDK `mcp`**. Correzioni della revisione recepite: `--radice` obbligatoria
-senza fallback, validazione `jsonrpc`/`params`, `ping`, negoziazione
-`protocolVersion`, limite su `bacheca_thread`, smoke-test subprocess,
-contratto di idempotenza per le scritture, correzione del claim su
-`scrittura_jsonl`.
+**Stato:** MVP di sola lettura implementato, rivisto e **smoke-tested su tutti e
+tre i client** (2026-09-02, `mcp_orchestratore.py`). Gemini approva; Codex
+approva il loop senza SDK come MVP read-only e timeboxed — il vincolo «smoke
+reale con Codex CLI e Antigravity» **è soddisfatto** (B1 Claude Code, B2 Codex
+CLI, B3 Antigravity tutti PASS end-to-end). Correzioni della revisione recepite:
+`--radice` obbligatoria senza fallback, validazione `jsonrpc`/`params`, `ping`,
+negoziazione `protocolVersion`, limite su `bacheca_thread`, smoke-test
+subprocess, contratto di idempotenza per le scritture, correzione del claim su
+`scrittura_jsonl` (poi `bacheca.aggiungi_messaggio` migrata davvero).
+**Resta il verdetto umano prima di aprire la fase scrittura.**
 **Origine:** PIANO_INDUSTRIALIZZAZIONE.md §15 Slice B (thread bacheca `fb8338d2`).
 Prerequisito «verifica del codice sorgente reale dei benchmark» già svolto
 (Codex, 2026-09-02, thread `4ddae141`): vedi sotto.
@@ -243,9 +243,12 @@ logica vera sta tutta nelle funzioni di dominio.
      **`~/.gemini/config/mcp_config.json`** (globale), editabile anche da
      Settings → Customizations → Installed MCP Servers. `.agents/mcp_config.json`
      **NON** viene letto dall'IDE — rimosso.
-   - **B2 Codex CLI: registrato** — `.codex/config.toml` di progetto funziona
-     (`codex mcp list` mostra `orchestratore`), manca la chiamata da dentro
-     `codex` per il pass pieno.
+   - **B2 Codex CLI: PASS** — `.codex/config.toml` di progetto; Codex in una
+     sessione ha chiamato `bacheca_pendenti` via MCP, risposta corretta.
+
+   **→ Smoke completo su tutti e tre i client. Il vincolo timeboxed di Codex
+   ("smoke reale dai client, non solo il test Python") è soddisfatto.** Resta il
+   verdetto umano prima di aprire la fase scrittura.
 2. **`bacheca.py prendi --correla-a`** — FATTO (commit `3387866`, Slice A).
 3. **MVP di sola lettura** — FATTO e rivisto (`mcp_orchestratore.py`, 12 test
    incl. smoke subprocess). `config/mcp.esempio.json` ha i quattro snippet
