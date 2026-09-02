@@ -273,6 +273,60 @@ class DashboardOsTest(unittest.TestCase):
         self.assertFalse(dashboard_os.pid_vivo(-10))
         self.assertTrue(dashboard_os.pid_vivo(os.getpid()))
 
+    def test_stato_processo_tri_stato_e_controllo_identita(self) -> None:
+        """PIANO §15 Slice A: 'vivo'/'morto'/'non_verificabile', con confronto
+        sull'istante di creazione per smascherare un pid riciclato."""
+        self.assertEqual(dashboard_os.stato_processo(None), "morto")
+        self.assertEqual(dashboard_os.stato_processo(-1), "morto")
+        # un pid altissimo non e' quasi mai assegnato -> morto (o, se l'OS non
+        # sa dirlo, non_verificabile: mai un falso 'vivo')
+        self.assertIn(dashboard_os.stato_processo(2_000_000_000), ("morto", "non_verificabile"))
+        self.assertEqual(dashboard_os.stato_processo(os.getpid()), "vivo")
+
+        creato = dashboard_os.tempo_creazione_processo(os.getpid())
+        if creato is None:  # piattaforma senza sorgente per l'istante di creazione
+            self.assertEqual(
+                dashboard_os.stato_processo(os.getpid(), creato_atteso=1.0), "non_verificabile"
+            )
+        else:
+            self.assertEqual(
+                dashboard_os.stato_processo(os.getpid(), creato_atteso=creato), "vivo"
+            )
+            # stesso pid, ma "creato" 10 anni fa -> e' un altro processo
+            self.assertEqual(
+                dashboard_os.stato_processo(os.getpid(), creato_atteso=creato - 3.2e8), "morto"
+            )
+
+    def test_identita_processo_corrente_ha_la_tupla(self) -> None:
+        ident = dashboard_os.identita_processo_corrente()
+        self.assertEqual(ident["pid"], os.getpid())
+        self.assertIn("creato_il", ident)
+        self.assertIn("eseguibile", ident)
+
+    def test_stato_dashboard_pronto_rileva_pid_riciclato(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            self.assertEqual(dashboard_os.stato_dashboard_pronto(radice), "morto")  # nessuno stato
+
+            dashboard_os.richiedi_riavvio(radice)
+            dashboard_os.registra_dashboard_pronto(radice)
+            pronto = dashboard_os.leggi_stato_riavvio(radice)
+            assert pronto is not None
+            self.assertEqual(pronto["pid"], os.getpid())
+            self.assertIn("creato_il", pronto)
+            # il processo corrente e' davvero quello registrato
+            self.assertEqual(dashboard_os.stato_dashboard_pronto(radice), "vivo")
+
+            # stesso file, ma con l'istante di creazione falsato -> pid riciclato
+            if pronto.get("creato_il") is not None:
+                pronto["creato_il"] = pronto["creato_il"] - 3.2e8
+                dashboard_os._scrivi_stato_riavvio(radice, pronto)
+                self.assertEqual(dashboard_os.stato_dashboard_pronto(radice), "morto")
+
+            arricchito = dashboard_os.stato_riavvio_con_vivezza(radice)
+            assert arricchito is not None
+            self.assertIn(arricchito["processo"], ("vivo", "morto", "non_verificabile"))
+
     def test_interpreta_output_sentinella_json_e_fallback(self) -> None:
         out_json = '{\n  "esito": "superato",\n  "codice": 0\n}\n'
         res = dashboard_os.interpreta_output_sentinella(out_json)

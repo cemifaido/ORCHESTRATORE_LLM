@@ -58,36 +58,102 @@ def richiedi_riavvio(radice: Path) -> dict[str, Any]:
     return stato
 
 
+def identita_processo_corrente() -> dict[str, Any]:
+    """Tupla d'identita' del processo che chiama: pid + istante di creazione +
+    percorso dell'eseguibile. Va persistita accanto a un pid ogni volta che
+    quel pid verra' riletto per un controllo di vivezza (PIANO §15 Slice A):
+    su Windows i pid si riciclano in fretta e il solo numero non distingue il
+    processo originale da uno nuovo che ha ereditato lo stesso pid."""
+    pid = os.getpid()
+    return {
+        "pid": pid,
+        "creato_il": tempo_creazione_processo(pid),
+        "eseguibile": sys.executable or None,
+    }
+
+
 def registra_dashboard_pronto(radice: Path) -> None:
     """Il nuovo processo scrive readiness solo dopo l'avvio di FastAPI."""
     precedente = leggi_stato_riavvio(radice) or {}
     _scrivi_stato_riavvio(radice, {
-        "id": precedente.get("id"), "stato": "pronto", "pid": os.getpid(), "aggiornato_utc": _adesso_utc(),
+        "id": precedente.get("id"), "stato": "pronto",
+        "aggiornato_utc": _adesso_utc(), **identita_processo_corrente(),
     })
 
 
-def pid_vivo(pid: Any) -> bool:
-    """True se esiste un processo vivo con questo pid.
+PROCESSO_VIVO = "vivo"
+PROCESSO_MORTO = "morto"
+PROCESSO_NON_VERIFICABILE = "non_verificabile"
 
-    Su Windows NON si puo' usare os.kill(pid, 0): viene tradotto in TerminateProcess.
-    Si usa OpenProcess + GetExitCodeProcess.
-    """
-    if not isinstance(pid, int) or pid <= 0:
-        return False
+# Scarto massimo, in secondi, fra istante di creazione atteso e osservato prima
+# di dichiarare che il pid e' stato riciclato. Copre l'imprecisione fra la
+# lettura FILETIME/clock-tick e l'ISO string persistita, non di piu'.
+_TOLLERANZA_CREAZIONE_S = 2.0
+
+
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_STILL_ACTIVE = 259
+_ERROR_ACCESS_DENIED = 5
+_ERROR_INVALID_PARAMETER = 87
+
+
+def _kernel32() -> Any:
+    """kernel32 con i tipi giusti: senza restype=HANDLE ctypes tronca il valore
+    a un int a 32 bit su Windows 64 (handle mangiato, CloseHandle sul valore
+    sbagliato)."""
+    import ctypes
+    from ctypes import wintypes
+
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.OpenProcess.restype = wintypes.HANDLE
+    k.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    k.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    k.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+    k.QueryFullProcessImageNameW.argtypes = [
+        wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)
+    ]
+    k.CloseHandle.argtypes = [wintypes.HANDLE]
+    return k
+
+
+def _con_handle_processo(pid: int, azione: Any) -> Any:
+    """Apre il processo, passa l'handle ad `azione`, chiude sempre. Ritorna
+    ('errore', codice_win32) se OpenProcess fallisce, altrimenti azione(k, h)."""
+    import ctypes
+
+    k = _kernel32()
+    handle = k.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return ("errore", ctypes.get_last_error())
+    try:
+        return azione(k, handle)
+    finally:
+        k.CloseHandle(handle)
+
+
+def _pid_attivo(pid: int) -> bool | None:
+    """Vivezza grezza, senza controllo d'identita': True vivo, False terminato,
+    None se l'OS non da' una risposta certa (permessi, errore inatteso) - il
+    chiamante lo tratta come 'non_verificabile' e fa fail-closed."""
     if sys.platform == "win32":
         import ctypes
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        STILL_ACTIVE = 259
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-        if not handle:
-            return False
-        try:
-            codice = ctypes.c_ulong(0)
-            ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(codice))
-            return bool(ok) and codice.value == STILL_ACTIVE
-        finally:
-            kernel32.CloseHandle(handle)
+        from ctypes import wintypes
+
+        def leggi(k: Any, handle: Any) -> bool | None:
+            codice = wintypes.DWORD(0)
+            if not k.GetExitCodeProcess(handle, ctypes.byref(codice)):
+                return None
+            return codice.value == _STILL_ACTIVE
+
+        esito = _con_handle_processo(pid, leggi)
+        if isinstance(esito, tuple):  # OpenProcess fallita
+            err = esito[1]
+            if err == _ERROR_INVALID_PARAMETER:
+                return False  # nessun processo con questo pid
+            if err == _ERROR_ACCESS_DENIED:
+                return True  # il processo esiste, semplicemente non e' nostro
+            return None
+        return esito
     try:
         os.kill(pid, 0)
         return True
@@ -95,6 +161,135 @@ def pid_vivo(pid: Any) -> bool:
         return False
     except PermissionError:
         return True
+    except OSError:
+        return None
+
+
+def tempo_creazione_processo(pid: Any) -> float | None:
+    """Istante di creazione del processo come epoch UTC (secondi), o None se non
+    ottenibile su questa piattaforma o per questo pid. Windows: GetProcessTimes
+    (FILETIME dal 1601). Linux: campo starttime di /proc/<pid>/stat piu' btime."""
+    if not isinstance(pid, int) or pid <= 0:
+        return None
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        def leggi(k: Any, handle: Any) -> float | None:
+            creazione, uscita, kernel_t, utente_t = (wintypes.FILETIME() for _ in range(4))
+            if not k.GetProcessTimes(
+                handle, ctypes.byref(creazione), ctypes.byref(uscita),
+                ctypes.byref(kernel_t), ctypes.byref(utente_t),
+            ):
+                return None
+            ticks = (creazione.dwHighDateTime << 32) | creazione.dwLowDateTime
+            return (ticks - 116_444_736_000_000_000) / 1e7 if ticks else None
+
+        esito = _con_handle_processo(pid, leggi)
+        return None if isinstance(esito, tuple) else esito
+    if sys.platform.startswith("linux"):
+        try:
+            with open(f"/proc/{pid}/stat", encoding="ascii") as stat_file:
+                campi = stat_file.read().rsplit(")", 1)[1].split()
+            starttime_tick = int(campi[19])  # 22esimo campo, meno "pid (comm)"
+            with open("/proc/stat", encoding="ascii") as proc_stat:
+                btime = next(
+                    int(r.split()[1]) for r in proc_stat if r.startswith("btime ")
+                )
+            return btime + starttime_tick / os.sysconf("SC_CLK_TCK")
+        except (OSError, ValueError, StopIteration, IndexError):
+            return None
+    return None
+
+
+def _eseguibile_processo(pid: int) -> str | None:
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        def leggi(k: Any, handle: Any) -> str | None:
+            dimensione = wintypes.DWORD(32768)
+            buffer = ctypes.create_unicode_buffer(dimensione.value)
+            if not k.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(dimensione)):
+                return None
+            return buffer.value or None
+
+        esito = _con_handle_processo(pid, leggi)
+        return None if isinstance(esito, tuple) else esito
+    try:
+        return os.readlink(f"/proc/{pid}/exe")
+    except OSError:
+        return None
+
+
+def stato_processo(
+    pid: Any,
+    *,
+    creato_atteso: float | None = None,
+    eseguibile_atteso: str | None = None,
+) -> str:
+    """'vivo' | 'morto' | 'non_verificabile' per un pid, con controllo opzionale
+    d'identita' (PIANO §15 Slice A).
+
+    - pid non valido -> 'morto'
+    - l'OS non sa dirlo -> 'non_verificabile' (il chiamante fa fail-closed:
+      niente blocco fantasma, ma nemmeno un falso 'occupato')
+    - vivo ma istante di creazione oltre la tolleranza rispetto a `creato_atteso`
+      -> 'morto' (pid riciclato, e' un altro processo)
+    - vivo ma nome dell'eseguibile diverso da `eseguibile_atteso` -> 'morto'
+      (difesa aggiuntiva, piu' debole del confronto sull'istante di creazione)
+    """
+    if not isinstance(pid, int) or pid <= 0:
+        return PROCESSO_MORTO
+    attivo = _pid_attivo(pid)
+    if attivo is None:
+        return PROCESSO_NON_VERIFICABILE
+    if attivo is False:
+        return PROCESSO_MORTO
+    if creato_atteso is not None:
+        creato = tempo_creazione_processo(pid)
+        if creato is None:
+            return PROCESSO_NON_VERIFICABILE
+        if abs(creato - creato_atteso) > _TOLLERANZA_CREAZIONE_S:
+            return PROCESSO_MORTO
+    if eseguibile_atteso is not None:
+        eseguibile = _eseguibile_processo(pid)
+        if eseguibile is None:
+            return PROCESSO_NON_VERIFICABILE
+        if Path(eseguibile).name.lower() != Path(eseguibile_atteso).name.lower():
+            return PROCESSO_MORTO
+    return PROCESSO_VIVO
+
+
+def pid_vivo(pid: Any) -> bool:
+    """Compat: True solo se il processo e' PROVATO vivo. 'non_verificabile' ->
+    False (fail-closed). Il codice nuovo usa stato_processo() per distinguere
+    'morto' da 'non_verificabile' e per passare la tupla d'identita'."""
+    return stato_processo(pid) == PROCESSO_VIVO
+
+
+def stato_riavvio_con_vivezza(radice: Path) -> dict[str, Any] | None:
+    """leggi_stato_riavvio() piu' il campo derivato `processo` ('vivo'/'morto'/
+    'non_verificabile'): quello che la dashboard mostra senza dover fidarsi del
+    solo pid persistito."""
+    stato = leggi_stato_riavvio(radice)
+    if stato is None:
+        return None
+    return {**stato, "processo": stato_dashboard_pronto(radice)}
+
+
+def stato_dashboard_pronto(radice: Path) -> str:
+    """'vivo' | 'morto' | 'non_verificabile' per il processo dashboard registrato
+    in dashboard_riavvio.json, verificando la tupla pid+creazione+eseguibile
+    quando presente (gli stati storici hanno solo il pid)."""
+    stato = leggi_stato_riavvio(radice)
+    if not stato or stato.get("stato") != "pronto":
+        return PROCESSO_MORTO
+    return stato_processo(
+        stato.get("pid"),
+        creato_atteso=stato.get("creato_il"),
+        eseguibile_atteso=stato.get("eseguibile"),
+    )
 
 
 def trova_ultima_sessione_claude(percorso_progetto: Path) -> str | None:
