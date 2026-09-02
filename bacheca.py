@@ -351,6 +351,12 @@ def main(argv: list[str] | None = None) -> int:
     prendi.add_argument("--agente", required=True, choices=AGENTI_VALIDI)
     prendi.add_argument("--destinatari", default="")
     prendi.add_argument("--ttl-minuti", type=int, default=None)
+    prendi.add_argument(
+        "--correla-a", default=None,
+        help="id_messaggio del risveglio a cui questa presa in carico risponde: "
+        "rende la presa in carico una prova di consegna (vedi RFC stati di consegna). "
+        "Gli hook lo suggeriscono con l'id del messaggio pendente.",
+    )
     prendi.add_argument("--testo", default="")
     prendi.add_argument("--file-modificati", default="", help="CSV; se un file e' gia' in carico ad altri, avvisa e blocca salvo --forza")
     prendi.add_argument("--forza", action="store_true", help="Procede anche se i file sono gia' in carico ad altri")

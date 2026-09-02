@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import bacheca
+import consegne_risveglio
 import dashboard_config
 import dashboard_os
 import piano_overlap
@@ -316,6 +317,18 @@ def calcola_ed_esegui_risvegli(
     claude_session_id = interfaccia._trova_ultima_sessione_claude(percorso_progetto)
     risvegli = []
     stato_modificato = False
+
+    def _segna_consegna(
+        agente: str, id_messaggio: str, stato_consegna: str,
+        *, motivo: object = None, canale: str | None = None, origine: str = "watcher",
+    ) -> None:
+        # Telemetria degli stati di consegna (docs/RFC_STATI_CONSEGNA_RISVEGLIO.md).
+        # Additiva: registra_transizione non solleva e non blocca il watcher.
+        consegne_risveglio.registra_transizione(
+            percorso_progetto, agente=agente, id_messaggio=id_messaggio,
+            stato=stato_consegna, motivo=str(motivo) if motivo is not None else None,
+            canale=canale, origine=origine,
+        )
     # Il profilo operativo e' l'unica fonte runtime di autorizzazione: i
     # marker POSTINO_* sono legacy e non devono piu' decidere ne' il dispatch
     # ne' il gating del risveglio passivo. In standard il watcher si limita a
@@ -340,6 +353,10 @@ def calcola_ed_esegui_risvegli(
             if verdetto_piano["esito"] in ESITI_COLLISIONE_PIANO:
                 _nota_collisione_piano(
                     percorso_progetto, agente, candidato["thread_id"], verdetto_piano,
+                )
+                _segna_consegna(
+                    agente, candidato["id_messaggio"], consegne_risveglio.CHIUSO_SENZA_CONSEGNA,
+                    motivo=f"collisione_piano:{verdetto_piano.get('motivo')}",
                 )
                 gia_notificati.add(candidato["id_messaggio"])
                 notificati[agente] = sorted(gia_notificati)
@@ -376,8 +393,18 @@ def calcola_ed_esegui_risvegli(
                         agente, candidato["cronologia"], claude_session_id,
                     )
                     status_finale = esito_os.get("status")
+                    _segna_consegna(
+                        agente, candidato["id_messaggio"],
+                        consegne_risveglio.ATTENZIONE_RICHIAMATA,
+                        canale="os_wake", motivo=esito_dispatch.get("motivo"),
+                    )
                 else:  # molla: transitorio ripetuto o limite deliberato
                     status_finale = "rinuncia"
+                    _segna_consegna(
+                        agente, candidato["id_messaggio"],
+                        consegne_risveglio.CHIUSO_SENZA_CONSEGNA,
+                        motivo=esito_dispatch.get("motivo"), canale="headless",
+                    )
                 gia_notificati.add(candidato["id_messaggio"])
                 notificati[agente] = sorted(gia_notificati)
                 tentativi.pop(f"{agente}:{candidato['id_messaggio']}", None)
@@ -388,6 +415,10 @@ def calcola_ed_esegui_risvegli(
                     "status": status_finale, "motivo": esito_dispatch.get("motivo"),
                 })
                 continue
+            _segna_consegna(
+                agente, candidato["id_messaggio"], consegne_risveglio.PRESO_IN_CARICO,
+                canale="headless", origine="watcher_dispatch",
+            )
             gia_notificati.add(candidato["id_messaggio"])
             notificati[agente] = sorted(gia_notificati)
             tentativi.pop(f"{agente}:{candidato['id_messaggio']}", None)
@@ -402,6 +433,10 @@ def calcola_ed_esegui_risvegli(
             continue
 
         esito = interfaccia._esegui_risveglio_os(agente, candidato["cronologia"], claude_session_id)
+        _segna_consegna(
+            agente, candidato["id_messaggio"], consegne_risveglio.ATTENZIONE_RICHIAMATA,
+            canale="os_wake",
+        )
         gia_notificati.add(candidato["id_messaggio"])
         notificati[agente] = sorted(gia_notificati)
         tentativi.pop(f"{agente}:{candidato['id_messaggio']}", None)

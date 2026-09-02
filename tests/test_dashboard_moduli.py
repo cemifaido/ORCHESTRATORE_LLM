@@ -415,6 +415,12 @@ class DashboardRisvegliTest(unittest.TestCase):
             )
             risveglio.assert_not_called()
             self.assertEqual(esiti[0]["status"], "headless")
+            # lo stato di consegna passa a preso_in_carico (RFC stati di consegna)
+            import consegne_risveglio
+            self.assertEqual(
+                consegne_risveglio.stato_coppia(radice, [], "claude", "m-nuovo")["stato"],
+                consegne_risveglio.PRESO_IN_CARICO,
+            )
 
     def test_collisione_piano_sospende_il_dispatch_e_posta_segnalazione(self) -> None:
         """S14.3 slice b: se il thread ha un piano e il passo posseduto dall'agente
@@ -464,6 +470,11 @@ class DashboardRisvegliTest(unittest.TestCase):
             self.assertEqual(len(segn), 1)
             self.assertEqual(segn[0]["tipo"], "segnalazione_conflitto")
             self.assertIn("umano", segn[0]["destinatari"])
+
+            import consegne_risveglio
+            s = consegne_risveglio.stato_coppia(radice, messaggi, "claude", "m-nuovo")
+            self.assertEqual(s["stato"], consegne_risveglio.CHIUSO_SENZA_CONSEGNA)
+            self.assertIn("collisione_piano", s["motivo"])
 
             # secondo giro: il messaggio e' gia' notificato, nessuna seconda segnalazione
             with patch("dashboard_risvegli.thread_pendenti_per_agente", return_value=self._pendente()), \

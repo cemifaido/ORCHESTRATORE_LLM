@@ -1,8 +1,11 @@
 # RFC (bozza) — Stati di consegna del risveglio
 
-**Stato:** bozza convergente — revisioni Codex e Gemini recepite (2026-09-02,
-thread bacheca `4ddae141`; entrambi «pronto per implementazione»). Solo spec:
-transizioni e invarianti. In attesa del verdetto umano prima di scrivere codice.
+**Stato:** in implementazione (2026-09-02). Revisioni Codex e Gemini recepite
+(thread bacheca `4ddae141`, entrambi «pronto per implementazione»). Primo
+incremento fatto: `consegne_risveglio.py` (log + proiezione), aggancio nel
+watcher (`dashboard_risvegli`) e nell'hook (`bacheca_comandi`), `bacheca.py
+prendi --correla-a`. Da fare: superficie in dashboard, comando di reset umano,
+rigenerazione della cache `risvegli_notificati.json` dal log.
 **Origine:** PIANO_INDUSTRIALIZZAZIONE.md §15 Slice A (thread bacheca `fb8338d2`).
 Codex, 2026-09-02: «distinguere `attenzione_richiamata` / `acquisito_da_hook` /
 `preso_in_carico`, ma prima definire transizioni e invarianti; nessun cambio al
@@ -225,10 +228,11 @@ da «agy in timeout 3 volte».
 
 ## Domande ancora aperte
 
-- **`--correla-a` sullo schema.** L'implementazione deve verificare (e, se serve,
-  aggiornare) `schema/messaggio.v1.json` perché un record `tipo:
-  presa_in_carico` possa portare `correla_a` non nullo — oggi il ramo tipizzato
-  potrebbe vietarlo (`additionalProperties: false`).
+- ~~**`--correla-a` sullo schema.**~~ **RISOLTA**: `schema/messaggio.v1.json` ha
+  `correla_a` come proprietà top-level (`["string", "null"]`), non vincolata da
+  `tipo`; l'unico vincolo condizionale su `presa_in_carico` è `ttl_minuti`. Un
+  record `presa_in_carico` con `correla_a` non nullo è già valido — verificato e
+  coperto da test (`test_comando_prendi_correla_a_su_presa_in_carico`).
 - **Cooldown anti-stealing del focus.** Il risveglio OS ruba il primo piano; se
   `attenzione_richiamata` viene rieseguito (non dovrebbe, per I5, ma un bug di
   proiezione è possibile) l'utente perde il focus di continuo. Un debounce sul

@@ -486,6 +486,27 @@ class BachecaTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 bacheca.comando_prendi(args)
 
+    def test_comando_prendi_correla_a_su_presa_in_carico(self) -> None:
+        """`--correla-a` collega la presa in carico al risveglio: prova di
+        `preso_in_carico` per la RFC stati di consegna."""
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "messaggi.jsonl"
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["codex"], tipo="richiesta", testo="fai",
+            )
+            bacheca.aggiungi_messaggio(percorso, richiesta)
+            base = dict(
+                bacheca=str(percorso), thread_id=richiesta["thread_id"], agente="codex",
+                destinatari="", ttl_minuti=None, testo="", file_modificati="", forza=False,
+            )
+            self.assertEqual(bacheca.comando_prendi(argparse.Namespace(
+                **base, correla_a=richiesta["id_messaggio"])), 0)
+            ultimo = bacheca.leggi_messaggi(percorso)[-1]
+            self.assertEqual(ultimo["tipo"], "presa_in_carico")
+            self.assertEqual(ultimo["correla_a"], richiesta["id_messaggio"])
+            with self.assertRaises(ValueError):
+                bacheca.comando_prendi(argparse.Namespace(**base, correla_a="id-fantasma"))
+
     # -- checkpoint: non cambia lo stato globale, ma rende pending i destinatari --
 
     def test_checkpoint_non_cambia_stato_globale_thread_preso_in_carico(self) -> None:
@@ -936,6 +957,33 @@ class BachecaCliContractTest(unittest.TestCase):
             self.assertEqual(hook["hookEventName"], "UserPromptSubmit")
             self.assertIn("Controlla la facciata", hook["additionalContext"])
             self.assertIn("Profilo operativo standard", hook["additionalContext"])
+
+    def test_cli_prossimo_hook_traccia_il_contesto_di_consegna(self) -> None:
+        """L'hook, quando emette il contesto, registra le coppie (agente,
+        id_messaggio) in hook_contesto.jsonl: prova di `acquisito_da_hook`
+        (docs/RFC_STATI_CONSEGNA_RISVEGLIO.md). Non deve toccare
+        risvegli_notificati.json."""
+        import consegne_risveglio
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            percorso = radice / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+            percorso.parent.mkdir(parents=True)
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["codex"], tipo="richiesta", testo="fai",
+            )
+            bacheca.aggiungi_messaggio(percorso, richiesta)
+
+            esito, _stdout, _stderr = self._esegui([
+                "--bacheca", str(percorso), "prossimo", "--agente", "codex",
+                "--formato", "hook", "--evento", "UserPromptSubmit",
+            ])
+            self.assertEqual(esito, 0)
+
+            s = consegne_risveglio.stato_coppia(radice, [richiesta], "codex", richiesta["id_messaggio"])
+            self.assertEqual(s["stato"], consegne_risveglio.ACQUISITO_DA_HOOK)
+            self.assertFalse(
+                (radice / "dati_locali" / "orchestrazione" / "risvegli_notificati.json").exists()
+            )
 
     def test_cli_prossimo_hook_include_note_di_codice(self) -> None:
         """L'hook della bacheca inietta anche le note di codice ancorate

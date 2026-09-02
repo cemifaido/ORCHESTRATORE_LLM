@@ -65,6 +65,7 @@ Questo indice è il punto di ingresso per copiare o collegare la documentazione 
 - [adattatori/litellm.py](../adattatori/litellm.py) — adapter opzionale LiteLLM (chiamate a pagamento e locali, estrazione testo/misurazione condivisa).
 - [triage_locale.py](../triage_locale.py) — classificazione routine/escalation di un output a costo zero col modello locale.
 - [note_codice.py](../note_codice.py) — note di codice ancorate (S14.1): `aggiungi`/`elenco`/`verifica`/`hook`; stato derivato dall'hash del blocco.
+- [consegne_risveglio.py](../consegne_risveglio.py) — stati di consegna del risveglio (§15 Slice A): log append-only `consegne_risveglio.jsonl` + `hook_contesto.jsonl`, proiezione `in_attesa → attenzione_richiamata → acquisito_da_hook → preso_in_carico` (+ `chiuso_senza_consegna`); `risvegli_notificati.json` resta cache. Agganciato in `dashboard_risvegli` (watcher) e `bacheca_comandi` (hook).
 - [piano_overlap.py](../piano_overlap.py) — normalizzazione set di file + regola di collisione fra passi del piano (S14.3), calcolo puro fail-closed; `valuta_dispatch_piano` è il gancio che `dashboard_risvegli` consulta prima del dispatch (slice b).
 - [piano_comandi.py](../piano_comandi.py) — comandi `bacheca.py piano` (crea/prendi/offri-passo, approva-handoff) con compare-and-set atomico.
 - [commit_replay.py](../commit_replay.py) — correla un commit reale alla finestra di eventi del registro, per il replay in dashboard.

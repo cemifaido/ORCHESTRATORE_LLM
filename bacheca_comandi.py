@@ -86,6 +86,26 @@ def _contesto_note_codice(percorso_bacheca: Path) -> str:
         return ""
 
 
+def _registra_contesto_consegna(
+    percorso_bacheca: Path, agente: str, pendenti: list[dict[str, Any]]
+) -> None:
+    """Traccia in hook_contesto.jsonl le coppie (agente, id_messaggio) che
+    finiscono nel contesto emesso: prova di `acquisito_da_hook` (vedi
+    docs/RFC_STATI_CONSEGNA_RISVEGLIO.md). L'hook resta di sola aggiunta e un
+    fallimento qui non deve mai far fallire l'iniezione del contesto."""
+    if not pendenti:
+        return
+    try:
+        import consegne_risveglio
+        radice = _radice_progetto_da_bacheca(percorso_bacheca)
+        consegne_risveglio.registra_contesto_hook(
+            radice,
+            [(agente, m["id_messaggio"], m["thread_id"]) for m in pendenti],
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _richiedi_thread_esistente(messaggi: list[dict[str, Any]], thread_id: str) -> None:
     _b()._richiedi_thread_esistente(messaggi, thread_id)
 
@@ -165,6 +185,7 @@ def comando_prossimo(args: argparse.Namespace) -> int:
     if args.formato == "hook":
         # le riprese pronte solo nel formato hook: il json resta l'elenco dei soli
         # messaggi pendenti per compatibilita' coi consumatori esistenti (RFC v2 §2.6).
+        _registra_contesto_consegna(percorso_bacheca, agente, pendenti)
         testo = _arricchisci_hook_con_profilo(
             _formatta_per_hook(pendenti, riprese_pronte(messaggi, agente)), percorso_bacheca
         )
@@ -219,6 +240,9 @@ def comando_prendi(args: argparse.Namespace) -> int:
     messaggi = leggi_messaggi(percorso)
     agente = normalizza_agente(args.agente)
     _richiedi_thread_esistente(messaggi, args.thread_id)
+    correla_a = getattr(args, "correla_a", None) or None
+    if correla_a is not None and not any(m["id_messaggio"] == correla_a for m in messaggi):
+        raise ValueError(f"nessun messaggio con id_messaggio={correla_a!r}")
     file_nuovi = lista_csv(args.file_modificati)
 
     if file_nuovi:
@@ -266,6 +290,7 @@ def comando_prendi(args: argparse.Namespace) -> int:
         testo=args.testo or f"{agente} ha preso in carico il thread",
         thread_id=args.thread_id,
         ttl_minuti=args.ttl_minuti,
+        correla_a=correla_a,
         file_modificati=file_nuovi,
         metadati=metadati,
     )
