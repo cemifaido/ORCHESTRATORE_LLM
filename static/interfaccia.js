@@ -198,7 +198,24 @@
         step_log: "4. Registro",
         step_human: "5. Umano",
         step_action: "6. Azione",
-        step_close: "7. Chiusura"
+        step_close: "7. Chiusura",
+
+        // Piano Dichiarato (S14.3)
+        piano_title: "🎯 Piano Dichiarato",
+        piano_no_steps: "Nessun passo definito in questo piano.",
+        piano_progress: "{completed}/{total} passi completati",
+        passo_owner: "Proprietario: ",
+        passo_unassigned: "(non assegnato)",
+        passo_writes: "Scrittura:",
+        passo_reads: "Lettura:",
+        btn_take_step: "✋ Prendi passo",
+        btn_handoff_step: "🤝 Proponi handoff",
+        btn_done_step: "✔ Fatto",
+        btn_block_step: "⛔ Bloccato",
+        handoff_pending_title: "🤝 Proposte di Handoff in Attesa",
+        handoff_proposed: "Passo <b>{passo}</b>: proposta da <b>{da}</b> a <b>{a}</b> (richiesta da {attore})",
+        btn_approve_handoff: "Approva Handoff",
+        piano_collision_warn: "⚠ Attenzione: Rilevata possibile collisione o sovrapposizione tra passi in corso."
       },
       en: {
         // Header & Global
@@ -399,7 +416,24 @@
         step_log: "4. Log",
         step_human: "5. Human",
         step_action: "6. Action",
-        step_close: "7. Close"
+        step_close: "7. Close",
+
+        // Declared Plan (S14.3)
+        piano_title: "🎯 Declared Plan",
+        piano_no_steps: "No steps defined in this plan.",
+        piano_progress: "{completed}/{total} steps completed",
+        passo_owner: "Owner: ",
+        passo_unassigned: "(unassigned)",
+        passo_writes: "Write set:",
+        passo_reads: "Read set:",
+        btn_take_step: "✋ Take step",
+        btn_handoff_step: "🤝 Propose handoff",
+        btn_done_step: "✔ Done",
+        btn_block_step: "⛔ Blocked",
+        handoff_pending_title: "🤝 Pending Handoff Proposals",
+        handoff_proposed: "Step <b>{passo}</b>: proposal from <b>{da}</b> to <b>{a}</b> (requested by {attore})",
+        btn_approve_handoff: "Approve Handoff",
+        piano_collision_warn: "⚠ Warning: Potential overlap or conflict detected between steps in progress."
       }
     };
 
@@ -1764,6 +1798,138 @@
       }
     }
 
+    async function copiaComandoPrompt(cmd) {
+      try {
+        await copiaTestoNegliAppunti(cmd);
+        showFeedback(`${t("cmd_copied")}${cmd}`, "success");
+      } catch (err) {
+        showFeedback(`${t("cmd_copy_fail")}${cmd}`, "error");
+      }
+    }
+
+    function renderizzaPianoDichiarato(piano, thread_id) {
+      if (!piano || !piano.passi) return "";
+      const passiEntries = Object.entries(piano.passi);
+      if (passiEntries.length === 0) return "";
+
+      const total = passiEntries.length;
+      const completed = passiEntries.filter(([_, p]) => p.stato === "fatto").length;
+      const inCorso = passiEntries.filter(([_, p]) => p.stato === "in_corso");
+      const perc = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+      // Calcolo collisione informativa (avviso != blocco)
+      let collisioneAttiva = false;
+      if (inCorso.length > 1) {
+        for (let i = 0; i < inCorso.length; i++) {
+          for (let j = i + 1; j < inCorso.length; j++) {
+            const p1 = inCorso[i][1];
+            const p2 = inCorso[j][1];
+            const w1 = (p1.write_set || []).map(s => s.toLowerCase());
+            const w2 = (p2.write_set || []).map(s => s.toLowerCase());
+            const overlap = w1.some(f1 => w2.some(f2 => f1 === f2 || f1.startsWith(f2 + "/") || f2.startsWith(f1 + "/")));
+            if (overlap) {
+              collisioneAttiva = true;
+              break;
+            }
+          }
+          if (collisioneAttiva) break;
+        }
+      }
+
+      let collisioneHtml = "";
+      if (collisioneAttiva) {
+        collisioneHtml = `
+          <div class="piano-collisione-warning">
+            <span style="font-size:1.1rem;">⚠</span>
+            <div>${t("piano_collision_warn")}</div>
+          </div>
+        `;
+      }
+
+      let passiCardsHtml = passiEntries.map(([pid, p]) => {
+        const statoCls = p.stato || "non_iniziato";
+        const proprietarioHtml = p.proprietario
+          ? `<span class="tag-agent ${escapeHtml(p.proprietario)}">${escapeHtml(p.proprietario)}</span>`
+          : `<span style="color:var(--text-muted); font-size:0.75rem;">${t("passo_unassigned")}</span>`;
+
+        const writesHtml = (p.write_set && p.write_set.length > 0)
+          ? `<div><b>✏️ ${t("passo_writes")}</b> <code>${escapeHtml(p.write_set.join(", "))}</code></div>`
+          : "";
+        const readsHtml = (p.read_set && p.read_set.length > 0)
+          ? `<div><b>👁️ ${t("passo_reads")}</b> <code>${escapeHtml(p.read_set.join(", "))}</code></div>`
+          : "";
+
+        const cmdPrendi = `python bacheca.py piano prendi-passo --thread-id ${thread_id} --passo-id ${pid} --agente <tuo_agente>`;
+        const cmdHandoff = `python bacheca.py piano proponi-handoff --thread-id ${thread_id} --passo-id ${pid} --a <destinatario> --mittente <tuo_agente>`;
+        const cmdFatto = `python bacheca.py piano aggiorna-passo --thread-id ${thread_id} --passo-id ${pid} --stato fatto`;
+        const cmdBloccato = `python bacheca.py piano aggiorna-passo --thread-id ${thread_id} --passo-id ${pid} --stato bloccato`;
+
+        return `
+          <div class="passo-card ${statoCls}">
+            <div class="passo-top">
+              <span class="passo-id">#${escapeHtml(pid)}</span>
+              <div class="passo-badges">
+                ${proprietarioHtml}
+                <span class="passo-stato-badge ${statoCls}">${escapeHtml(p.stato)}</span>
+              </div>
+            </div>
+            <div class="passo-desc">${escapeHtml(p.descrizione || "")}</div>
+            ${(writesHtml || readsHtml) ? `<div class="passo-sets">${writesHtml}${readsHtml}</div>` : ""}
+            <div class="passo-azioni">
+              <button type="button" class="btn-passo" title="${escapeHtml(cmdPrendi)}" onclick="copiaComandoPrompt('${escapeHtml(cmdPrendi)}')">${t("btn_take_step")}</button>
+              <button type="button" class="btn-passo" title="${escapeHtml(cmdHandoff)}" onclick="copiaComandoPrompt('${escapeHtml(cmdHandoff)}')">${t("btn_handoff_step")}</button>
+              <button type="button" class="btn-passo" title="${escapeHtml(cmdFatto)}" onclick="copiaComandoPrompt('${escapeHtml(cmdFatto)}')">${t("btn_done_step")}</button>
+              <button type="button" class="btn-passo" title="${escapeHtml(cmdBloccato)}" onclick="copiaComandoPrompt('${escapeHtml(cmdBloccato)}')">${t("btn_block_step")}</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      let handoffHtml = "";
+      if (piano.handoff_aperti && piano.handoff_aperti.length > 0) {
+        const handoffList = piano.handoff_aperti.map(h => {
+          const cmdApprova = `python bacheca.py piano approva-handoff --thread-id ${thread_id} --passo-id ${h.passo_id} --mittente <tuo_agente>`;
+          return `
+            <div class="handoff-item">
+              <div>${t("handoff_proposed", { passo: escapeHtml(h.passo_id), da: escapeHtml(h.da || 'nil'), a: escapeHtml(h.a || 'nil'), attore: escapeHtml(h.attore || 'sistema') })}</div>
+              <button type="button" class="btn-passo" style="background:rgba(245,158,11,0.2); border-color:rgba(245,158,11,0.4); color:#fbbf24;" title="${escapeHtml(cmdApprova)}" onclick="copiaComandoPrompt('${escapeHtml(cmdApprova)}')">${t("btn_approve_handoff")}</button>
+            </div>
+          `;
+        }).join("");
+
+        handoffHtml = `
+          <div class="handoff-box">
+            <div style="font-size:0.78rem; font-weight:700; color:#fbbf24; text-transform:uppercase; margin-bottom:0.4rem;">${t("handoff_pending_title")}</div>
+            ${handoffList}
+          </div>
+        `;
+      }
+
+      return `
+        <div class="piano-widget">
+          <div class="piano-header">
+            <div class="piano-title">
+              <span>🎯</span>
+              <span>${t("piano_title")}</span>
+              <span style="font-size:0.75rem; font-weight:normal; color:var(--text-muted); font-family:monospace;">(${escapeHtml(piano.piano_id || 'v1')})</span>
+            </div>
+            <div class="piano-stats">
+              <span>${t("piano_progress", { completed, total })}</span>
+              <div class="piano-progress-bar">
+                <div class="piano-progress-fill" style="width:${perc}%;"></div>
+              </div>
+              <span style="font-weight:600; color:#93c5fd;">${perc}%</span>
+            </div>
+          </div>
+          ${collisioneHtml}
+          <div class="piano-passi-grid">
+            ${passiCardsHtml}
+          </div>
+          ${handoffHtml}
+        </div>
+      `;
+    }
+
     async function mostraDettaglioThreadBacheca(progetto_id, thread_id) {
       const box = document.getElementById("bachecaDettaglio");
       if (!box) return;
@@ -1772,6 +1938,7 @@
         const res = await fetch(`/api/bacheca/thread?progetto_id=${encodeURIComponent(progetto_id)}&thread_id=${encodeURIComponent(thread_id)}`);
         if (!res.ok) throw new Error("thread non trovato");
         const data = await res.json();
+        const pianoHtml = renderizzaPianoDichiarato(data.piano, thread_id);
         const righe = (data.messaggi || []).map(m => `
           <div class="handoff-msg system">
             <span style="color:var(--text-muted);">[${escapeHtml(formattaOraIt(m.timestamp))}]</span>
@@ -1788,6 +1955,7 @@
           </button>
         `).join("");
         box.innerHTML = `
+          ${pianoHtml}
           <div class="handoff-console">${righe}</div>
           <div style="margin-top:0.7rem; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
             <span style="font-size:0.78rem; color:var(--text-muted);">${t("revisione_label")}</span>

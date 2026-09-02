@@ -14,6 +14,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 import bacheca
+import bacheca_proiezioni
 import commit_replay
 import dashboard_config
 import dashboard_freschezza
@@ -106,7 +107,7 @@ def ottieni_stato(
     eventi_pagina = tutti_eventi[inizio:inizio + per_pagina]
 
     return {
-        "riavvio_dashboard": dashboard_os.leggi_stato_riavvio(dashboard_config.RADICE),
+        "riavvio_dashboard": dashboard_os.stato_riavvio_con_vivezza(dashboard_config.RADICE),
         "codice_dashboard": dashboard_freschezza.stato_codice_dashboard(),
         "progetti": progetti_arricchiti,
         "globali": {
@@ -225,7 +226,7 @@ def ottieni_stato_live(
     bacheca_live = _calcola_bacheca_live(target_progetto, progetto_id)
 
     return {
-        "riavvio_dashboard": dashboard_os.leggi_stato_riavvio(dashboard_config.RADICE),
+        "riavvio_dashboard": dashboard_os.stato_riavvio_con_vivezza(dashboard_config.RADICE),
         "codice_dashboard": dashboard_freschezza.stato_codice_dashboard(),
         "globali": {
             "progetti_totali": len(progetti),
@@ -321,6 +322,7 @@ def ottieni_bacheca_progetto(
             "chiusura" if stato_flusso["stato"] == "completato" else None
         )
 
+        piano_thread = bacheca_proiezioni.deriva_piano(messaggi, tid)
         thread_riepilogo.append({
             "thread_id": tid,
             "stato": bacheca.stato_thread(messaggi, tid),
@@ -332,6 +334,8 @@ def ottieni_bacheca_progetto(
             "file_modificati": ultimo["file_modificati"],
             "fase_flusso": fase_flusso,
             "stato_flusso": stato_flusso,
+            "ha_piano": piano_thread is not None,
+            "piano": piano_thread,
         })
 
         chk = bacheca.checkpoint_ripristinabile_attivo(messaggi, tid)
@@ -412,4 +416,10 @@ def ottieni_bacheca_thread(
     cronologia = bacheca._messaggi_del_thread(messaggi, thread_id)
     if not cronologia:
         raise HTTPException(status_code=404, detail="Thread non trovato")
-    return {"progetto_id": progetto_id, "thread_id": thread_id, "messaggi": cronologia}
+    piano = bacheca_proiezioni.deriva_piano(cronologia, thread_id)
+    return {
+        "progetto_id": progetto_id,
+        "thread_id": thread_id,
+        "messaggi": cronologia,
+        "piano": piano,
+    }

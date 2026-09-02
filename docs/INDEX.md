@@ -21,7 +21,7 @@ Questo indice è il punto di ingresso per copiare o collegare la documentazione 
 
 ## Piano dichiarato e passi posseduti (S14.3)
 
-- [RFC: piano dichiarato e passi posseduti](RFC_PIANO_STEP_POSSEDUTI.md) — bozza tecnica (Codex): campo opzionale `piano` su `messaggio.v1` proiettato da eventi; normalizzazione write_set/read_set; regola di overlap conservativa; compare-and-set atomico per `prendi-passo`/`offri-passo`. Slice (a) implementata (`bacheca_proiezioni.deriva_piano`, `piano_overlap.py`, `piano_comandi.py`), enforcement del dispatch ancora da agganciare.
+- [RFC: piano dichiarato e passi posseduti](RFC_PIANO_STEP_POSSEDUTI.md) — bozza tecnica (Codex): campo opzionale `piano` su `messaggio.v1` proiettato da eventi; normalizzazione write_set/read_set; regola di overlap conservativa; compare-and-set atomico per `prendi-passo`/`offri-passo`. Slice (a) implementata (`bacheca_proiezioni.deriva_piano`, `piano_overlap.py`, `piano_comandi.py`); slice (b) — enforcement del dispatch — agganciata (`dashboard_risvegli` consulta `piano_overlap.valuta_dispatch_piano` prima di `postino.dispatch`, su collisione posta `segnalazione_conflitto` senza retry); slice (c) — widget "corsie" in dashboard (`/api/bacheca/piano`, `static/interfaccia.{js,css}`) — fatta 2026-09-02.
 - [nota_codice.v1](../schema/nota_codice.v1.json) — post-it ancorati a un blocco di righe (S14.1): `ancora` percorso+range+hash, iniettati via hook, marcati `da_rivedere` quando il codice si muove.
 
 ## Flusso dichiarato
@@ -34,6 +34,7 @@ Questo indice è il punto di ingresso per copiare o collegare la documentazione 
 
 - [Guida: il postino e il dispatch headless](GUIDA_POSTINO_DISPATCH_HEADLESS.md) — **guida operativa di riferimento**: come funziona, prerequisiti per farlo funzionare, come usarlo, come replicarlo su un'altra macchina.
 - [Piano: risvegli automatici](PIANO_RISVEGLI_AUTOMATICI.md) — storia delle decisioni e guardrail concordati con Gemini/Codex (tetti, capability provate non presunte, canali ufficiali).
+- [RFC: stati di consegna del risveglio](RFC_STATI_CONSEGNA_RISVEGLIO.md) — bozza (§15 Slice A), revisione Codex recepita: superare il bit binario `notificato` con `in_attesa` → `attenzione_richiamata` → `acquisito_da_hook` → `preso_in_carico` (+ terminale `chiuso_senza_consegna`); eventi in `consegne_risveglio.jsonl` append-only, `risvegli_notificati.json` degrada a cache, hook in `hook_contesto.jsonl` separato, prova di `preso_in_carico` via `correla_a`/provenienza (mai timestamp fra sorgenti). Solo spec.
 - [verifica_aggiornamenti_cli.py](../verifica_aggiornamenti_cli.py) — controllo settimanale (Attività Pianificata Windows) delle versioni di claude/codex/agy, riassunto note di rilascio col modello locale, notifica in bacheca; mai un aggiornamento automatico senza verdetto umano.
 
 ## Integrazioni opzionali
@@ -63,7 +64,7 @@ Questo indice è il punto di ingresso per copiare o collegare la documentazione 
 - [adattatori/litellm.py](../adattatori/litellm.py) — adapter opzionale LiteLLM (chiamate a pagamento e locali, estrazione testo/misurazione condivisa).
 - [triage_locale.py](../triage_locale.py) — classificazione routine/escalation di un output a costo zero col modello locale.
 - [note_codice.py](../note_codice.py) — note di codice ancorate (S14.1): `aggiungi`/`elenco`/`verifica`/`hook`; stato derivato dall'hash del blocco.
-- [piano_overlap.py](../piano_overlap.py) — normalizzazione set di file + regola di collisione fra passi del piano (S14.3), calcolo puro fail-closed.
+- [piano_overlap.py](../piano_overlap.py) — normalizzazione set di file + regola di collisione fra passi del piano (S14.3), calcolo puro fail-closed; `valuta_dispatch_piano` è il gancio che `dashboard_risvegli` consulta prima del dispatch (slice b).
 - [piano_comandi.py](../piano_comandi.py) — comandi `bacheca.py piano` (crea/prendi/offri-passo, approva-handoff) con compare-and-set atomico.
 - [commit_replay.py](../commit_replay.py) — correla un commit reale alla finestra di eventi del registro, per il replay in dashboard.
 - [utility/installa_hook.py](../utility/installa_hook.py) — installa l'hook Git pre-commit del quality gate.

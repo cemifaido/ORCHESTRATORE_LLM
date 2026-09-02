@@ -203,6 +203,18 @@ def bacheca_thread_progetto(progetto_id: str, thread_id: str):
     return dashboard_servizi.ottieni_bacheca_thread(progetto_id=progetto_id, thread_id=thread_id, progetti=progetti)
 
 
+@router.get("/api/bacheca/piano")
+def bacheca_piano_progetto(progetto_id: str, thread_id: str):
+    import interfaccia
+    progetti = interfaccia.leggi_progetti()
+    thread_data = dashboard_servizi.ottieni_bacheca_thread(progetto_id=progetto_id, thread_id=thread_id, progetti=progetti)
+    return {
+        "progetto_id": progetto_id,
+        "thread_id": thread_id,
+        "piano": thread_data.get("piano"),
+    }
+
+
 def _riavvia_dopo_risposta() -> None:
     import interfaccia
     time.sleep(0.5)

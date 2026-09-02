@@ -1763,6 +1763,67 @@ class InterfacciaTestClientRoutesTest(unittest.TestCase):
             self.assertEqual(res.json(), {"status": "riavvio_in_corso", "id_riavvio": "r-1"})
             mock_thread.assert_called_once()
 
+    def test_bacheca_thread_e_piano_endpoint_con_piano(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            interfaccia.integra_progetto(p_path)
+            with patch("interfaccia.leggi_progetti", return_value=[{"id": "p_piano", "nome": "PianoProj", "percorso": str(p_path)}]):
+                bacheca_file = p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+                msg1 = {
+                    "versione_schema": 1,
+                    "id_messaggio": "m1",
+                    "timestamp": "2026-09-02T10:00:00Z",
+                    "mittente": "claude",
+                    "destinatari": ["gemini"],
+                    "tipo": "richiesta",
+                    "thread_id": "thread-piano-1",
+                    "correla_a": None,
+                    "testo": "Apertura piano",
+                    "file_modificati": [],
+                    "riferimenti": [],
+                    "ttl_minuti": None,
+                    "verdetto_umano": "non_revisionato",
+                    "metadati": {},
+                    "piano": {
+                        "piano_id": "piano-v1",
+                        "azione": "crea_passo",
+                        "passo_id": "p1",
+                        "campi": {
+                            "descrizione": "Primo passo",
+                            "proprietario": "gemini",
+                            "stato": "in_corso",
+                            "write_set": ["file1.py"],
+                            "read_set": [],
+                        },
+                    },
+                }
+                bacheca_file.write_text(json.dumps(msg1) + "\n", encoding="utf-8")
+
+                # Test /api/bacheca include ha_piano
+                r_bacheca = self.client.get("/api/bacheca?progetto_id=p_piano")
+                self.assertEqual(r_bacheca.status_code, 200)
+                threads = r_bacheca.json()["thread"]
+                self.assertEqual(len(threads), 1)
+                self.assertTrue(threads[0]["ha_piano"])
+                self.assertIsNotNone(threads[0]["piano"])
+
+                # Test /api/bacheca/thread include piano
+                r_thread = self.client.get("/api/bacheca/thread?progetto_id=p_piano&thread_id=thread-piano-1")
+                self.assertEqual(r_thread.status_code, 200)
+                d_thread = r_thread.json()
+                self.assertIsNotNone(d_thread["piano"])
+                self.assertEqual(d_thread["piano"]["piano_id"], "piano-v1")
+                self.assertIn("p1", d_thread["piano"]["passi"])
+                self.assertEqual(d_thread["piano"]["passi"]["p1"]["stato"], "in_corso")
+
+                # Test /api/bacheca/piano
+                r_piano = self.client.get("/api/bacheca/piano?progetto_id=p_piano&thread_id=thread-piano-1")
+                self.assertEqual(r_piano.status_code, 200)
+                d_piano = r_piano.json()
+                self.assertEqual(d_piano["piano"]["piano_id"], "piano-v1")
+                self.assertEqual(d_piano["piano"]["passi"]["p1"]["proprietario"], "gemini")
+
 
 if __name__ == "__main__":
     unittest.main()
+
