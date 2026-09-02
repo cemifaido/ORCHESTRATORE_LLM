@@ -48,18 +48,15 @@ class McpOrchestratoreTest(unittest.TestCase):
             ])
             self.assertEqual(risposte, [])
 
-    def test_tools_list_elenca_i_quattro_tool_mvp(self) -> None:
+    def test_tool_di_lettura_marcati_contenuto_non_fidato(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             radice, _ = self._radice_con_thread(tmp)
             [risp] = _dialogo(radice, "claude", [
                 {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
             ])
-            nomi = {t["name"] for t in risp["result"]["tools"]}
-            self.assertEqual(
-                nomi, {"bacheca_pendenti", "bacheca_thread", "piano_stato", "note_codice_elenco"},
-            )
-            for t in risp["result"]["tools"]:
-                self.assertIn("DATO", t["description"])  # marcato non fidato
+            desc = {t["name"]: t["description"] for t in risp["result"]["tools"]}
+            for lettura in ("bacheca_pendenti", "bacheca_thread", "piano_stato", "note_codice_elenco"):
+                self.assertIn("DATO", desc[lettura])  # risultato = dato, non istruzione
 
     def test_bacheca_pendenti_per_agente(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -173,6 +170,54 @@ class McpOrchestratoreTest(unittest.TestCase):
             self.assertEqual(payload["messaggi_totali"], 6)
             self.assertTrue(payload["troncato"])
 
+    def test_tools_list_include_le_scritture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice, _ = self._radice_con_thread(tmp)
+            [risp] = _dialogo(radice, "claude", [
+                {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+            ])
+            nomi = {t["name"] for t in risp["result"]["tools"]}
+            self.assertEqual(nomi, {
+                "bacheca_pendenti", "bacheca_thread", "piano_stato", "note_codice_elenco",
+                "bacheca_rispondi", "bacheca_prendi", "piano_prendi_passo", "piano_offri_passo",
+            })
+
+    def test_bacheca_rispondi_scrive_e_idempotente(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice, msg = self._radice_con_thread(tmp)
+            call = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                "name": "bacheca_rispondi",
+                "arguments": {"thread_id": "T1", "testo": "ci penso io",
+                              "correla_a": msg["id_messaggio"], "idempotency_key": "k1"},
+            }}
+            ok, replay = _dialogo(radice, "codex", [call, {**call, "id": 2}])
+            self.assertEqual(json.loads(ok["result"]["content"][0]["text"])["esito"], "ok")
+            self.assertEqual(json.loads(replay["result"]["content"][0]["text"])["esito"], "gia_applicato")
+            righe = (radice / "dati_locali" / "orchestrazione" / "messaggi.jsonl").read_text(
+                encoding="utf-8"
+            ).splitlines()
+            self.assertEqual(len(righe), 2)  # richiesta + una sola risposta
+            risposta = json.loads(righe[1])
+            self.assertEqual(risposta["mittente"], "codex")  # l'agente di avvio del server
+            self.assertEqual(risposta["correla_a"], msg["id_messaggio"])
+
+    def test_bacheca_prendi_e_thread_inesistente(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice, msg = self._radice_con_thread(tmp)
+            presa, ko = _dialogo(radice, "gemini", [
+                {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                    "name": "bacheca_prendi",
+                    "arguments": {"thread_id": "T1", "correla_a": msg["id_messaggio"]},
+                }},
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
+                    "name": "bacheca_rispondi", "arguments": {"thread_id": "ignoto", "testo": "x"},
+                }},
+            ])
+            self.assertEqual(json.loads(presa["result"]["content"][0]["text"])["esito"], "ok")
+            self.assertEqual(
+                json.loads(ko["result"]["content"][0]["text"])["esito"], "thread_inesistente",
+            )
+
     def test_smoke_subprocess_stdio(self) -> None:
         """Il server avviato come processo reale risponde a initialize + tools/list
         + tools/call su stdio (contratto dichiarato nella RFC)."""
@@ -196,6 +241,7 @@ class McpOrchestratoreTest(unittest.TestCase):
             self.assertEqual(righe[0]["result"]["serverInfo"]["name"], "orchestratore-locale")
             self.assertEqual({t["name"] for t in righe[1]["result"]["tools"]}, {
                 "bacheca_pendenti", "bacheca_thread", "piano_stato", "note_codice_elenco",
+                "bacheca_rispondi", "bacheca_prendi", "piano_prendi_passo", "piano_offri_passo",
             })
             self.assertFalse(righe[2]["result"]["isError"])
 

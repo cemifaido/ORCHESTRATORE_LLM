@@ -1,6 +1,6 @@
-# RFC (bozza) — Stati di consegna del risveglio
+# RFC — Stati di consegna del risveglio
 
-**Stato:** implementata (2026-09-02). Revisioni Codex e Gemini recepite
+**Stato:** APPROVATA (umano, 2026-09-02) e implementata. Revisioni Codex e Gemini recepite
 (thread bacheca `4ddae141`). Fatto: `consegne_risveglio.py` (log + proiezione +
 `registra_reset` + `rigenera_notificati`), aggancio nel watcher
 (`dashboard_risvegli`) e nell'hook (`bacheca_comandi`), `bacheca.py prendi

@@ -2,10 +2,14 @@
 """Server MCP locale per bacheca, piano e note (PIANO_INDUSTRIALIZZAZIONE.md
 §15 Slice B, docs/RFC_SERVER_MCP_LOCALE.md).
 
-MVP di sola lettura: espone come tool MCP tipizzati le proiezioni gia' calcolate
-dalle funzioni di dominio (bacheca_proiezioni, note_codice). Nessuna scrittura in
-questo incremento - le azioni (bacheca_rispondi, piano_prendi_passo, ...) sono la
-fase successiva.
+Espone come tool MCP tipizzati le funzioni di dominio dell'orchestratore:
+- lettura: bacheca_pendenti, bacheca_thread, piano_stato, note_codice_elenco;
+- scrittura di coordinamento: bacheca_rispondi, bacheca_prendi (con `correla_a`),
+  piano_prendi_passo, piano_offri_passo. Ogni scrittura e' idempotente
+  (`idempotency_key`, contratto in bacheca_scritture.py); i tool piano usano il
+  compare-and-set atomico gia' in piano_comandi.
+ESCLUSI tassativamente: I/O di file arbitrari, dispatch/risveglio, toggle del
+profilo Postino, qualunque comando git o shell.
 
 Trasporto: stdio, JSON-RPC 2.0 newline-delimited. Un processo per sessione
 client, spawnato dal client (Claude Code / Codex CLI / Antigravity). Nessun
@@ -108,6 +112,66 @@ def _tool_piano_stato(radice: Path, _agente: str, args: dict[str, Any]) -> Any:
     return {"thread_id": thread_id, "piano": bacheca_proiezioni.deriva_piano(messaggi, thread_id)}
 
 
+def _percorso_bacheca(radice: Path) -> Path:
+    return radice / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+
+
+def _testo_richiesto(args: dict[str, Any], chiave: str) -> str:
+    valore = str(args.get(chiave) or "").strip()
+    if not valore:
+        raise _ErroreTool(f"{chiave} mancante")
+    return valore
+
+
+def _tool_bacheca_rispondi(radice: Path, agente: str, args: dict[str, Any]) -> Any:
+    import bacheca_scritture
+
+    return bacheca_scritture.rispondi(
+        _percorso_bacheca(radice),
+        thread_id=_testo_richiesto(args, "thread_id"),
+        mittente=agente,
+        testo=_testo_richiesto(args, "testo"),
+        correla_a=args.get("correla_a") or None,
+        idempotency_key=args.get("idempotency_key") or None,
+    )
+
+
+def _tool_bacheca_prendi(radice: Path, agente: str, args: dict[str, Any]) -> Any:
+    import bacheca_scritture
+
+    return bacheca_scritture.prendi(
+        _percorso_bacheca(radice),
+        thread_id=_testo_richiesto(args, "thread_id"),
+        agente=agente,
+        correla_a=args.get("correla_a") or None,
+        idempotency_key=args.get("idempotency_key") or None,
+    )
+
+
+def _tool_piano_prendi_passo(radice: Path, agente: str, args: dict[str, Any]) -> Any:
+    import piano_comandi
+
+    return piano_comandi.prendi_passo(
+        _percorso_bacheca(radice),
+        _testo_richiesto(args, "thread_id"),
+        _testo_richiesto(args, "passo_id"),
+        agente,
+        idempotency_key=args.get("idempotency_key") or None,
+    )
+
+
+def _tool_piano_offri_passo(radice: Path, agente: str, args: dict[str, Any]) -> Any:
+    import piano_comandi
+
+    return piano_comandi.offri_passo(
+        _percorso_bacheca(radice),
+        _testo_richiesto(args, "thread_id"),
+        _testo_richiesto(args, "passo_id"),
+        agente,
+        _testo_richiesto(args, "a"),
+    )
+
+
 def _tool_note_codice_elenco(radice: Path, _agente: str, args: dict[str, Any]) -> Any:
     import note_codice
 
@@ -196,6 +260,87 @@ _TOOL: dict[str, tuple[dict[str, Any], Callable[[Path, str, dict[str, Any]], Any
             },
         },
         _tool_note_codice_elenco,
+    ),
+    "bacheca_rispondi": (
+        {
+            "description": (
+                "Appende una risposta a un thread esistente della bacheca, come "
+                "l'agente di questa sessione. `correla_a`: id del messaggio a cui "
+                "si risponde. `idempotency_key`: fornisci una chiave stabile per "
+                "rendere il retry sicuro (stessa chiave + stesso testo = no-op che "
+                "ritorna l'id originale; stessa chiave + testo diverso = conflitto)."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": _STRINGA, "testo": _STRINGA,
+                    "correla_a": _STRINGA, "idempotency_key": _STRINGA,
+                },
+                "required": ["thread_id", "testo"],
+                "additionalProperties": False,
+            },
+        },
+        _tool_bacheca_rispondi,
+    ),
+    "bacheca_prendi": (
+        {
+            "description": (
+                "Appende una presa in carico di un thread, come l'agente di questa "
+                "sessione (lease cooperativo, non un lock). `correla_a`: id del "
+                "messaggio/risveglio che si sta raccogliendo (prova di consegna). "
+                "`idempotency_key` come in bacheca_rispondi."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": _STRINGA,
+                    "correla_a": _STRINGA, "idempotency_key": _STRINGA,
+                },
+                "required": ["thread_id"],
+                "additionalProperties": False,
+            },
+        },
+        _tool_bacheca_prendi,
+    ),
+    "piano_prendi_passo": (
+        {
+            "description": (
+                "Acquisisce un passo del piano dichiarato di un thread (deve essere "
+                "non_iniziato e senza proprietario). Compare-and-set atomico: se un "
+                "altro agente lo prende prima, ritorna 'non_acquisibile'. "
+                "`idempotency_key` rende il retry sicuro."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": _STRINGA, "passo_id": _STRINGA,
+                    "idempotency_key": _STRINGA,
+                },
+                "required": ["thread_id", "passo_id"],
+                "additionalProperties": False,
+            },
+        },
+        _tool_piano_prendi_passo,
+    ),
+    "piano_offri_passo": (
+        {
+            "description": (
+                "Offre un passo del piano a un altro agente (`a`). Se il passo e' "
+                "in_corso propone un handoff (NON trasferisce: serve l'approvazione "
+                "esplicita del proprietario); se e' non_iniziato senza proprietario "
+                "lo assegna direttamente ad `a`."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": _STRINGA, "passo_id": _STRINGA,
+                    "a": {"type": "string", "enum": ["gemini", "claude", "codex", "umano"]},
+                },
+                "required": ["thread_id", "passo_id", "a"],
+                "additionalProperties": False,
+            },
+        },
+        _tool_piano_offri_passo,
     ),
 }
 

@@ -1,6 +1,6 @@
-# RFC (bozza) — Piano dichiarato e passi posseduti
+# RFC — Piano dichiarato e passi posseduti
 
-**Stato:** implementata. Slice (a) — campo `piano`, proiezione, `piano_overlap`,
+**Stato:** APPROVATA (umano, 2026-09-02) e implementata. Slice (a) — campo `piano`, proiezione, `piano_overlap`,
 `piano_comandi`/`bacheca.py piano` — e slice (b) — enforcement del dispatch in
 `dashboard_risvegli` via `piano_overlap.valuta_dispatch_piano` — sono chiuse
 (2026-08-31 → 2026-09-02, vedi `docs/PIANO_INDUSTRIALIZZAZIONE.md` §14.3). Resta

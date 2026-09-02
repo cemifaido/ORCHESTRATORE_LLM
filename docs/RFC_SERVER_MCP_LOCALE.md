@@ -1,7 +1,9 @@
-# RFC (bozza) — Server MCP locale per bacheca, piano e registro
+# RFC — Server MCP locale per bacheca, piano e registro
 
-**Stato:** MVP di sola lettura implementato, rivisto e **smoke-tested su tutti e
-tre i client** (2026-09-02, `mcp_orchestratore.py`). Gemini approva; Codex
+**Stato:** APPROVATA (umano, 2026-09-02) e **implementata (lettura + scrittura)**.
+Smoke-tested su tutti e tre i client (`mcp_orchestratore.py`). Tool di scrittura
+(`bacheca_rispondi`, `bacheca_prendi`, `piano_prendi_passo`, `piano_offri_passo`)
+con idempotenza obbligatoria — contratto in `bacheca_scritture.py`. Gemini approva; Codex
 approva il loop senza SDK come MVP read-only e timeboxed — il vincolo «smoke
 reale con Codex CLI e Antigravity» **è soddisfatto** (B1 Claude Code, B2 Codex
 CLI, B3 Antigravity tutti PASS end-to-end). Correzioni della revisione recepite:
@@ -88,14 +90,18 @@ risultato del tool.
 | `piano_stato` | `thread_id` | `deriva_piano(...)` o `null` | `bacheca_proiezioni.deriva_piano` |
 | `note_codice_elenco` | `percorsi?` (lista) | note attive/da_rivedere/orfane, filtrate per file se `percorsi` è dato | `note_codice.note_con_stato` / `note_per_file` |
 
-### Scrittura
+### Scrittura — implementata
 
 | Tool | Argomenti | Funzione di dominio | Note |
 |---|---|---|---|
-| `bacheca_rispondi` | `thread_id`, `testo`, `correla_a?`, `idempotency_key?` | `bacheca` write helper (come `comando_rispondi`) | `correla_a` serve alla RFC stati di consegna (prova di `preso_in_carico`). `idempotency_key`: se un messaggio con la stessa chiave esiste già nel thread, no-op. |
-| `bacheca_prendi` | `thread_id`, `correla_a?`, `idempotency_key?` | come `comando_prendi` (`presa_in_carico`) | idem `correla_a` |
+| `bacheca_rispondi` | `thread_id`, `testo`, `correla_a?`, `idempotency_key?` | `bacheca_scritture.rispondi` | `correla_a` = prova di `preso_in_carico` (RFC stati di consegna). Idempotenza: stessa chiave+payload → `gia_applicato` con id originale; chiave+payload diverso → `conflitto`. |
+| `bacheca_prendi` | `thread_id`, `correla_a?`, `idempotency_key?` | `bacheca_scritture.prendi` (`presa_in_carico`) | idem |
 | `piano_prendi_passo` | `thread_id`, `passo_id`, `idempotency_key?` | `piano_comandi.prendi_passo` | CAS atomico già garantito dalla funzione |
 | `piano_offri_passo` | `thread_id`, `passo_id`, `a` | `piano_comandi.offri_passo` | propone handoff, non trasferisce |
+
+L'`agente` è sempre quello di avvio del server (`--agente`), mai da un tool call.
+`mittente` sui record scritti = quell'agente. `bacheca_scritture` usa
+`transazione_jsonl` direttamente (non `aggiungi_messaggio`, non reentrante).
 
 ### Fase 2 (dopo che l'MVP è in uso reale)
 
@@ -260,11 +266,13 @@ logica vera sta tutta nelle funzioni di dominio.
    decidere la migrazione all'SDK `mcp`. ~~Portare le scritture di bacheca su un
    percorso serializzato~~ **FATTO** (`bacheca.aggiungi_messaggio` → `scrittura_jsonl`,
    2026-09-02).
-4. **Scrittura** — `bacheca_rispondi`, `bacheca_prendi` (con `correla_a`),
-   `piano_prendi_passo`, `piano_offri_passo`. `idempotency_key` **obbligatoria**
-   (contratto nella sezione Concorrenza); `agente` mai da tool call.
-5. **Fase 2** — `registro_aggiungi`, `piano_approva_handoff`; config reale per
-   Codex CLI e Antigravity.
+4. **Scrittura** — FATTA (`bacheca_scritture.py` + 4 tool). Idempotenza
+   obbligatoria col contratto della sezione Concorrenza (`gia_applicato` /
+   `conflitto` / `ok`); `agente` sempre da `--agente` di avvio, mai da tool
+   call. Test: `test_bacheca_scritture` (8, incl. retry concorrenti) +
+   `test_mcp_orchestratore` scritture.
+5. **Fase 2** — `registro_aggiungi`, `piano_approva_handoff`. Da fare quando
+   l'MVP è in uso reale.
 6. Worktree-awareness (Slice C): quando esisterà, il server dovrà sapere che
    `dati_locali/` è nel root del repo, non nel worktree — stesso nodo di §15.4.
 
