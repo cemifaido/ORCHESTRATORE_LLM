@@ -22,6 +22,7 @@ import dashboard_flussi
 import dashboard_os
 import dashboard_progetti
 import motore_flusso
+import piano_overlap
 import postino
 import profili_operativi
 import registro
@@ -417,6 +418,19 @@ def ottieni_bacheca_thread(
     if not cronologia:
         raise HTTPException(status_code=404, detail="Thread non trovato")
     piano = bacheca_proiezioni.deriva_piano(cronologia, thread_id)
+    if piano:
+        in_corso = bacheca_proiezioni.passi_in_corso(piano)
+        collisioni = []
+        for p in in_corso:
+            verdetto = piano_overlap.valuta_collisione(p, in_corso)
+            if verdetto.get("esito") != "consentito":
+                collisioni.append({
+                    "passo_id": p.get("id"),
+                    "motivo": verdetto.get("motivo"),
+                    "conflitto_con": verdetto.get("passo"),
+                    "proprietario": verdetto.get("proprietario"),
+                })
+        piano["collisioni"] = collisioni
     return {
         "progetto_id": progetto_id,
         "thread_id": thread_id,

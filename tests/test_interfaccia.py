@@ -1823,6 +1823,43 @@ class InterfacciaTestClientRoutesTest(unittest.TestCase):
                 self.assertEqual(d_piano["piano"]["piano_id"], "piano-v1")
                 self.assertEqual(d_piano["piano"]["passi"]["p1"]["proprietario"], "gemini")
 
+    def test_bacheca_thread_piano_espone_collisioni_dal_backend(self) -> None:
+        """§14.3 slice (c): la collisione informativa nel widget arriva calcolata
+        dal backend (piano_overlap), non ricalcolata in JS."""
+        with tempfile.TemporaryDirectory() as tmp:
+            p_path = Path(tmp)
+            interfaccia.integra_progetto(p_path)
+            with patch("interfaccia.leggi_progetti",
+                       return_value=[{"id": "p_col", "nome": "Col", "percorso": str(p_path)}]):
+                def _ev(idm, ts, piano):
+                    return json.dumps({
+                        "versione_schema": 1, "id_messaggio": idm, "timestamp": ts,
+                        "mittente": "umano", "destinatari": ["gemini"], "tipo": "richiesta",
+                        "thread_id": "t-col", "correla_a": None, "testo": "x",
+                        "file_modificati": [], "riferimenti": [], "ttl_minuti": None,
+                        "verdetto_umano": "non_revisionato", "metadati": {}, "piano": piano,
+                    })
+                righe = [
+                    _ev("m1", "2026-09-02T10:00:00Z", {
+                        "azione": "crea_passo", "piano_id": "P", "passo_id": "a",
+                        "campi": {"descrizione": "a", "write_set": ["bacheca.py"],
+                                  "proprietario": "gemini", "stato": "in_corso"}}),
+                    _ev("m2", "2026-09-02T10:01:00Z", {
+                        "azione": "crea_passo", "piano_id": "P", "passo_id": "b",
+                        "campi": {"descrizione": "b", "write_set": ["bacheca.py"],
+                                  "proprietario": "codex", "stato": "in_corso"}}),
+                ]
+                (p_path / "dati_locali" / "orchestrazione" / "messaggi.jsonl").write_text(
+                    "\n".join(righe) + "\n", encoding="utf-8")
+
+                d = self.client.get(
+                    "/api/bacheca/thread?progetto_id=p_col&thread_id=t-col"
+                ).json()
+                collisioni = d["piano"]["collisioni"]
+                self.assertTrue(collisioni)
+                self.assertEqual({c["passo_id"] for c in collisioni}, {"a", "b"})
+                self.assertTrue(all(c["motivo"] for c in collisioni))
+
 
 if __name__ == "__main__":
     unittest.main()

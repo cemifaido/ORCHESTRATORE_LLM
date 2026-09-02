@@ -1817,31 +1817,15 @@
       const inCorso = passiEntries.filter(([_, p]) => p.stato === "in_corso");
       const perc = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-      // Calcolo collisione informativa (avviso != blocco)
-      let collisioneAttiva = false;
-      if (inCorso.length > 1) {
-        for (let i = 0; i < inCorso.length; i++) {
-          for (let j = i + 1; j < inCorso.length; j++) {
-            const p1 = inCorso[i][1];
-            const p2 = inCorso[j][1];
-            const w1 = (p1.write_set || []).map(s => s.toLowerCase());
-            const w2 = (p2.write_set || []).map(s => s.toLowerCase());
-            const overlap = w1.some(f1 => w2.some(f2 => f1 === f2 || f1.startsWith(f2 + "/") || f2.startsWith(f1 + "/")));
-            if (overlap) {
-              collisioneAttiva = true;
-              break;
-            }
-          }
-          if (collisioneAttiva) break;
-        }
-      }
-
+      // Calcolo collisione informativa dal backend (avviso != blocco)
+      const collisioni = piano.collisioni || [];
       let collisioneHtml = "";
-      if (collisioneAttiva) {
+      if (collisioni.length > 0) {
+        const dettagli = collisioni.map(c => `Passo #${escapeHtml(c.passo_id)} in conflitto (${escapeHtml(c.motivo)}) con Passo #${escapeHtml(c.conflitto_con || '?')}`).join("; ");
         collisioneHtml = `
           <div class="piano-collisione-warning">
             <span style="font-size:1.1rem;">⚠</span>
-            <div>${t("piano_collision_warn")}</div>
+            <div><b>${t("piano_collision_warn")}</b><div style="font-size:0.75rem; margin-top:0.2rem; opacity:0.9;">${dettagli}</div></div>
           </div>
         `;
       }
