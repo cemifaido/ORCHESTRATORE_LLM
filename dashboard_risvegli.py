@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -44,6 +45,23 @@ MOTIVI_LIMITE_VOLUTO = frozenset({
     "tetto_thread", "max_hop_consecutivi", "budget_giornaliero", "messaggio_gia_dispatchato",
 })
 MAX_TENTATIVI_DISPATCH = 3
+
+# Il risveglio OS (focus finestra + clipboard) ruba il primo piano. Con piu'
+# messaggi pendenti il watcher lo farebbe a ogni giro (~2.5s), rendendo la
+# macchina inusabile. Un solo risveglio OS ogni COOLDOWN secondi per progetto:
+# i messaggi in eccesso restano pendenti e vengono ripresi al giro successivo.
+COOLDOWN_RISVEGLIO_OS_SECONDI = 20
+
+
+def _risveglio_os_disponibile(stato: dict, ora: datetime) -> bool:
+    ultimo = stato.get("ultimo_risveglio_os")
+    if not isinstance(ultimo, str):
+        return True
+    try:
+        momento = datetime.fromisoformat(ultimo)
+    except ValueError:
+        return True
+    return (ora - momento).total_seconds() >= COOLDOWN_RISVEGLIO_OS_SECONDI
 
 
 def _azione_su_dispatch_fallito(
@@ -291,6 +309,174 @@ def esegui_risveglio_os(
         return {"status": "errore", "prompt": prompt, "uri": uri, "modalita": modalita, "errore": str(e)}
 
 
+@dataclass
+class _CicloRisvegli:
+    """Stato mutabile condiviso da un giro del watcher. Estratto da
+    calcola_ed_esegui_risvegli per tenere la complessita' sotto controllo
+    (xenon) senza cambiare comportamento."""
+
+    percorso_progetto: Path
+    messaggi: list[dict]
+    stato: dict
+    notificati: dict
+    tentativi: dict
+    claude_session_id: str | None
+    ora: datetime
+    risvegli: list[dict] = field(default_factory=list)
+    modificato: bool = False
+
+    def riconcilia_notificati(self) -> None:
+        """Se un agente ha gia' risposto a un risveglio (prova di bacheca via
+        correla_a) senza che il watcher abbia dispatchato, la coppia risulta
+        consegnata ma non e' in `notificati` -> senza questo il watcher
+        continuerebbe a ri-notificarla. Solo aggiunte: la rimozione la fa solo il
+        reset umano esplicito (docs/RFC_STATI_CONSEGNA_RISVEGLIO.md)."""
+        proiezione = consegne_risveglio.proietta(
+            self.percorso_progetto, self.messaggi, notificati=self.notificati
+        )
+        for voce in proiezione.values():
+            if voce["stato"] == consegne_risveglio.IN_ATTESA:
+                continue
+            lista = self.notificati.setdefault(voce["agente"], [])
+            if voce["id_messaggio"] not in lista:
+                lista.append(voce["id_messaggio"])
+                self.modificato = True
+
+    def segna_consegna(
+        self, agente: str, id_messaggio: str, stato_consegna: str,
+        *, motivo: object = None, canale: str | None = None, origine: str = "watcher",
+    ) -> None:
+        consegne_risveglio.registra_transizione(
+            self.percorso_progetto, agente=agente, id_messaggio=id_messaggio,
+            stato=stato_consegna, motivo=str(motivo) if motivo is not None else None,
+            canale=canale, origine=origine,
+        )
+
+    def risveglio_os(self, agente: str, cronologia: list) -> dict | None:
+        """Risveglio OS con cooldown anti-stealing del focus: None se un altro
+        risveglio OS e' avvenuto da meno di COOLDOWN_RISVEGLIO_OS_SECONDI."""
+        import interfaccia
+        if not _risveglio_os_disponibile(self.stato, self.ora):
+            return None
+        esito = interfaccia._esegui_risveglio_os(agente, cronologia, self.claude_session_id)
+        self.stato["ultimo_risveglio_os"] = self.ora.isoformat()
+        self.modificato = True
+        return esito
+
+    def marca_notificato(self, agente: str, candidato: dict, record: dict) -> None:
+        lista = set(self.notificati.get(agente, []))
+        lista.add(candidato["id_messaggio"])
+        self.notificati[agente] = sorted(lista)
+        self.tentativi.pop(f"{agente}:{candidato['id_messaggio']}", None)
+        self.modificato = True
+        self.risvegli.append(record)
+
+    def _collisione_piano(self, agente: str, candidato: dict, verdetto: dict) -> None:
+        _nota_collisione_piano(self.percorso_progetto, agente, candidato["thread_id"], verdetto)
+        self.segna_consegna(
+            agente, candidato["id_messaggio"], consegne_risveglio.CHIUSO_SENZA_CONSEGNA,
+            motivo=f"collisione_piano:{verdetto.get('motivo')}",
+        )
+        self.marca_notificato(agente, candidato, {
+            "agente": agente, "thread_id": candidato["thread_id"],
+            "id_messaggio": candidato["id_messaggio"],
+            "status": "collisione_piano", "motivo": verdetto.get("motivo"),
+            "passo": verdetto.get("passo"),
+        })
+
+    def _dispatch_fallito(self, agente: str, candidato: dict, esito_dispatch: dict) -> None:
+        motivo = esito_dispatch.get("motivo")
+        azione = _azione_su_dispatch_fallito(
+            motivo, agente, candidato["id_messaggio"], self.tentativi,
+        )
+        if azione == "ritenta":
+            self.modificato = True  # il contatore tentativi va persistito
+            self.risvegli.append({
+                "agente": agente, "thread_id": candidato["thread_id"],
+                "status": "bloccato", "motivo": motivo,
+            })
+            return
+        if azione == "os_wake":
+            esito_os = self.risveglio_os(agente, candidato["cronologia"])
+            if esito_os is None:
+                self.risvegli.append({
+                    "agente": agente, "thread_id": candidato["thread_id"], "status": "cooldown_os",
+                })
+                return
+            status_finale = esito_os.get("status")
+            self.segna_consegna(
+                agente, candidato["id_messaggio"], consegne_risveglio.ATTENZIONE_RICHIAMATA,
+                canale="os_wake", motivo=motivo,
+            )
+        else:  # molla: transitorio ripetuto o limite deliberato
+            status_finale = "rinuncia"
+            self.segna_consegna(
+                agente, candidato["id_messaggio"], consegne_risveglio.CHIUSO_SENZA_CONSEGNA,
+                motivo=motivo, canale="headless",
+            )
+        self.marca_notificato(agente, candidato, {
+            "agente": agente, "thread_id": candidato["thread_id"],
+            "id_messaggio": candidato["id_messaggio"],
+            "status": status_finale, "motivo": motivo,
+        })
+
+    def _dispatch_headless(self, agente: str, candidato: dict) -> None:
+        verdetto = piano_overlap.valuta_dispatch_piano(
+            self.messaggi, candidato["thread_id"], agente,
+        )
+        if verdetto["esito"] in ESITI_COLLISIONE_PIANO:
+            self._collisione_piano(agente, candidato, verdetto)
+            return
+        argomenti = {"id_messaggio_attivatore": candidato["id_messaggio"]}
+        attesa = attesa_poll_ms(candidato.get("timestamp"))
+        if attesa is not None:
+            argomenti["attesa_poll_ms"] = attesa
+        esito = postino.dispatch(self.percorso_progetto, agente, candidato["thread_id"], **argomenti)
+        if esito["esito"] != "inviato":
+            self._dispatch_fallito(agente, candidato, esito)
+            return
+        self.segna_consegna(
+            agente, candidato["id_messaggio"], consegne_risveglio.PRESO_IN_CARICO,
+            canale="headless", origine="watcher_dispatch",
+        )
+        self.marca_notificato(agente, candidato, {
+            "agente": agente, "thread_id": candidato["thread_id"],
+            "id_messaggio": candidato["id_messaggio"],
+            "status": "headless", "codice": esito.get("codice"),
+        })
+
+    def _risveglio_passivo(self, agente: str, candidato: dict) -> None:
+        esito = self.risveglio_os(agente, candidato["cronologia"])
+        if esito is None:
+            self.risvegli.append({
+                "agente": agente, "thread_id": candidato["thread_id"], "status": "cooldown_os",
+            })
+            return
+        self.segna_consegna(
+            agente, candidato["id_messaggio"], consegne_risveglio.ATTENZIONE_RICHIAMATA,
+            canale="os_wake",
+        )
+        self.marca_notificato(agente, candidato, {
+            "agente": agente, "thread_id": candidato["thread_id"],
+            "id_messaggio": candidato["id_messaggio"],
+            "status": esito.get("status"), "modalita": esito.get("modalita"),
+        })
+
+    def esegui(self, pendenti: dict[str, list[dict]], dispatch_headless: bool) -> None:
+        for agente, items in pendenti.items():
+            gia_notificati = set(self.notificati.get(agente, []))
+            candidato = next(
+                (item for item in reversed(items) if item["id_messaggio"] not in gia_notificati),
+                None,
+            )
+            if candidato is None:
+                continue
+            if dispatch_headless and agente in postino.COMANDI:
+                self._dispatch_headless(agente, candidato)
+            else:
+                self._risveglio_passivo(agente, candidato)
+
+
 def calcola_ed_esegui_risvegli(
     percorso_progetto: Path,
     messaggi: list[dict],
@@ -314,142 +500,22 @@ def calcola_ed_esegui_risvegli(
         scrivi_stato_risvegli(percorso_stato, stato)
         return True, []
 
-    claude_session_id = interfaccia._trova_ultima_sessione_claude(percorso_progetto)
-    risvegli = []
-    stato_modificato = False
-
-    def _segna_consegna(
-        agente: str, id_messaggio: str, stato_consegna: str,
-        *, motivo: object = None, canale: str | None = None, origine: str = "watcher",
-    ) -> None:
-        # Telemetria degli stati di consegna (docs/RFC_STATI_CONSEGNA_RISVEGLIO.md).
-        # Additiva: registra_transizione non solleva e non blocca il watcher.
-        consegne_risveglio.registra_transizione(
-            percorso_progetto, agente=agente, id_messaggio=id_messaggio,
-            stato=stato_consegna, motivo=str(motivo) if motivo is not None else None,
-            canale=canale, origine=origine,
-        )
-    # Il profilo operativo e' l'unica fonte runtime di autorizzazione: i
-    # marker POSTINO_* sono legacy e non devono piu' decidere ne' il dispatch
-    # ne' il gating del risveglio passivo. In standard il watcher si limita a
-    # notificare l'agente attraverso il deep-link/clipboard.
+    # Il profilo operativo e' l'unica fonte runtime di autorizzazione: i marker
+    # POSTINO_* sono legacy. In standard il watcher si limita a notificare
+    # l'agente attraverso il deep-link/clipboard.
     profilo = profili_operativi.carica(percorso_progetto)
-    dispatch_headless = profili_operativi.dispatch_abilitato(profilo)
+    ciclo = _CicloRisvegli(
+        percorso_progetto=percorso_progetto,
+        messaggi=messaggi,
+        stato=stato,
+        notificati=notificati,
+        tentativi=tentativi,
+        claude_session_id=interfaccia._trova_ultima_sessione_claude(percorso_progetto),
+        ora=datetime.now(timezone.utc),
+    )
+    ciclo.riconcilia_notificati()
+    ciclo.esegui(pendenti, profili_operativi.dispatch_abilitato(profilo))
 
-    for agente, items in pendenti.items():
-        gia_notificati = set(notificati.get(agente, []))
-        candidato = next((item for item in reversed(items) if item["id_messaggio"] not in gia_notificati), None)
-        if candidato is None:
-            continue
-
-        if dispatch_headless and agente in postino.COMANDI:
-            # S14.3 slice b: se il thread ha un piano dichiarato e un passo
-            # posseduto dall'agente collide con un passo in_corso di un altro
-            # operatore, non si dispatcha. Si posta una segnalazione_conflitto e
-            # si marca notificato: nessun retry (come i limiti deliberati).
-            verdetto_piano = piano_overlap.valuta_dispatch_piano(
-                messaggi, candidato["thread_id"], agente,
-            )
-            if verdetto_piano["esito"] in ESITI_COLLISIONE_PIANO:
-                _nota_collisione_piano(
-                    percorso_progetto, agente, candidato["thread_id"], verdetto_piano,
-                )
-                _segna_consegna(
-                    agente, candidato["id_messaggio"], consegne_risveglio.CHIUSO_SENZA_CONSEGNA,
-                    motivo=f"collisione_piano:{verdetto_piano.get('motivo')}",
-                )
-                gia_notificati.add(candidato["id_messaggio"])
-                notificati[agente] = sorted(gia_notificati)
-                tentativi.pop(f"{agente}:{candidato['id_messaggio']}", None)
-                stato_modificato = True
-                risvegli.append({
-                    "agente": agente, "thread_id": candidato["thread_id"],
-                    "id_messaggio": candidato["id_messaggio"],
-                    "status": "collisione_piano", "motivo": verdetto_piano.get("motivo"),
-                    "passo": verdetto_piano.get("passo"),
-                })
-                continue
-
-            argomenti_dispatch = {"id_messaggio_attivatore": candidato["id_messaggio"]}
-            attesa = attesa_poll_ms(candidato.get("timestamp"))
-            if attesa is not None:
-                argomenti_dispatch["attesa_poll_ms"] = attesa
-            esito_dispatch = postino.dispatch(
-                percorso_progetto, agente, candidato["thread_id"], **argomenti_dispatch,
-            )
-            if esito_dispatch["esito"] != "inviato":
-                azione = _azione_su_dispatch_fallito(
-                    esito_dispatch.get("motivo"), agente, candidato["id_messaggio"], tentativi,
-                )
-                if azione == "ritenta":
-                    stato_modificato = True  # il contatore tentativi va persistito
-                    risvegli.append({
-                        "agente": agente, "thread_id": candidato["thread_id"],
-                        "status": "bloccato", "motivo": esito_dispatch.get("motivo"),
-                    })
-                    continue
-                if azione == "os_wake":
-                    esito_os = interfaccia._esegui_risveglio_os(
-                        agente, candidato["cronologia"], claude_session_id,
-                    )
-                    status_finale = esito_os.get("status")
-                    _segna_consegna(
-                        agente, candidato["id_messaggio"],
-                        consegne_risveglio.ATTENZIONE_RICHIAMATA,
-                        canale="os_wake", motivo=esito_dispatch.get("motivo"),
-                    )
-                else:  # molla: transitorio ripetuto o limite deliberato
-                    status_finale = "rinuncia"
-                    _segna_consegna(
-                        agente, candidato["id_messaggio"],
-                        consegne_risveglio.CHIUSO_SENZA_CONSEGNA,
-                        motivo=esito_dispatch.get("motivo"), canale="headless",
-                    )
-                gia_notificati.add(candidato["id_messaggio"])
-                notificati[agente] = sorted(gia_notificati)
-                tentativi.pop(f"{agente}:{candidato['id_messaggio']}", None)
-                stato_modificato = True
-                risvegli.append({
-                    "agente": agente, "thread_id": candidato["thread_id"],
-                    "id_messaggio": candidato["id_messaggio"],
-                    "status": status_finale, "motivo": esito_dispatch.get("motivo"),
-                })
-                continue
-            _segna_consegna(
-                agente, candidato["id_messaggio"], consegne_risveglio.PRESO_IN_CARICO,
-                canale="headless", origine="watcher_dispatch",
-            )
-            gia_notificati.add(candidato["id_messaggio"])
-            notificati[agente] = sorted(gia_notificati)
-            tentativi.pop(f"{agente}:{candidato['id_messaggio']}", None)
-            stato_modificato = True
-            risvegli.append({
-                "agente": agente,
-                "thread_id": candidato["thread_id"],
-                "id_messaggio": candidato["id_messaggio"],
-                "status": "headless",
-                "codice": esito_dispatch.get("codice"),
-            })
-            continue
-
-        esito = interfaccia._esegui_risveglio_os(agente, candidato["cronologia"], claude_session_id)
-        _segna_consegna(
-            agente, candidato["id_messaggio"], consegne_risveglio.ATTENZIONE_RICHIAMATA,
-            canale="os_wake",
-        )
-        gia_notificati.add(candidato["id_messaggio"])
-        notificati[agente] = sorted(gia_notificati)
-        tentativi.pop(f"{agente}:{candidato['id_messaggio']}", None)
-        stato_modificato = True
-        risvegli.append({
-            "agente": agente,
-            "thread_id": candidato["thread_id"],
-            "id_messaggio": candidato["id_messaggio"],
-            "status": esito.get("status"),
-            "modalita": esito.get("modalita"),
-        })
-
-    if stato_modificato:
+    if ciclo.modificato:
         scrivi_stato_risvegli(percorso_stato, stato)
-
-    return True, risvegli
+    return True, ciclo.risvegli

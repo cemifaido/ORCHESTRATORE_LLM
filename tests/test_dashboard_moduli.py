@@ -511,6 +511,57 @@ class DashboardRisvegliTest(unittest.TestCase):
             risveglio.assert_called_once_with("claude", [], None)
             self.assertEqual(esiti[0]["status"], "eseguito")
 
+    def test_cooldown_os_salta_il_risveglio_e_lascia_pendente(self) -> None:
+        """Un risveglio OS troppo ravvicinato ruberebbe il focus di continuo: se
+        l'ultimo e' < COOLDOWN, si salta e il messaggio resta pendente."""
+        from datetime import datetime, timezone
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            dashboard_risvegli.scrivi_stato_risvegli(
+                dashboard_risvegli.percorso_stato_risvegli(radice),
+                {"versione_schema": 1, "notificati": {},
+                 "ultimo_risveglio_os": datetime.now(timezone.utc).isoformat()},
+            )
+            with patch("dashboard_risvegli.thread_pendenti_per_agente", return_value=self._pendente()), \
+                 patch("profili_operativi.carica", return_value=profili_operativi.profilo_standard()), \
+                 patch("profili_operativi.dispatch_abilitato", return_value=False), \
+                 patch("interfaccia._trova_ultima_sessione_claude", return_value=None), \
+                 patch("interfaccia._esegui_risveglio_os") as risveglio:
+                _, esiti = dashboard_risvegli.calcola_ed_esegui_risvegli(radice, [])
+
+            risveglio.assert_not_called()
+            self.assertEqual(esiti[0]["status"], "cooldown_os")
+            stato, _ = dashboard_risvegli.leggi_stato_risvegli(
+                dashboard_risvegli.percorso_stato_risvegli(radice)
+            )
+            self.assertNotIn("m-nuovo", stato["notificati"].get("claude", []))
+
+    def test_riconcilia_notificati_con_la_prova_di_bacheca(self) -> None:
+        """Se l'agente ha risposto a un risveglio (correla_a) senza dispatch, la
+        proiezione lo dice consegnato: il watcher non deve ri-notificarlo."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            dashboard_risvegli.scrivi_stato_risvegli(
+                dashboard_risvegli.percorso_stato_risvegli(radice),
+                {"versione_schema": 1, "notificati": {}},
+            )
+            messaggi = [
+                {"mittente": "claude", "correla_a": "m-nuovo", "id_messaggio": "risposta-1",
+                 "thread_id": "t-1"},
+            ]
+            with patch("dashboard_risvegli.thread_pendenti_per_agente", return_value=self._pendente()), \
+                 patch("profili_operativi.carica", return_value=profili_operativi.profilo_standard()), \
+                 patch("profili_operativi.dispatch_abilitato", return_value=False), \
+                 patch("interfaccia._trova_ultima_sessione_claude", return_value=None), \
+                 patch("interfaccia._esegui_risveglio_os") as risveglio:
+                _, esiti = dashboard_risvegli.calcola_ed_esegui_risvegli(radice, messaggi)
+
+            risveglio.assert_not_called()  # gia' consegnato -> niente risveglio
+            stato, _ = dashboard_risvegli.leggi_stato_risvegli(
+                dashboard_risvegli.percorso_stato_risvegli(radice)
+            )
+            self.assertIn("m-nuovo", stato["notificati"]["claude"])
+
 
 class DashboardProfiliOperativiTest(unittest.TestCase):
     def test_post_profilo_e_get_bacheca(self) -> None:

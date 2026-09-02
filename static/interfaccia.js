@@ -1725,8 +1725,18 @@
           thread.forEach(t => {
             const tr = document.createElement("tr");
             tr.className = "bacheca-riga-thread" + (conflitti.includes(t) ? " riga-conflitto" : "");
+            const SIMBOLO_CONSEGNA = {
+              in_attesa: "○", attenzione_richiamata: "◔", acquisito_da_hook: "◑",
+              preso_in_carico: "●", chiuso_senza_consegna: "⊘",
+            };
+            const consegne = t.consegna_per_agente || {};
             const aspetta = (t.aspetta && t.aspetta.length > 0)
-              ? t.aspetta.map(a => `<span class="tag-agent ${escapeHtml(a)}">${escapeHtml(a)}</span>`).join(" ")
+              ? t.aspetta.map(a => {
+                  const st = consegne[a] || "in_attesa";
+                  const sim = SIMBOLO_CONSEGNA[st] || "○";
+                  return `<span class="tag-agent ${escapeHtml(a)}">${escapeHtml(a)}` +
+                    `<span title="consegna: ${escapeHtml(st)}" style="margin-left:0.25rem; opacity:0.8;">${sim}</span></span>`;
+                }).join(" ")
               : '<span style="color:var(--text-muted);">(nessuno)</span>';
             const stepperHtml = renderizzaWorkflowStepper(t.fase_flusso || "compito", flussoStandard, t.stato_flusso);
             tr.innerHTML = `

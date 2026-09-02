@@ -1,13 +1,15 @@
 # RFC (bozza) — Stati di consegna del risveglio
 
-**Stato:** in implementazione (2026-09-02). Revisioni Codex e Gemini recepite
+**Stato:** implementata (2026-09-02). Revisioni Codex e Gemini recepite
 (thread bacheca `4ddae141`). Fatto: `consegne_risveglio.py` (log + proiezione +
 `registra_reset` + `rigenera_notificati`), aggancio nel watcher
 (`dashboard_risvegli`) e nell'hook (`bacheca_comandi`), `bacheca.py prendi
---correla-a`, campo `consegna_per_agente` nel DTO della bacheca, CLI
-`consegne_risveglio.py elenco|reset|rigenera-cache`. Da fare: badge nel
-frontend della dashboard, aggancio automatico di `rigenera_notificati`
-all'avvio del watcher, cooldown anti-stealing.
+--correla-a`, campo `consegna_per_agente` nel DTO + badge nel frontend,
+riconciliazione automatica di `notificati` con la proiezione a ogni giro del
+watcher, cooldown anti-stealing del focus (`COOLDOWN_RISVEGLIO_OS_SECONDI`), CLI
+`consegne_risveglio.py elenco|reset|rigenera-cache`. Resta come nota: il
+sollecito automatico di una coppia ferma in `attenzione_richiamata` — fuori
+perimetro, da valutare dopo l'osservazione.
 **Origine:** PIANO_INDUSTRIALIZZAZIONE.md §15 Slice A (thread bacheca `fb8338d2`).
 Codex, 2026-09-02: «distinguere `attenzione_richiamata` / `acquisito_da_hook` /
 `preso_in_carico`, ma prima definire transizioni e invarianti; nessun cambio al
