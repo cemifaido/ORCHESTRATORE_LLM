@@ -25,6 +25,9 @@ AGENTS.md
 .codex/
 .gemini/
 .agents/
+# Config MCP del client Claude Code: percorsi assoluti di questa macchina.
+# Il template riusabile e' config/mcp.esempio.json.
+.mcp.json
 
 # Attestazioni reali del catalogo capability (revisione Codex, 2026-08-26): il
 # file versionato (capability_catalogo.esempio.json) descrive solo cosa il
