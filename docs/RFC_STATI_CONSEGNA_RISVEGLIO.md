@@ -1,8 +1,8 @@
 # RFC (bozza) — Stati di consegna del risveglio
 
-**Stato:** bozza, revisione Codex recepita (2026-09-02, thread bacheca
-`4ddae141`). Solo spec: transizioni e invarianti. Nessun codice in questo
-incremento. In attesa di revisione Gemini e verdetto umano.
+**Stato:** bozza convergente — revisioni Codex e Gemini recepite (2026-09-02,
+thread bacheca `4ddae141`; entrambi «pronto per implementazione»). Solo spec:
+transizioni e invarianti. In attesa del verdetto umano prima di scrivere codice.
 **Origine:** PIANO_INDUSTRIALIZZAZIONE.md §15 Slice A (thread bacheca `fb8338d2`).
 Codex, 2026-09-02: «distinguere `attenzione_richiamata` / `acquisito_da_hook` /
 `preso_in_carico`, ma prima definire transizioni e invarianti; nessun cambio al
@@ -16,6 +16,13 @@ una riga in un log append-only separato (`hook_contesto.jsonl`) che la proiezion
 incrocia — resta non-mutante; (3) `preso_in_carico` non usa più un confronto di
 timestamp fra sorgenti diverse: prova forte = messaggio dell'agente con
 `correla_a = id_messaggio`; i fallback usano l'ordine del log append-only.
+
+**Aggiunte dalla revisione Gemini:** (4) si estende `bacheca.py prendi` con
+`--correla-a` facoltativo e gli hook lo suggeriscono con
+`<id_messaggio_attivatore>`, così la prova (a) è universale (interattivo +
+headless) e il ciclo si chiude anche per Gemini/Antigravity senza dispatch;
+(5) `consegne_risveglio.jsonl` è l'unica fonte di verità, la cache si rigenera
+dal log all'avvio e a ogni disallineamento, sotto la stessa transazione.
 
 ## Problema
 
@@ -188,7 +195,7 @@ da «agy in timeout 3 volte».
   del Postino.
 - Modifiche a `postino.py`: il watcher scrive gli stati, il Postino resta com'è.
 
-## Domande chiuse in revisione (Codex, 2026-09-02)
+## Domande chiuse in revisione (Codex + Gemini, 2026-09-02)
 
 1. **Dove scrive l'hook?** → log `hook_contesto.jsonl` append-only separato, non
    `risvegli_notificati.json`. L'hook resta non-mutante; il suo fallimento non
@@ -200,18 +207,30 @@ da «agy in timeout 3 volte».
 3. **`chiuso_senza_consegna` per-motivo o stato unico + campo?** → stato unico +
    `motivo`, corretto per UI/metriche. Non moltiplicare stati. Confermata la
    proposta.
+4. **`correla_a` come prova universale** (Gemini) → si estende **`bacheca.py
+   prendi`** con un `--correla-a` facoltativo (`bacheca.py rispondi` lo ha già).
+   Gli hook (`.claude`, `.codex`, `hook_gemini.py`), quando suggeriscono il
+   comando di risposta nel contesto emesso, ci mettono `--correla-a
+   <id_messaggio_attivatore>`. Così la prova (a) vale per interattivo **e**
+   headless, e il ciclo `attenzione_richiamata → acquisito_da_hook →
+   preso_in_carico` si chiude anche per Gemini/Antigravity senza dispatch
+   headless. Da verificare in implementazione: lo schema `messaggio.v1` ammette
+   `correla_a` sul ramo `presa_in_carico` (oggi `presa_in_carico` è un tipo con
+   proprietà vincolate).
+5. **Fonte di verità e cache** (Gemini) → `consegne_risveglio.jsonl` è l'**unica**
+   fonte di verità. `risvegli_notificati.json` è cache proiettata: rigenerata
+   dal log all'avvio del watcher e ogni volta che si rileva un disallineamento
+   (o dopo un crash), aggiornata sotto la stessa transazione della scrittura sul
+   log. In caso di divergenza vince sempre il log.
 
 ## Domande ancora aperte
 
-- **`correla_a` come prova.** Perché `preso_in_carico` (a) sia una *prova* e non
-  un indizio serve che `bacheca.py rispondi` e `bacheca.py prendi`
-  (`presa_in_carico`) impostino `correla_a = id_messaggio` quando rispondono a un
-  risveglio. Va deciso: (i) estendere quei comandi con un `--correla-a` che
-  l'hook suggerisce nel contesto emesso; (ii) verificare che lo schema
-  `messaggio.v1` ammetta `correla_a` su un record `presa_in_carico`
-  (`additionalProperties: false` sul ramo tipizzato?). Se non si fa, `preso_in_carico`
-  si regge solo sulla prova (b), quindi solo per il canale headless.
-- **Ricostruzione della cache.** Se `risvegli_notificati.json` e il log JSONL
-  divergono (crash a metà scrittura), quale vince? Proposta: il log è la verità,
-  la cache si rigenera; ma serve un punto in cui la rigenerazione avviene senza
-  bloccare il watcher.
+- **`--correla-a` sullo schema.** L'implementazione deve verificare (e, se serve,
+  aggiornare) `schema/messaggio.v1.json` perché un record `tipo:
+  presa_in_carico` possa portare `correla_a` non nullo — oggi il ramo tipizzato
+  potrebbe vietarlo (`additionalProperties: false`).
+- **Cooldown anti-stealing del focus.** Il risveglio OS ruba il primo piano; se
+  `attenzione_richiamata` viene rieseguito (non dovrebbe, per I5, ma un bug di
+  proiezione è possibile) l'utente perde il focus di continuo. Un debounce sul
+  lato risveglio OS è annotato ma non ancora specificato — dipende
+  dall'osservazione degli stati reali, come il sollecito.
