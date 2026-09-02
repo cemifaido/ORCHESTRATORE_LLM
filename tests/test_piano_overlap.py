@@ -77,5 +77,63 @@ class ValutaCollisioneTest(unittest.TestCase):
         self.assertEqual((r["esito"], r["passo"]), ("non_dispatchabile", "a"))
 
 
+class ValutaDispatchPianoTest(unittest.TestCase):
+    """S14.3 slice b: il gancio che dashboard_risvegli consulta prima del dispatch."""
+
+    def _msg(self, piano: dict, *, ts: str, thread: str = "T") -> dict:
+        return {"thread_id": thread, "timestamp": ts, "mittente": "umano",
+                "destinatari": ["codex"], "piano": piano}
+
+    def _crea(self, passo_id: str, *, write_set: list[str], ts: str) -> dict:
+        return self._msg({
+            "azione": "crea_passo", "piano_id": "P", "passo_id": passo_id,
+            "attore": "umano", "campi": {"descrizione": passo_id, "write_set": write_set},
+        }, ts=ts)
+
+    def _prendi(self, passo_id: str, attore: str, *, ts: str) -> dict:
+        return self._msg({
+            "azione": "aggiorna_passo", "piano_id": "P", "passo_id": passo_id,
+            "attore": attore, "precondizione": {"versione": 0, "stato": "non_iniziato"},
+            "campi": {"proprietario": attore, "stato": "in_corso"},
+        }, ts=ts)
+
+    def test_nessun_piano_quando_il_thread_non_ne_ha(self) -> None:
+        msgs = [{"thread_id": "T", "timestamp": "1", "mittente": "umano",
+                 "destinatari": ["codex"], "testo": "x"}]
+        self.assertEqual(po.valuta_dispatch_piano(msgs, "T", "codex")["esito"], "nessun_piano")
+
+    def test_nessun_passo_se_agente_non_possiede_niente_in_corso(self) -> None:
+        msgs = [self._crea("s1", write_set=["postino.py"], ts="1"),
+                self._prendi("s1", "gemini", ts="2")]
+        self.assertEqual(po.valuta_dispatch_piano(msgs, "T", "codex")["esito"], "nessun_passo")
+
+    def test_consentito_se_i_passi_in_corso_sono_disgiunti(self) -> None:
+        msgs = [
+            self._crea("s1", write_set=["postino.py"], ts="1"),
+            self._crea("s2", write_set=["static/app.js"], ts="2"),
+            self._prendi("s1", "codex", ts="3"),
+            self._prendi("s2", "gemini", ts="4"),
+        ]
+        self.assertEqual(po.valuta_dispatch_piano(msgs, "T", "codex")["esito"], "consentito")
+
+    def test_bloccato_se_il_passo_dell_agente_collide_con_quello_di_un_altro(self) -> None:
+        msgs = [
+            self._crea("s1", write_set=["bacheca.py"], ts="1"),
+            self._crea("s2", write_set=["bacheca.py"], ts="2"),
+            self._prendi("s1", "codex", ts="3"),
+            self._prendi("s2", "gemini", ts="4"),
+        ]
+        r = po.valuta_dispatch_piano(msgs, "T", "codex")
+        self.assertEqual(r["esito"], "bloccato")
+        self.assertEqual(r["passo_candidato"], "s1")
+        self.assertEqual(r["passo"], "s2")
+        self.assertEqual(r["proprietario"], "gemini")
+
+    def test_un_passo_non_collide_con_se_stesso(self) -> None:
+        msgs = [self._crea("s1", write_set=["postino.py"], ts="1"),
+                self._prendi("s1", "codex", ts="2")]
+        self.assertEqual(po.valuta_dispatch_piano(msgs, "T", "codex")["esito"], "consentito")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -18,6 +18,7 @@ from pathlib import Path
 import bacheca
 import dashboard_config
 import dashboard_os
+import piano_overlap
 import postino
 import profili_operativi
 
@@ -55,6 +56,51 @@ def _azione_su_dispatch_fallito(
     chiave = f"{agente}:{id_messaggio}"
     tentativi[chiave] = tentativi.get(chiave, 0) + 1
     return "molla" if tentativi[chiave] >= MAX_TENTATIVI_DISPATCH else "ritenta"
+
+
+# Enum del verdetto di piano_overlap.valuta_dispatch_piano che ferma il dispatch
+# automatico. 'nessun_piano'/'nessun_passo'/'consentito' lo lasciano proseguire.
+ESITI_COLLISIONE_PIANO = frozenset({"bloccato", "non_dispatchabile"})
+
+
+def _nota_collisione_piano(
+    percorso_progetto: Path, agente: str, thread_id: str, verdetto: dict
+) -> None:
+    """Posta una segnalazione_conflitto in bacheca quando il piano dichiarato del
+    thread impedisce di risvegliare `agente` (un suo passo in_corso collide con
+    un passo posseduto da un altro operatore). Non solleva: una bacheca non
+    scrivibile non deve fermare il watcher."""
+    passo_mio = verdetto.get("passo_candidato")
+    passo_altro = verdetto.get("passo")
+    proprietario = verdetto.get("proprietario")
+    coppia = verdetto.get("motivo")
+    testo = (
+        f"[piano] dispatch automatico di {agente} sospeso sul thread {thread_id}: "
+        f"il passo '{passo_mio}' (posseduto da {agente}) collide con il passo "
+        f"'{passo_altro}'"
+        + (f" di {proprietario}" if proprietario else "")
+        + f" ({coppia}). Serve una decisione: restringere i write_set/read_set in "
+        "conflitto oppure un handoff esplicito. Nessun retry automatico."
+    )
+    percorso_bacheca = (
+        percorso_progetto / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+    )
+    try:
+        bacheca.aggiungi_messaggio(
+            percorso_bacheca,
+            bacheca.costruisci_messaggio(
+                mittente="sistema", destinatari=["umano", agente],
+                tipo="segnalazione_conflitto", testo=testo, thread_id=thread_id,
+                metadati={
+                    "origine": "watcher_piano_overlap",
+                    "passo_candidato": passo_mio, "passo_in_conflitto": passo_altro,
+                    "proprietario_in_conflitto": proprietario, "coppia": coppia,
+                    "esito": verdetto.get("esito"),
+                },
+            ),
+        )
+    except Exception as e:  # noqa: BLE001 - il watcher logga e prosegue
+        print(f"[PIANO] impossibile postare la segnalazione_conflitto: {e}", file=sys.stderr)
 
 
 def attesa_poll_ms(timestamp_messaggio: object) -> float | None:
@@ -284,6 +330,29 @@ def calcola_ed_esegui_risvegli(
             continue
 
         if dispatch_headless and agente in postino.COMANDI:
+            # S14.3 slice b: se il thread ha un piano dichiarato e un passo
+            # posseduto dall'agente collide con un passo in_corso di un altro
+            # operatore, non si dispatcha. Si posta una segnalazione_conflitto e
+            # si marca notificato: nessun retry (come i limiti deliberati).
+            verdetto_piano = piano_overlap.valuta_dispatch_piano(
+                messaggi, candidato["thread_id"], agente,
+            )
+            if verdetto_piano["esito"] in ESITI_COLLISIONE_PIANO:
+                _nota_collisione_piano(
+                    percorso_progetto, agente, candidato["thread_id"], verdetto_piano,
+                )
+                gia_notificati.add(candidato["id_messaggio"])
+                notificati[agente] = sorted(gia_notificati)
+                tentativi.pop(f"{agente}:{candidato['id_messaggio']}", None)
+                stato_modificato = True
+                risvegli.append({
+                    "agente": agente, "thread_id": candidato["thread_id"],
+                    "id_messaggio": candidato["id_messaggio"],
+                    "status": "collisione_piano", "motivo": verdetto_piano.get("motivo"),
+                    "passo": verdetto_piano.get("passo"),
+                })
+                continue
+
             argomenti_dispatch = {"id_messaggio_attivatore": candidato["id_messaggio"]}
             attesa = attesa_poll_ms(candidato.get("timestamp"))
             if attesa is not None:

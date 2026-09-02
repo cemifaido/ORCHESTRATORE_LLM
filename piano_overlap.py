@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Normalizzazione dei set di file e regola di collisione fra passi del piano
-(S14.3 slice a / piece 2). Vedi docs/RFC_PIANO_STEP_POSSEDUTI.md, sezioni
-"Contratto dei set di file" e "Regola di overlap".
+(S14.3). Vedi docs/RFC_PIANO_STEP_POSSEDUTI.md, sezioni "Contratto dei set di
+file", "Regola di overlap" e "enforcement del dispatch".
 
-Solo calcolo puro: nessuna lettura del disco, nessun enforcement del dispatch
-(l'aggancio arriva in piece 3 / slice b). Semantica conservativa e fail-closed:
-puo' produrre un falso positivo (blocco), mai un falso via libera.
+`normalizza_set`/`interseca`/`valuta_collisione` sono calcolo puro: nessuna
+lettura del disco. `valuta_dispatch_piano` (slice b) aggiunge la proiezione del
+piano da una lista di messaggi gia' in memoria - sempre senza toccare il disco -
+ed e' il gancio che `dashboard_risvegli` consulta prima di `postino.dispatch`.
+Semantica conservativa e fail-closed: puo' produrre un falso positivo (blocco),
+mai un falso via libera.
 """
 from __future__ import annotations
 
 import re
+from typing import Any
 
 # Un set con anche un solo elemento non deterministico e' interamente
 # non_dispatchabile: il sistema non invia il lavoro in automatico.
@@ -98,6 +102,8 @@ def valuta_collisione(
         return {"esito": "non_dispatchabile", "motivo": "read_set_non_deterministico"}
 
     for attivo in passi_in_corso:
+        if attivo.get("id") is not None and attivo.get("id") == candidato.get("id"):
+            continue  # un passo non collide con se stesso
         a_write = normalizza_set(attivo.get("write_set"))
         if a_write is None:
             return {
@@ -116,4 +122,41 @@ def valuta_collisione(
                     "proprietario": attivo.get("proprietario"),
                     "write_set_attivo": a_write, "write_set_candidato": c_write,
                 }
+    return {"esito": "consentito"}
+
+
+def valuta_dispatch_piano(
+    messaggi: list[dict[str, Any]], thread_id: str, agente: str
+) -> dict[str, Any]:
+    """Gancio di enforcement per il watcher (S14.3 slice b).
+
+    Se il thread `thread_id` ha un piano dichiarato e l'`agente` che si sta per
+    risvegliare possiede uno o piu' passi `in_corso`, verifica che nessuno di
+    quei passi collida (write/read set) con un altro passo `in_corso` posseduto
+    da un operatore diverso. Ritorna:
+
+    - {"esito": "nessun_piano"}      -> il thread non ha un piano: nessun vincolo
+    - {"esito": "nessun_passo"}      -> l'agente non possiede passi in_corso qui
+    - {"esito": "consentito"}        -> nessuna collisione, dispatch ammesso
+    - {"esito": "bloccato" | "non_dispatchabile", "passo": ..., ...} sul primo
+      passo dell'agente che collide (il campo `passo_candidato` porta l'id del
+      passo dell'agente in conflitto).
+
+    `bloccato` / `non_dispatchabile` NON attivano un retry: il chiamante posta
+    una nota in bacheca e marca il messaggio come notificato. Calcolo puro:
+    `messaggi` e' gia' in memoria, nessun accesso al disco.
+    """
+    import bacheca_proiezioni
+
+    piano = bacheca_proiezioni.deriva_piano(messaggi, thread_id)
+    if piano is None:
+        return {"esito": "nessun_piano"}
+    in_corso = bacheca_proiezioni.passi_in_corso(piano)
+    miei = [p for p in in_corso if p.get("proprietario") == agente]
+    if not miei:
+        return {"esito": "nessun_passo"}
+    for passo in miei:
+        verdetto = valuta_collisione(passo, in_corso)
+        if verdetto["esito"] != "consentito":
+            return {**verdetto, "passo_candidato": passo.get("id")}
     return {"esito": "consentito"}

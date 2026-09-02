@@ -362,6 +362,70 @@ class DashboardRisvegliTest(unittest.TestCase):
             risveglio.assert_not_called()
             self.assertEqual(esiti[0]["status"], "headless")
 
+    def test_collisione_piano_sospende_il_dispatch_e_posta_segnalazione(self) -> None:
+        """S14.3 slice b: se il thread ha un piano e il passo posseduto dall'agente
+        collide con un passo in_corso di un altro, non si dispatcha - si posta una
+        segnalazione_conflitto e si marca notificato (nessun retry)."""
+        def _ev(passo_id, azione, campi, attore="umano", extra=None):
+            piano = {"azione": azione, "piano_id": "P", "passo_id": passo_id,
+                     "attore": attore, "campi": campi}
+            if extra:
+                piano.update(extra)
+            return {"thread_id": "t-1", "timestamp": campi["_ts"], "mittente": attore,
+                    "destinatari": ["claude", "codex"],
+                    "piano": {k: v for k, v in piano.items()
+                              if k != "campi"} | {"campi": {k: v for k, v in campi.items() if k != "_ts"}}}
+
+        messaggi = [
+            _ev("s1", "crea_passo", {"descrizione": "s1", "write_set": ["bacheca.py"], "_ts": "1"}),
+            _ev("s2", "crea_passo", {"descrizione": "s2", "write_set": ["bacheca.py"], "_ts": "2"}),
+            _ev("s1", "aggiorna_passo", {"proprietario": "claude", "stato": "in_corso", "_ts": "3"},
+                attore="claude", extra={"precondizione": {"versione": 0, "stato": "non_iniziato"}}),
+            _ev("s2", "aggiorna_passo", {"proprietario": "codex", "stato": "in_corso", "_ts": "4"},
+                attore="codex", extra={"precondizione": {"versione": 0, "stato": "non_iniziato"}}),
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            dashboard_risvegli.scrivi_stato_risvegli(
+                dashboard_risvegli.percorso_stato_risvegli(radice), {"versione_schema": 1, "notificati": {}},
+            )
+            with patch("dashboard_risvegli.thread_pendenti_per_agente", return_value=self._pendente()), \
+                 patch("profili_operativi.carica", return_value={"profilo": "smodata"}), \
+                 patch("profili_operativi.dispatch_abilitato", return_value=True), \
+                 patch("postino.dispatch") as dispatch, \
+                 patch("interfaccia._trova_ultima_sessione_claude", return_value=None), \
+                 patch("interfaccia._esegui_risveglio_os") as risveglio:
+                _, esiti = dashboard_risvegli.calcola_ed_esegui_risvegli(radice, messaggi)
+
+            dispatch.assert_not_called()
+            risveglio.assert_not_called()
+            self.assertEqual(esiti[0]["status"], "collisione_piano")
+            self.assertEqual(esiti[0]["passo"], "s2")
+
+            righe = (radice / "dati_locali" / "orchestrazione" / "messaggi.jsonl").read_text(
+                encoding="utf-8"
+            ).splitlines()
+            segn = [json.loads(r) for r in righe]
+            self.assertEqual(len(segn), 1)
+            self.assertEqual(segn[0]["tipo"], "segnalazione_conflitto")
+            self.assertIn("umano", segn[0]["destinatari"])
+
+            # secondo giro: il messaggio e' gia' notificato, nessuna seconda segnalazione
+            with patch("dashboard_risvegli.thread_pendenti_per_agente", return_value=self._pendente()), \
+                 patch("profili_operativi.carica", return_value={"profilo": "smodata"}), \
+                 patch("profili_operativi.dispatch_abilitato", return_value=True), \
+                 patch("postino.dispatch") as dispatch2, \
+                 patch("interfaccia._trova_ultima_sessione_claude", return_value=None), \
+                 patch("interfaccia._esegui_risveglio_os"):
+                _, esiti2 = dashboard_risvegli.calcola_ed_esegui_risvegli(radice, messaggi)
+            dispatch2.assert_not_called()
+            self.assertEqual(esiti2, [])
+            righe2 = (radice / "dati_locali" / "orchestrazione" / "messaggi.jsonl").read_text(
+                encoding="utf-8"
+            ).splitlines()
+            self.assertEqual(len(righe2), 1)
+
     def test_standard_esegue_risveglio_passivo_senza_gating(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             radice = Path(tmp)

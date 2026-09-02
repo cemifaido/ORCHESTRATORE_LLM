@@ -1,16 +1,23 @@
 # RFC (bozza) — Piano dichiarato e passi posseduti
 
-**Stato:** bozza per revisione di umano e Claude.  
-**Ambito:** progetto S14.3; nessuna modifica a schema, comandi o dispatcher con
-questa RFC.
+**Stato:** implementata. Slice (a) — campo `piano`, proiezione, `piano_overlap`,
+`piano_comandi`/`bacheca.py piano` — e slice (b) — enforcement del dispatch in
+`dashboard_risvegli` via `piano_overlap.valuta_dispatch_piano` — sono chiuse
+(2026-08-31 → 2026-09-02, vedi `docs/PIANO_INDUSTRIALIZZAZIONE.md` §14.3). Resta
+la slice (c): widget "corsie" in dashboard. Questo documento è la spec di
+riferimento, aggiornato dove l'implementazione ha precisato una scelta.  
+**Ambito:** progetto S14.3.
 
 ## Obiettivo e confini
 
 Il piano rende esplicita la divisione del lavoro di un thread e fornisce un
 vincolo verificabile prima del dispatch. Non è un motore di esecuzione e non
 trasforma il prompt o la dashboard in una fonte di autorità. L'autorità è la
-proiezione validata dei record append-only e l'enforcement server-side che sarà
-aggiunto in un incremento successivo.
+proiezione validata dei record append-only e l'enforcement server-side, che dal
+2026-09-02 è agganciato nel watcher: `dashboard_risvegli.calcola_ed_esegui_risvegli`
+consulta `piano_overlap.valuta_dispatch_piano` prima di `postino.dispatch` e su
+collisione sospende il risveglio automatico, postando una `segnalazione_conflitto`
+senza retry.
 
 Il primo slice resta compatibile con `messaggio.v1`: aggiunge soltanto il campo
 opzionale `piano` ai record pertinenti. I messaggi v1 esistenti senza il campo
