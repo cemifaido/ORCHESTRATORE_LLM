@@ -77,6 +77,35 @@ class ConsegneRisveglioTest(unittest.TestCase):
                 r, agente="claude", id_messaggio="m", stato="inventato", origine="x"))
             self.assertFalse(cr.percorso_log(r).exists())
 
+    def test_reset_umano_azzera_il_log_precedente_ma_non_la_prova_bacheca(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._radice(tmp)
+            cr.registra_transizione(r, agente="codex", id_messaggio="m1",
+                                    stato=cr.CHIUSO_SENZA_CONSEGNA, origine="watcher", motivo="tetto_thread")
+            cr.registra_contesto_hook(r, [("codex", "m1", "t1")])
+            cr.registra_reset(r, agente="codex", id_messaggio="m1", motivo="umano")
+            # reset scollega da log precedente, notificati e hook
+            s = cr.stato_coppia(r, [], "codex", "m1", notificati={"codex": ["m1"]})
+            self.assertEqual(s["stato"], cr.IN_ATTESA)
+            # una nuova attivita' dopo il reset conta
+            cr.registra_transizione(r, agente="codex", id_messaggio="m1",
+                                    stato=cr.ATTENZIONE_RICHIAMATA, origine="watcher")
+            self.assertEqual(cr.stato_coppia(r, [], "codex", "m1")["stato"], cr.ATTENZIONE_RICHIAMATA)
+            # ma se l'agente aveva davvero risposto, la prova di bacheca resta
+            msgs = [{"mittente": "codex", "correla_a": "m1", "id_messaggio": "x", "thread_id": "t1"}]
+            self.assertEqual(cr.stato_coppia(r, msgs, "codex", "m1")["stato"], cr.PRESO_IN_CARICO)
+
+    def test_rigenera_notificati_dal_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._radice(tmp)
+            cr.registra_transizione(r, agente="codex", id_messaggio="a",
+                                    stato=cr.ATTENZIONE_RICHIAMATA, origine="watcher")
+            cr.registra_transizione(r, agente="gemini", id_messaggio="b",
+                                    stato=cr.PRESO_IN_CARICO, origine="watcher_dispatch")
+            cr.registra_reset(r, agente="codex", id_messaggio="a")  # torna in_attesa -> escluso
+            nuovo = cr.rigenera_notificati(r, [])
+            self.assertEqual(nuovo, {"gemini": ["b"]})
+
     def test_proietta_elenca_tutte_le_coppie_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             r = self._radice(tmp)

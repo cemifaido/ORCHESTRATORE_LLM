@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import bacheca
+import consegne_risveglio
 import dashboard_servizi
 import postino
 import profili_operativi
@@ -63,3 +64,28 @@ class GoldenPathBachecaPostinoDashboardTest(unittest.TestCase):
             stato_dashboard = dashboard_servizi.ottieni_stato(progetti=progetti)
             self.assertEqual(stato_dashboard["globali"]["eventi_totali"], 1)
             self.assertEqual(stato_dashboard["eventi"][0]["id_evento"], eventi[0]["id_evento"])
+
+    def test_consegna_per_agente_nel_dto_bacheca(self) -> None:
+        """Il DTO della bacheca porta lo stato di consegna per ogni destinatario
+        pendente (docs/RFC_STATI_CONSEGNA_RISVEGLIO.md)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            (radice / "dati_locali" / "orchestrazione").mkdir(parents=True)
+            richiesta = bacheca.costruisci_messaggio(
+                mittente="umano", destinatari=["codex"], tipo="richiesta",
+                testo="fai", thread_id="t-consegna",
+            )
+            bacheca.aggiungi_messaggio(
+                radice / "dati_locali" / "orchestrazione" / "messaggi.jsonl", richiesta,
+            )
+            consegne_risveglio.registra_transizione(
+                radice, agente="codex", id_messaggio=richiesta["id_messaggio"],
+                stato=consegne_risveglio.ATTENZIONE_RICHIAMATA, origine="watcher", canale="os_wake",
+            )
+            progetti = [{"id": "c", "nome": "C", "percorso": str(radice)}]
+            dto = dashboard_servizi.ottieni_bacheca_progetto("c", progetti=progetti)
+            thread = dto["thread"][0]
+            self.assertEqual(
+                thread["consegna_per_agente"]["codex"],
+                consegne_risveglio.ATTENZIONE_RICHIAMATA,
+            )

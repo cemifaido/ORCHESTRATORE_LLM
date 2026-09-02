@@ -16,6 +16,7 @@ from fastapi import HTTPException
 import bacheca
 import bacheca_proiezioni
 import commit_replay
+import consegne_risveglio
 import dashboard_config
 import dashboard_freschezza
 import dashboard_flussi
@@ -311,6 +312,10 @@ def ottieni_bacheca_progetto(
     pratiche_sospese = []
     pending_per_agente = {agente: 0 for agente in AGENTI_BACHECA_DASHBOARD}
 
+    consegne = consegne_risveglio.proietta(
+        p_path, messaggi, notificati=consegne_risveglio.notificati_da_disco(p_path)
+    )
+
     for tid in thread_ids:
         ultimo = bacheca._messaggi_del_thread(messaggi, tid)[-1]
         aspetta = bacheca.destinatari_pendenti(messaggi, tid)
@@ -337,6 +342,12 @@ def ottieni_bacheca_progetto(
             "stato_flusso": stato_flusso,
             "ha_piano": piano_thread is not None,
             "piano": piano_thread,
+            "consegna_per_agente": {
+                agente: consegne.get(
+                    f"{agente}:{ultimo['id_messaggio']}", {}
+                ).get("stato", consegne_risveglio.IN_ATTESA)
+                for agente in aspetta
+            },
         })
 
         chk = bacheca.checkpoint_ripristinabile_attivo(messaggi, tid)

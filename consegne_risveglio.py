@@ -118,6 +118,19 @@ def registra_transizione(
     return record
 
 
+def registra_reset(
+    radice: Path, *, agente: str, id_messaggio: str, motivo: str | None = None
+) -> dict[str, Any] | None:
+    """Reset esplicito e umano di una coppia: la proiezione ignora tutto cio' che
+    e' nel log PRIMA di questa riga (regola 4 della RFC). Una prova esterna
+    successiva (hook, correla_a) resta comunque valida - il reset riporta indietro
+    la vista del watcher, non la verita' del thread."""
+    return registra_transizione(
+        radice, agente=agente, id_messaggio=id_messaggio,
+        stato=IN_ATTESA, origine="reset_umano", motivo=motivo,
+    )
+
+
 def registra_contesto_hook(
     radice: Path, coppie: list[tuple[str, str, str]]
 ) -> int:
@@ -175,6 +188,19 @@ def _stato_coppia(
 ) -> tuple[str, str | None]:
     if ha_prova_bacheca:
         return PRESO_IN_CARICO, None
+
+    # Regola 4: un reset umano azzera tutto cio' che lo precede nel log, scollega
+    # dalla cache legacy `notificati` e dal contesto hook precedente (l'umano dice
+    # esplicitamente "trattala come nuova"). Solo la prova di bacheca (correla_a,
+    # gestita sopra) sopravvive: quella e' un fatto, non una vista del watcher.
+    ultimo_reset = max(
+        (i for i, r in enumerate(righe_log) if r.get("origine") == "reset_umano"),
+        default=-1,
+    )
+    if ultimo_reset >= 0:
+        righe_log = righe_log[ultimo_reset + 1:]
+        in_notificati = False
+        ha_hook = False
 
     livello = ATTENZIONE_RICHIAMATA if in_notificati else IN_ATTESA
     motivo_chiuso: str | None = None
@@ -247,6 +273,25 @@ def proietta(
     return risultato
 
 
+def rigenera_notificati(
+    radice: Path, messaggi: list[dict[str, Any]]
+) -> dict[str, list[str]]:
+    """Ricostruisce il blocco `notificati` di `risvegli_notificati.json` dalla
+    proiezione: una coppia che non e' piu' `in_attesa` (il watcher l'ha gestita,
+    o e' stata consegnata) risulta notificata. Il log JSONL e' la fonte di
+    verita'; questa e' la cache derivata (Gemini, RFC domanda 5).
+
+    Ritorna il nuovo blocco `notificati`. NON scrive il file: il chiamante lo
+    fa sotto la stessa transazione con cui aggiorna il resto dello stato.
+    """
+    proiezione = proietta(radice, messaggi, notificati=None)
+    nuovo: dict[str, list[str]] = {}
+    for v in proiezione.values():
+        if v["stato"] != IN_ATTESA:
+            nuovo.setdefault(v["agente"], []).append(v["id_messaggio"])
+    return {agente: sorted(set(ids)) for agente, ids in nuovo.items()}
+
+
 def stato_coppia(
     radice: Path,
     messaggi: list[dict[str, Any]],
@@ -262,25 +307,59 @@ def stato_coppia(
     )
 
 
+def notificati_da_disco(radice: Path) -> dict[str, list[str]]:
+    percorso = radice / "dati_locali" / "orchestrazione" / "risvegli_notificati.json"
+    if not percorso.exists():
+        return {}
+    try:
+        return json.loads(percorso.read_text(encoding="utf-8")).get("notificati", {})
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
 def _cli(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Stati di consegna del risveglio.")
     parser.add_argument("--radice", type=Path, default=RADICE)
     sotto = parser.add_subparsers(dest="comando", required=True)
     sotto.add_parser("elenco", help="Stato di consegna di ogni coppia nota")
+    p_reset = sotto.add_parser("reset", help="Reset umano di una coppia (agente, id_messaggio)")
+    p_reset.add_argument("--agente", required=True)
+    p_reset.add_argument("--id-messaggio", required=True)
+    p_reset.add_argument("--motivo", default=None)
+    sotto.add_parser(
+        "rigenera-cache", help="Riscrive il blocco notificati di risvegli_notificati.json dal log"
+    )
     args = parser.parse_args(argv)
 
     import bacheca
 
     messaggi, _errore = bacheca.leggi_messaggi_progetto(args.radice)
-    notificati: dict[str, list[str]] = {}
-    percorso_notif = args.radice / "dati_locali" / "orchestrazione" / "risvegli_notificati.json"
-    if percorso_notif.exists():
-        try:
-            notificati = json.loads(percorso_notif.read_text(encoding="utf-8")).get("notificati", {})
-        except (OSError, json.JSONDecodeError):
-            notificati = {}
 
-    proiezione = proietta(args.radice, messaggi, notificati=notificati)
+    if args.comando == "reset":
+        record = registra_reset(
+            args.radice, agente=args.agente, id_messaggio=args.id_messaggio, motivo=args.motivo,
+        )
+        print(json.dumps(record, ensure_ascii=False) if record else "reset non scritto")
+        return 0 if record else 1
+
+    if args.comando == "rigenera-cache":
+        nuovo = rigenera_notificati(args.radice, messaggi)
+        percorso = args.radice / "dati_locali" / "orchestrazione" / "risvegli_notificati.json"
+        stato = {"versione_schema": 1, "notificati": nuovo}
+        if percorso.exists():
+            try:
+                esistente = json.loads(percorso.read_text(encoding="utf-8"))
+                if isinstance(esistente, dict):
+                    esistente["notificati"] = nuovo
+                    stato = esistente
+            except (OSError, json.JSONDecodeError):
+                pass
+        percorso.parent.mkdir(parents=True, exist_ok=True)
+        percorso.write_text(json.dumps(stato, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(json.dumps(nuovo, ensure_ascii=False))
+        return 0
+
+    proiezione = proietta(args.radice, messaggi, notificati=notificati_da_disco(args.radice))
     for chiave in sorted(proiezione):
         v = proiezione[chiave]
         riga = f"{v['agente']:8} {v['id_messaggio'][:12]}  {v['stato']}"
