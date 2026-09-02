@@ -1,7 +1,11 @@
 # RFC (bozza) — Server MCP locale per bacheca, piano e registro
 
-**Stato:** bozza approvata da Gemini (2026-09-02, thread `fb8338d2`). In attesa
-della revisione Codex e del verdetto umano prima del codice.
+**Stato:** MVP di sola lettura implementato (2026-09-02, `mcp_orchestratore.py`).
+Approvata da Gemini; revisione Codex ancora attesa. Scelta divergente dalla
+raccomandazione originale: l'MVP **non** usa l'SDK `mcp` ma un loop JSON-RPC 2.0
+newline-delimited di ~100 righe — si evita di pinnare una dipendenza in
+`requirements.txt` prima di sapere se il server serve davvero; la logica sta
+tutta nelle funzioni di dominio, il passaggio all'SDK non tocca i tool.
 **Origine:** PIANO_INDUSTRIALIZZAZIONE.md §15 Slice B (thread bacheca `fb8338d2`).
 Prerequisito «verifica del codice sorgente reale dei benchmark» già svolto
 (Codex, 2026-09-02, thread `4ddae141`): vedi sotto.
@@ -178,14 +182,15 @@ vogliamo possedere. La dipendenza è isolabile: solo `mcp_orchestratore.py` la
 importa; se un domani dà problemi, il fallback (2) resta possibile perché la
 logica vera sta tutta nelle funzioni di dominio.
 
-## File nuovi previsti
+## File nuovi
 
-- `mcp_orchestratore.py` — il server. Sottile: registra i tool, mappa
-  argomenti → funzione di dominio → risultato. Nessuna logica di business propria.
-- `config/mcp.esempio.json` — config di esempio per un client MCP (comando,
-  args `--radice`/`--agente`), sul modello di `config/comandi.esempio.json`. Il
-  file reale con i path assoluti di questa macchina resta gitignored.
-- Voce in `docs/INDEX.md`.
+- `mcp_orchestratore.py` — il server. **Fatto** (MVP sola lettura). Sottile:
+  registra i tool, mappa argomenti → funzione di dominio → risultato. Nessuna
+  logica di business propria. Loop JSON-RPC 2.0 stdio senza dipendenze.
+- `config/mcp.esempio.json` — **fatto**: i tre snippet di config (Claude Code,
+  Codex CLI, Antigravity) con `<RADICE>`/`<AGENTE>` da sostituire. Il file reale
+  con i path assoluti va trattato come `config/comandi.json` (fuori da Git).
+- Voce in `docs/INDEX.md` — **fatta**.
 
 ## Testing
 
@@ -209,11 +214,14 @@ logica vera sta tutta nelle funzioni di dominio.
    riprovare con una config reale in Fase 2.
 2. **`bacheca.py prendi --correla-a`** — FATTO (commit `3387866`, Slice A). L'MCP
    `bacheca_prendi` lo riusa e basta.
-3. **MVP di sola lettura** — `bacheca_pendenti`, `bacheca_thread`, `piano_stato`,
-   `note_codice_elenco`. Nessuna scrittura. Si prova con Claude Code per una
-   settimana: gli agenti leggono lo stato via tool invece che via hook?
+3. **MVP di sola lettura** — FATTO (`mcp_orchestratore.py`): `bacheca_pendenti`,
+   `bacheca_thread`, `piano_stato`, `note_codice_elenco`. Nessuna scrittura.
+   `config/mcp.esempio.json` ha i tre snippet di config. Da provare con Claude
+   Code per una settimana: gli agenti leggono lo stato via tool invece che via
+   hook?
 4. **Scrittura** — `bacheca_rispondi`, `bacheca_prendi` (con `correla_a`),
-   `piano_prendi_passo`, `piano_offri_passo`.
+   `piano_prendi_passo`, `piano_offri_passo`. Qui rientra l'`idempotency_key` e
+   il controllo che l'`agente` del tool call non contraddica quello di avvio.
 5. **Fase 2** — `registro_aggiungi`, `piano_approva_handoff`; config reale per
    Codex CLI e Antigravity.
 6. Worktree-awareness (Slice C): quando esisterà, il server dovrà sapere che
