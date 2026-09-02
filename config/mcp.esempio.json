@@ -1,5 +1,5 @@
 {
-  "_nota": "Configurazione di esempio per collegare mcp_orchestratore.py ai tre client MCP. Sostituisci <RADICE> con il percorso assoluto del repo su questa macchina e <AGENTE> con claude|codex|gemini. Il file reale con i percorsi assoluti resta fuori da Git, come config/comandi.json.",
+  "_nota": "Configurazione di esempio per collegare mcp_orchestratore.py ai tre client MCP. Sostituisci <RADICE> con il percorso assoluto del repo su questa macchina e <AGENTE> con claude|codex|gemini. --radice e' OBBLIGATORIA (nessun fallback: in un worktree __file__ punterebbe al posto sbagliato). Il file reale con i percorsi assoluti resta fuori da Git, come config/comandi.json.",
   "_documentazione": "docs/RFC_SERVER_MCP_LOCALE.md",
 
   "claude_code": {
@@ -12,13 +12,23 @@
     }
   },
 
-  "codex_cli": {
-    "_dove": "comando una tantum; scrive in ~/.codex/config.toml",
+  "codex_cli_comando": {
+    "_dove": "comando una tantum; scrive in ~/.codex/config.toml (globale)",
+    "_sintassi_confermata": "codex mcp add [OPTIONS] <NAME> (--url <URL> | -- <COMMAND>...)  (Codex, 2026-09-02)",
     "comando": "codex mcp add orchestratore -- python <RADICE>/mcp_orchestratore.py --radice <RADICE> --agente codex"
   },
 
+  "codex_cli_config_progetto": {
+    "_dove": ".codex/config.toml nel repo (repo trusted) - evita di toccare la config globale",
+    "_toml": [
+      "[mcp_servers.orchestratore]",
+      "command = \"python\"",
+      "args = [\"<RADICE>/mcp_orchestratore.py\", \"--radice\", \"<RADICE>\", \"--agente\", \"codex\"]"
+    ]
+  },
+
   "antigravity": {
-    "_dove": "mcp_config.json in ~/.gemini/config/ oppure .agents/ (da confermare sul manuale Antigravity)",
+    "_dove": ".agents/mcp_config.json (confermato da doc primaria, Codex 2026-09-02) - supporta command/args/env/cwd",
     "mcpServers": {
       "orchestratore": {
         "command": "python",

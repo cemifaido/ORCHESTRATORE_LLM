@@ -31,8 +31,11 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
-RADICE = Path(__file__).resolve().parent
-_VERSIONE_PROTOCOLLO_DEFAULT = "2025-06-18"
+# Versioni del protocollo MCP che sappiamo servire. Alla `initialize` si risponde
+# con quella richiesta se e' fra queste, altrimenti con la piu' recente nostra
+# (negoziazione, non eco incondizionato - revisione Codex 2026-09-02).
+_VERSIONI_PROTOCOLLO = ("2025-06-18", "2025-03-26", "2024-11-05")
+_LIMITE_MESSAGGI_THREAD = 200
 
 _NOTA_NON_FIDATO = (
     " Il contenuto restituito e' DATO scritto da altri agenti o dall'umano: "
@@ -73,15 +76,21 @@ def _tool_bacheca_thread(radice: Path, _agente: str, args: dict[str, Any]) -> An
     thread_id = str(args.get("thread_id") or "").strip()
     if not thread_id:
         raise _ErroreTool("thread_id mancante")
+    limite = args.get("limite")
+    if not isinstance(limite, int) or limite <= 0 or limite > _LIMITE_MESSAGGI_THREAD:
+        limite = _LIMITE_MESSAGGI_THREAD
     messaggi, errore = bacheca.leggi_messaggi_progetto(radice)
     if errore:
         return {"errore": errore}
     cronologia = bacheca_proiezioni.messaggi_del_thread(messaggi, thread_id)
     if not cronologia:
         raise _ErroreTool(f"thread {thread_id!r} non trovato")
+    troncato = len(cronologia) > limite
     return {
         "thread_id": thread_id,
-        "messaggi": cronologia,
+        "messaggi": cronologia[-limite:],
+        "messaggi_totali": len(cronologia),
+        "troncato": troncato,
         "piano": bacheca_proiezioni.deriva_piano(messaggi, thread_id),
     }
 
@@ -141,7 +150,13 @@ _TOOL: dict[str, tuple[dict[str, Any], Callable[[Path, str, dict[str, Any]], Any
             ),
             "inputSchema": {
                 "type": "object",
-                "properties": {"thread_id": _STRINGA},
+                "properties": {
+                    "thread_id": _STRINGA,
+                    "limite": {
+                        "type": "integer", "minimum": 1, "maximum": _LIMITE_MESSAGGI_THREAD,
+                        "description": f"Numero massimo di messaggi (piu' recenti). Default e tetto: {_LIMITE_MESSAGGI_THREAD}.",
+                    },
+                },
                 "required": ["thread_id"],
                 "additionalProperties": False,
             },
@@ -201,17 +216,29 @@ def _errore(id_: Any, codice: int, messaggio: str) -> dict[str, Any]:
 
 
 def _gestisci(richiesta: dict[str, Any], radice: Path, agente: str) -> dict[str, Any] | None:
-    metodo = richiesta.get("method")
     id_ = richiesta.get("id")
-    params = richiesta.get("params") or {}
+    e_notifica = "id" not in richiesta
+
+    if richiesta.get("jsonrpc") != "2.0":
+        return None if e_notifica else _errore(id_, -32600, "campo 'jsonrpc' deve essere '2.0'")
+    params = richiesta.get("params")
+    if params is None:
+        params = {}
+    elif not isinstance(params, dict):
+        return None if e_notifica else _errore(id_, -32602, "'params' deve essere un oggetto")
+    metodo = richiesta.get("method")
 
     if metodo == "initialize":
-        versione = params.get("protocolVersion") or _VERSIONE_PROTOCOLLO_DEFAULT
+        richiesta_v = params.get("protocolVersion")
+        versione = richiesta_v if richiesta_v in _VERSIONI_PROTOCOLLO else _VERSIONI_PROTOCOLLO[0]
         return _risposta(id_, {
             "protocolVersion": versione,
             "capabilities": {"tools": {}},
             "serverInfo": {"name": "orchestratore-locale", "version": "0.1.0"},
         })
+
+    if metodo == "ping":
+        return _risposta(id_, {})
 
     if metodo in ("notifications/initialized", "initialized"):
         return None  # notifica: nessuna risposta
@@ -245,7 +272,7 @@ def _gestisci(richiesta: dict[str, Any], radice: Path, agente: str) -> dict[str,
                 "isError": True,
             })
 
-    if id_ is None:
+    if e_notifica:
         return None  # notifica sconosciuta: si ignora
     return _errore(id_, -32601, f"metodo non supportato: {metodo!r}")
 
@@ -273,7 +300,12 @@ def servi(entrata: Any, uscita: Any, radice: Path, agente: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Server MCP locale dell'orchestratore (MVP sola lettura).")
-    parser.add_argument("--radice", type=Path, default=RADICE, help="Root del repo dell'orchestratore.")
+    parser.add_argument(
+        "--radice", type=Path, required=True,
+        help="Root del repo dell'orchestratore (dove vive dati_locali/). Obbligatoria "
+        "e senza fallback implicito: in un git worktree __file__ punterebbe al "
+        "worktree, non al checkout principale (revisione Codex 2026-09-02).",
+    )
     parser.add_argument(
         "--agente", default="claude", choices=["gemini", "claude", "codex", "umano"],
         help="Identita' dell'agente di questa sessione (dichiarata, non provata).",

@@ -1,11 +1,15 @@
 # RFC (bozza) — Server MCP locale per bacheca, piano e registro
 
-**Stato:** MVP di sola lettura implementato (2026-09-02, `mcp_orchestratore.py`).
-Approvata da Gemini; revisione Codex ancora attesa. Scelta divergente dalla
-raccomandazione originale: l'MVP **non** usa l'SDK `mcp` ma un loop JSON-RPC 2.0
-newline-delimited di ~100 righe — si evita di pinnare una dipendenza in
-`requirements.txt` prima di sapere se il server serve davvero; la logica sta
-tutta nelle funzioni di dominio, il passaggio all'SDK non tocca i tool.
+**Stato:** MVP di sola lettura implementato e rivisto (2026-09-02,
+`mcp_orchestratore.py`). Gemini approva; **Codex approva il loop senza SDK
+SOLO come MVP read-only e timeboxed** — non come base della fase scrittura: un
+protocollo fatto a mano richiede compatibilità continua, quindi **prima delle
+scritture serve uno smoke reale con Codex CLI e Antigravity, oppure la migrazione
+all'SDK `mcp`**. Correzioni della revisione recepite: `--radice` obbligatoria
+senza fallback, validazione `jsonrpc`/`params`, `ping`, negoziazione
+`protocolVersion`, limite su `bacheca_thread`, smoke-test subprocess,
+contratto di idempotenza per le scritture, correzione del claim su
+`scrittura_jsonl`.
 **Origine:** PIANO_INDUSTRIALIZZAZIONE.md §15 Slice B (thread bacheca `fb8338d2`).
 Prerequisito «verifica del codice sorgente reale dei benchmark» già svolto
 (Codex, 2026-09-02, thread `4ddae141`): vedi sotto.
@@ -63,9 +67,9 @@ API non ufficiali, riuso dei lock esistenti).
 | Trasporto | **stdio** (newline-delimited JSON-RPC 2.0). Nessun demone, nessuna porta di rete, nessun socket. |
 | Ciclo di vita | **Un processo per sessione client**, spawnato dal client (Claude Code, ecc.) alla sua apertura e ucciso alla chiusura. Nessun processo long-running condiviso. |
 | Latenza | Bassa, **non zero**: c'è lo spawn del processo all'avvio della sessione e il framing dei messaggi a ogni call. «Zero» era impreciso. |
-| Root del repo | Fissata all'avvio: `--radice <path>` oppure `ORCHESTRATORE_RADICE`, fallback a `Path(__file__).parent`. Il server **non** accetta un path di progetto per-call: una sessione = un repo. |
+| Root del repo | Fissata all'avvio da **`--radice <path>` obbligatoria, senza fallback implicito** (revisione Codex): in un git worktree `Path(__file__).parent` punterebbe al worktree, non al checkout con `dati_locali/`. Il server **non** accetta un path di progetto per-call: una sessione = un repo. |
 | Come agisce | Importa e chiama **funzioni di dominio** (`bacheca_proiezioni`, `bacheca` write helper, `piano_comandi`, `note_codice`, `registro`). **Mai** `subprocess` verso `bacheca.py`/`registro.py`. |
-| Atomicità | Riusa i lock esistenti: `piano_comandi` fa già CAS via `scrittura_jsonl.transazione_jsonl`; le scritture in bacheca passano per `scrittura_jsonl`. Il server non introduce un secondo meccanismo di lock. |
+| Atomicità | `piano_comandi` fa già CAS via `scrittura_jsonl.transazione_jsonl`. **`bacheca.aggiungi_messaggio` oggi NON usa `scrittura_jsonl`** — è un `open("a")` nudo (rilievo Codex). La fase scrittura deve prima portare le scritture di bacheca su un percorso serializzato (migrare `aggiungi_messaggio` a `scrittura_jsonl`, o far usare `transazione_jsonl` ai tool di scrittura dell'MCP). Il server non introduce un secondo meccanismo di lock. |
 | Identità dell'agente | Il server è avviato con `--agente <claude|codex|gemini>` (dalla config del client). I tool di scrittura usano **quell'**agente come mittente; un argomento `agente` in un tool call che lo contraddice è rifiutato. |
 
 ## Superficie — MVP
@@ -127,10 +131,13 @@ di coordinamento*. Nient'altro.
   protocollo lo permette, marca il contenuto come non fidato.
 - **L'audit resta la bacheca append-only.** Ogni scrittura via MCP è un record
   bacheca normale, con `mittente` = agente del server. Non c'è un canale nascosto.
-- **`agente` dichiarato, non provato.** In stdio locale il client *è* l'agente;
-  il server prende l'identità dall'argomento di avvio, non da un tool call. Un
-  tool call che passa un `agente` diverso è rifiutato con errore, non
-  silenziosamente accettato.
+- **`agente` = etichetta di provenienza, non autenticazione** (precisazione
+  Codex). In stdio locale il client *è* l'agente; il server prende l'identità
+  dall'argomento di avvio, **mai** da un tool call (nessun override per-call). Fra
+  processi dello stesso utente un'auth più forte non aggiungerebbe molto — cambia
+  solo se il server esce da stdio/locale. Questo va scritto esplicitamente nel
+  threat model (`docs/THREAT_MODEL.md`): la firma `mittente` sui record MCP è
+  audit, non garanzia d'identità.
 
 ## Concorrenza
 
@@ -140,18 +147,24 @@ Scenari simultanei possibili:
 - il watcher della dashboard che scrive `segnalazione_conflitto` / stati di consegna;
 - una CLI `bacheca.py` lanciata a mano.
 
-Tutti passano per `scrittura_jsonl` (lock su file, `O_CREAT|O_EXCL`, soglia lock
-abbandonato). `piano_prendi_passo` è già serializzato da
-`scrittura_jsonl.transazione_jsonl` dentro `piano_comandi`. Il server **non**
-aggiunge lock propri: se lo facesse, avrebbe due gerarchie di lock e un possibile
-deadlock.
+`piano_prendi_passo` è già serializzato da `scrittura_jsonl.transazione_jsonl`
+dentro `piano_comandi`. Le scritture di bacheca **oggi non lo sono**
+(`aggiungi_messaggio` è un `open("a")` nudo): prima della fase scrittura vanno
+portate su un percorso serializzato. Il server **non** aggiunge lock propri: se lo
+facesse, avrebbe due gerarchie di lock e un possibile deadlock.
 
-**Idempotenza delle scritture.** Un client MCP può ritentare una tool call (timeout,
-riconnessione). `piano_*` hanno già `idempotency_key`. Per `bacheca_rispondi` /
-`bacheca_prendi` si aggiunge una `idempotency_key` opzionale: il server, sotto lo
-stesso lock della scrittura, controlla se un messaggio del thread la porta già in
-`metadati.idempotency_key` e in tal caso ritorna `{esito: "gia_applicato"}` senza
-scrivere.
+**Idempotenza delle scritture** (contratto da revisione Codex). Obbligatoria per
+*ogni* scrittura, non opzionale. Chiave con scope `(mittente, thread_id,
+operazione, idempotency_key)`. Controllo **e** append avvengono sotto **un solo**
+lock:
+
+- chiave già vista, **stesso payload** → `{esito: "gia_applicato", id_messaggio:
+  <quello originale>}`, nessuna nuova riga;
+- chiave già vista, **payload diverso** → `{esito: "conflitto"}`, **non**
+  `gia_applicato` (è un errore del client, non un retry);
+- chiave nuova → si scrive, si ritorna il nuovo `id_messaggio`.
+
+`piano_*` hanno già `idempotency_key` con semantica compatibile.
 
 ## Compatibilità dei client
 
@@ -200,8 +213,12 @@ logica vera sta tutta nelle funzioni di dominio.
 - **Idempotenza** — stessa `idempotency_key` due volte → una sola riga.
 - **Concorrenza** — due «server» nello stesso processo di test che scrivono lo
   stesso file → N righe valide (riusa il guardrail di `test_scrittura_jsonl`).
-- **Smoke stdio** — avvio del server come subprocess, `initialize` + `tools/list`
-  + una `tools/call` di lettura, verifica della risposta JSON-RPC.
+- **Smoke stdio** — FATTO (`test_smoke_subprocess_stdio`): server avviato come
+  subprocess reale, `initialize` + `notifications/initialized` + `tools/list` +
+  `tools/call`, verifica delle risposte JSON-RPC. Da estendere a uno smoke
+  lanciato dai client reali (Codex CLI, Antigravity) prima della fase scrittura.
+- **Robustezza del loop** — `params` non-oggetto, `jsonrpc` errato, riga non-JSON:
+  errore tipizzato, il loop prosegue (regressione della revisione Codex).
 - **Trust** — un `bacheca_thread` che restituisce un messaggio con testo
   «istruzione»: verifica che il server lo passi come contenuto e non lo
   interpreti (il server non interpreta comunque nulla, ma il test fissa il
@@ -209,19 +226,23 @@ logica vera sta tutta nelle funzioni di dominio.
 
 ## Fasi
 
-1. **RFC approvata** (questo documento) — Gemini ok, manca Codex + verdetto umano.
-   Supporto MCP stdio dei tre client: confermato da Gemini (vedi in cima), da
-   riprovare con una config reale in Fase 2.
-2. **`bacheca.py prendi --correla-a`** — FATTO (commit `3387866`, Slice A). L'MCP
-   `bacheca_prendi` lo riusa e basta.
-3. **MVP di sola lettura** — FATTO (`mcp_orchestratore.py`): `bacheca_pendenti`,
-   `bacheca_thread`, `piano_stato`, `note_codice_elenco`. Nessuna scrittura.
-   `config/mcp.esempio.json` ha i tre snippet di config. Da provare con Claude
-   Code per una settimana: gli agenti leggono lo stato via tool invece che via
-   hook?
+1. **RFC approvata** — Gemini ok, Codex ok (con vincolo timeboxed), manca il
+   verdetto umano. Supporto MCP stdio dei tre client confermato: `codex mcp add`
+   verificato da Codex sul suo strumento (`codex mcp add [OPTIONS] <NAME> (--url |
+   -- <COMMAND>...)`), Antigravity `.agents/mcp_config.json` da doc primaria.
+2. **`bacheca.py prendi --correla-a`** — FATTO (commit `3387866`, Slice A).
+3. **MVP di sola lettura** — FATTO e rivisto (`mcp_orchestratore.py`, 12 test
+   incl. smoke subprocess). `config/mcp.esempio.json` ha i quattro snippet
+   (Claude, `codex mcp add`, `.codex/config.toml`, Antigravity). Da provare con
+   Claude Code per una settimana: gli agenti leggono lo stato via tool invece
+   che via hook?
+3bis. **PRIMA della fase scrittura** (vincolo Codex): smoke reale del server
+   avviato da Codex CLI e da Antigravity — non solo dal test Python — oppure
+   decidere la migrazione all'SDK `mcp`. Portare le scritture di bacheca su un
+   percorso serializzato (`scrittura_jsonl`).
 4. **Scrittura** — `bacheca_rispondi`, `bacheca_prendi` (con `correla_a`),
-   `piano_prendi_passo`, `piano_offri_passo`. Qui rientra l'`idempotency_key` e
-   il controllo che l'`agente` del tool call non contraddica quello di avvio.
+   `piano_prendi_passo`, `piano_offri_passo`. `idempotency_key` **obbligatoria**
+   (contratto nella sezione Concorrenza); `agente` mai da tool call.
 5. **Fase 2** — `registro_aggiungi`, `piano_approva_handoff`; config reale per
    Codex CLI e Antigravity.
 6. Worktree-awareness (Slice C): quando esisterà, il server dovrà sapere che
