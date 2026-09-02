@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -170,19 +171,19 @@ def _scenario_registro() -> None:
             stato="passato", esito_gate="superato", note="Richiesta: rinomina SOGLIA | Fatto: 4 file")
 
 
+_EXPORT_PY = (
+    "import csv\n\n"
+    "def export_csv(righe, destinazione):\n"
+    "    # quoting minimo: solo dove serve, per non gonfiare il file\n"
+    "    with open(destinazione, 'w', newline='') as f:\n"
+    "        w = csv.writer(f, quoting=csv.QUOTE_MINIMAL)\n"
+    "        w.writerow(['data', 'importo', 'categoria'])\n"
+    "        w.writerows(righe)\n"
+)
+
+
 def _scenario_note() -> None:
-    (PROGETTO / "report").mkdir(parents=True, exist_ok=True)
-    modulo = PROGETTO / "report" / "export.py"
-    modulo.write_text(
-        "import csv\n\n"
-        "def export_csv(righe, destinazione):\n"
-        "    # quoting minimo: solo dove serve, per non gonfiare il file\n"
-        "    with open(destinazione, 'w', newline='') as f:\n"
-        "        w = csv.writer(f, quoting=csv.QUOTE_MINIMAL)\n"
-        "        w.writerow(['data', 'importo', 'categoria'])\n"
-        "        w.writerows(righe)\n",
-        encoding="utf-8",
-    )
+    # export.py e' gia' stato creato da _scenario_git (commit 2): qui solo le note.
     note_codice.aggiungi_nota(
         PROGETTO, "report/export.py", 4, 4,
         "QUOTE_MINIMAL e' voluto: con QUOTE_ALL i file crescono del ~30% e "
@@ -193,6 +194,59 @@ def _scenario_note() -> None:
         "L'ordine delle colonne e' un contratto con l'importatore: non riordinare "
         "senza avvisare.", "umano", adesso=_ts(31),
     )
+
+
+def _git(*args: str, minuti: int | None = None) -> None:
+    env = None
+    if minuti is not None:
+        data = _ts(minuti)
+        env = {"GIT_AUTHOR_DATE": data, "GIT_COMMITTER_DATE": data}
+        env = {**_os_environ(), **env}
+    subprocess.run(["git", "-C", str(PROGETTO), *args], check=True, capture_output=True, env=env)
+
+
+def _os_environ() -> dict[str, str]:
+    import os
+    return dict(os.environ)
+
+
+def _scenario_git() -> None:
+    """Rende il progetto demo un piccolo repo git con commit datati allineati agli
+    eventi del registro, cosi' la funzione "Replay di un Commit Reale" della
+    dashboard ha qualcosa da riprodurre. Autore generico, niente firme."""
+    (PROGETTO / "tests").mkdir(parents=True, exist_ok=True)
+    (PROGETTO / "docs").mkdir(parents=True, exist_ok=True)
+    (PROGETTO / "report").mkdir(parents=True, exist_ok=True)
+    (PROGETTO / "report" / "__init__.py").write_text("", encoding="utf-8")
+    (PROGETTO / "report" / "config.py").write_text("SOGLIA = 1000\n", encoding="utf-8")
+    (PROGETTO / ".gitignore").write_text("dati_locali/\n", encoding="utf-8")
+
+    _git("init", "-q", "-b", "main")
+    _git("config", "user.name", "Squadra Demo")
+    _git("config", "user.email", "demo@example.invalid")
+    _git("config", "commit.gpgsign", "false")
+
+    _git("add", "-A")
+    _git("commit", "-q", "-m", "chore: avvio progetto report", minuti=5)
+
+    (PROGETTO / "report" / "export.py").write_text(_EXPORT_PY, encoding="utf-8")
+    (PROGETTO / "tests" / "test_export.py").write_text(
+        "from report.export import export_csv\n\n"
+        "def test_header_e_ordine_colonne(tmp_path):\n"
+        "    dest = tmp_path / 'out.csv'\n"
+        "    export_csv([('2026-01-01', '10.00', 'spesa')], dest)\n"
+        "    assert dest.read_text().splitlines()[0] == 'data,importo,categoria'\n",
+        encoding="utf-8")
+    (PROGETTO / "docs" / "guida_report.md").write_text(
+        "# Guida ai report\n\nL'export CSV produce le colonne data, importo, categoria.\n",
+        encoding="utf-8")
+    _git("add", "-A")
+    _git("commit", "-q", "-m", "feat(report): export CSV con header e quoting minimo", minuti=32)
+
+    cfg = PROGETTO / "report" / "config.py"
+    cfg.write_text(cfg.read_text(encoding="utf-8").replace("SOGLIA", "SOGLIA_IMPORTO"), encoding="utf-8")
+    _git("add", "-A")
+    _git("commit", "-q", "-m", "refactor(report): rinomina SOGLIA in SOGLIA_IMPORTO", minuti=74)
 
 
 def _registra_progetto() -> None:
@@ -212,13 +266,15 @@ def main() -> int:
     if PROGETTO.exists():
         shutil.rmtree(PROGETTO)
     ORCH.mkdir(parents=True, exist_ok=True)
+    _scenario_git()
     _scenario_bacheca()
     _scenario_registro()
     _scenario_note()
     _registra_progetto()
     print(f"Demo allestita in {PROGETTO}")
-    print("Registrata come progetto 'demo' nella dashboard.")
+    print("Registrata come progetto 'demo' nella dashboard, con 3 commit git da riprodurre.")
     print("Ora: python interfaccia.py  ->  http://127.0.0.1:8095  ->  seleziona 'Demo (dati finti)'")
+    print("Per il replay: pannello 'Replay di un Commit Reale' -> scegli il commit 'feat(report): export CSV...'")
     return 0
 
 
