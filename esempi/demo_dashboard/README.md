@@ -22,8 +22,10 @@ Nella dashboard seleziona **"Demo (dati finti)"**. Cosa mostra:
 - due **note di codice** ancorate a `report/export.py`;
 - una **storia git** di tre commit (autore `Squadra Demo`, non reale) con date
   allineate agli eventi: nel pannello **"Replay di un Commit Reale"** scegli
-  `feat(report): export CSV con header e quoting minimo` per vedere animata la
-  sequenza codex → claude → umano che ha portato a quel commit.
+  `feat(report): export CSV con header e quoting minimo` (11 interazioni) per
+  vedere animata la staffetta fra tutti gli attori — umano → gemini → claude →
+  codex → locale e ritorno — che ha portato a quel commit, con la stima di
+  risparmio finale.
 
 I dati generati vivono in `progetto/dati_locali/` (gitignored, rigenerabile).
 Lo script è idempotente: rilancialo per ripartire da zero.

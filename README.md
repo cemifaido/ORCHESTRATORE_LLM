@@ -10,6 +10,10 @@ Non è un sistema che decide al posto tuo. È una sala operativa: automatizza il
 
 > Il punto non è far lavorare più agenti contemporaneamente: è sapere chi sta facendo cosa, far verificare il lavoro e non perdere il filo tra una sessione e l'altra.
 
+![Replay animato di un commit: la staffetta fra umano, Gemini, Claude, Codex e modello locale, passaggio per passaggio, fino all'approvazione e alla stima del risparmio](docs/immagini/replay-cooperazione.gif)
+
+*Replay di un commit del progetto demo: il diagramma radiale e il Registro di Cooperazione ripercorrono chi ha fatto cosa per arrivarci — richiesta, corsie, gate locali gratuiti, review, approvazione umana.*
+
 ## Perché usarlo
 
 Quando più assistenti lavorano sullo stesso progetto, il collo di bottiglia diventa il copia-incolla: qualcuno deve ricordare il contesto, inoltrare messaggi, controllare test e ricostruire le decisioni. Squadra conserva quel contesto localmente e rende il passaggio di consegne un flusso esplicito.

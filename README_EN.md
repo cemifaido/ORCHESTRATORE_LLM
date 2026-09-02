@@ -10,6 +10,10 @@ It is not a system that makes decisions for you. It is an operations room: it au
 
 > The goal is not having multiple agents typing at the same time: it is knowing who is doing what, validating the work, and keeping the thread unbroken between sessions.
 
+![Animated commit replay: the relay between human, Gemini, Claude, Codex and the local model, step by step, up to approval and the estimated savings](docs/immagini/replay-cooperazione.gif)
+
+*Replay of a commit from the demo project: the radial diagram and the Cooperation Log retrace who did what to get there — request, lanes, free local gates, review, human approval.*
+
 ## Why Use It
 
 When multiple AI assistants work on the same project, copy-pasting quickly becomes the bottleneck: someone has to remember the context, forward messages, run tests, and reconstruct decisions. Squadra retains that context locally and turns handoffs into an explicit, trackable workflow.

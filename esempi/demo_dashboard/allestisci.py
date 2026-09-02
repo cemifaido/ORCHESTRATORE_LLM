@@ -158,15 +158,45 @@ def _scenario_bacheca() -> None:
 
 def _scenario_registro() -> None:
     percorso = ORCH / "eventi.jsonl"
-    _evento(percorso, 24, id_compito="demo-export", agente="codex", tipo_compito="servizi",
+    # Finestra del commit "feat(report): export CSV" (dal commit padre alle 09:05
+    # fino alle 09:32): una staffetta fra tutti gli attori, cosi' il "Replay di un
+    # Commit Reale" anima piu' passaggi di palla e non solo un paio di nodi.
+    c = "demo-export"
+    _evento(percorso, 6, id_compito=c, agente="umano", tipo_compito="orchestrazione",
+            stato="nuovo", esito_gate="non_eseguito",
+            note="Richiesta: aggiungere un export CSV al modulo report (data, importo, categoria).")
+    _evento(percorso, 8, id_compito=c, agente="gemini", tipo_compito="orchestrazione",
+            stato="passato", esito_gate="non_eseguito",
+            note="Triage: divido in tre corsie con write-set disgiunti - export, test, doc.")
+    _evento(percorso, 11, id_compito=c, agente="claude", tipo_compito="servizi",
+            stato="in_corso", esito_gate="non_eseguito",
+            note="Corsia 'export': bozza di export_csv, header piu' righe.")
+    _evento(percorso, 14, id_compito=c, agente="codex", tipo_compito="servizi",
+            stato="in_corso", esito_gate="non_eseguito",
+            note="Corsia 'test': scheletro test_export piu' quattro casi limite.")
+    _evento(percorso, 16, id_compito=c, agente="locale", tipo_compito="errore_test",
             stato="passato", esito_gate="superato",
-            note="Richiesta: export CSV | Fatto: scheletro test + 6 casi")
-    _evento(percorso, 28, id_compito="demo-export", agente="claude", tipo_compito="servizi",
+            note="Triage gate lint/tipi in locale: nessun rilievo, zero costo.",
+            metadati={"token_totali": 1850})
+    _evento(percorso, 19, id_compito=c, agente="claude", tipo_compito="servizi",
             stato="passato", esito_gate="superato",
-            note="Richiesta: export CSV | Fatto: report/export.py, quoting e header")
-    _evento(percorso, 30, id_compito="demo-export", agente="umano", tipo_compito="orchestrazione",
+            note="Integrato quoting minimo e header; gate verde in locale.")
+    _evento(percorso, 21, id_compito=c, agente="codex", tipo_compito="revisione",
+            stato="da_rivedere", esito_gate="non_eseguito",
+            note="Review corsia 'export': manca newline='' su Windows, per il resto ok.")
+    _evento(percorso, 23, id_compito=c, agente="claude", tipo_compito="servizi",
+            stato="passato", esito_gate="superato",
+            note="Applicato newline='' e ritestato: 6/6 verde.")
+    _evento(percorso, 26, id_compito=c, agente="gemini", tipo_compito="documentazione",
+            stato="passato", esito_gate="non_eseguito",
+            note="Corsia 'doc': guida_report.md aggiornata con colonne e formato.")
+    _evento(percorso, 28, id_compito=c, agente="locale", tipo_compito="errore_test",
+            stato="passato", esito_gate="superato",
+            note="Triage suite completa: routine, 6/6 verde, zero costo.",
+            metadati={"token_totali": 2100})
+    _evento(percorso, 30, id_compito=c, agente="umano", tipo_compito="orchestrazione",
             stato="accettato", esito_gate="non_eseguito", verdetto_umano="approvato",
-            note="approvato il commit dell'export CSV")
+            note="Approvato: commit feat(report) export CSV.")
     _evento(percorso, 72, id_compito="demo-chiuso", agente="claude", tipo_compito="interfaccia",
             stato="passato", esito_gate="superato", note="Richiesta: rinomina SOGLIA | Fatto: 4 file")
 
@@ -262,9 +292,23 @@ def _registra_progetto() -> None:
     percorso_progetti.write_text(json.dumps(dati, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def _elimina_progetto() -> None:
+    """Rimuove la cartella del progetto demo. Gli oggetti in .git sono read-only
+    su Windows e fanno fallire l'unlink: prima togli il flag da tutti i file."""
+    import os
+    import stat
+    for radice, _dirs, file in os.walk(PROGETTO):
+        for nome in file:
+            try:
+                os.chmod(os.path.join(radice, nome), stat.S_IWRITE)
+            except OSError:
+                pass
+    shutil.rmtree(PROGETTO)
+
+
 def main() -> int:
     if PROGETTO.exists():
-        shutil.rmtree(PROGETTO)
+        _elimina_progetto()
     ORCH.mkdir(parents=True, exist_ok=True)
     _scenario_git()
     _scenario_bacheca()
