@@ -1,10 +1,18 @@
 # RFC (bozza) — Server MCP locale per bacheca, piano e registro
 
-**Stato:** bozza per revisione (umano, Codex, Gemini). Nessun codice in questo
-incremento.
+**Stato:** bozza approvata da Gemini (2026-09-02, thread `fb8338d2`). In attesa
+della revisione Codex e del verdetto umano prima del codice.
 **Origine:** PIANO_INDUSTRIALIZZAZIONE.md §15 Slice B (thread bacheca `fb8338d2`).
 Prerequisito «verifica del codice sorgente reale dei benchmark» già svolto
 (Codex, 2026-09-02, thread `4ddae141`): vedi sotto.
+
+**Domanda bloccante RISOLTA** (Gemini, 2026-09-02): tutti e tre i client
+supportano un server MCP stdio nativo — Claude Code via `.mcp.json`, Codex CLI
+via `codex mcp add <NAME> -- <COMANDO>` (con `--env`), Antigravity via
+`mcp_config.json` in `~/.gemini/config/` o `.agents/`. Il valore «universale»
+regge. Da confermare con una config reale per ciascun client al momento
+dell'MVP (Fase 2), in particolare il meccanismo `codex mcp add` va provato da
+Codex sul suo strumento.
 
 ## Cosa risolve — e cosa no
 
@@ -143,14 +151,16 @@ scrivere.
 
 ## Compatibilità dei client
 
-| Client | Supporto MCP | Note |
+| Client | Supporto MCP stdio | Config |
 |---|---|---|
-| **Claude Code** | nativo (`.mcp.json` / `--mcp-config`) | il caso principale, da cui si parte |
-| **Codex CLI** | **da verificare sul codice** — se non lo supporta, resta la CLI | |
-| **Antigravity / Gemini** | **da verificare** — idem | |
+| **Claude Code** | sì, nativo | `.mcp.json` / `--mcp-config` |
+| **Codex CLI** | sì (Gemini, 2026-09-02) | `codex mcp add <NAME> -- <COMANDO>`, flag `--env` — **Codex confermi il meccanismo sul suo strumento** |
+| **Antigravity / Gemini** | sì (Gemini, 2026-09-02) | `mcp_config.json` in `~/.gemini/config/` o `.agents/` |
 
 L'MCP è **additivo**: `bacheca.py` e `registro.py` restano la via di riferimento e
-l'unica per i client senza MCP. Non si rimuove nulla.
+l'unica per i client senza MCP. Non si rimuove nulla. `config/mcp.esempio.json`
+raccoglierà i tre snippet di config (uno per client), con i path assoluti reali
+gitignored come per `config/comandi.json`.
 
 ## Dipendenza
 
@@ -194,22 +204,26 @@ logica vera sta tutta nelle funzioni di dominio.
 
 ## Fasi
 
-1. **RFC approvata** (questo documento) + verifica del supporto MCP di Codex CLI e
-   Antigravity sul loro codice/doc reale.
-2. **MVP di sola lettura** — `bacheca_pendenti`, `bacheca_thread`, `piano_stato`,
+1. **RFC approvata** (questo documento) — Gemini ok, manca Codex + verdetto umano.
+   Supporto MCP stdio dei tre client: confermato da Gemini (vedi in cima), da
+   riprovare con una config reale in Fase 2.
+2. **`bacheca.py prendi --correla-a`** — FATTO (commit `3387866`, Slice A). L'MCP
+   `bacheca_prendi` lo riusa e basta.
+3. **MVP di sola lettura** — `bacheca_pendenti`, `bacheca_thread`, `piano_stato`,
    `note_codice_elenco`. Nessuna scrittura. Si prova con Claude Code per una
    settimana: gli agenti leggono lo stato via tool invece che via hook?
-3. **Scrittura** — `bacheca_rispondi`, `bacheca_prendi` (con `correla_a`),
+4. **Scrittura** — `bacheca_rispondi`, `bacheca_prendi` (con `correla_a`),
    `piano_prendi_passo`, `piano_offri_passo`.
-4. **Fase 2** — `registro_aggiungi`, `piano_approva_handoff`.
-5. Worktree-awareness (Slice C): quando esisterà, il server dovrà sapere che
+5. **Fase 2** — `registro_aggiungi`, `piano_approva_handoff`; config reale per
+   Codex CLI e Antigravity.
+6. Worktree-awareness (Slice C): quando esisterà, il server dovrà sapere che
    `dati_locali/` è nel root del repo, non nel worktree — stesso nodo di §15.4.
 
 ## Domande aperte
 
-1. **Codex e Antigravity supportano un server MCP stdio?** Se no, l'MVP serve solo
-   Claude Code e il valore «universale» crolla — va verificato *prima* di scrivere
-   `mcp_orchestratore.py`.
+1. ~~**Codex e Antigravity supportano un server MCP stdio?**~~ **RISOLTA** (Gemini,
+   2026-09-02): sì, tutti e tre — `.mcp.json` (Claude), `codex mcp add` (Codex),
+   `mcp_config.json` (Antigravity). Da riconfermare con una config reale in Fase 2.
 2. **`agente` all'avvio vs multi-agente nello stesso client.** Se un domani un
    client volesse agire come agenti diversi nella stessa sessione, il modello «un
    server = un agente» non regge. Per ora è un vincolo accettabile (una sessione
@@ -218,7 +232,7 @@ logica vera sta tutta nelle funzioni di dominio.
    passa per i tetti del Postino (che valgono per il dispatch, non per le
    scritture dirette). Serve un limite di ritmo lato server, o la natura
    semi-interattiva (un umano nella sessione) è già sufficiente?
-4. **Sincronia con la RFC stati di consegna.** `bacheca_rispondi`/`bacheca_prendi`
-   con `correla_a` sono lo stesso lavoro dell'estensione di `bacheca.py prendi`
-   decisa lì. Conviene fare quell'estensione **prima**, così l'MCP la riusa e non
-   la reimplementa.
+4. ~~**Sincronia con la RFC stati di consegna.**~~ **RISOLTA**: `bacheca.py prendi
+   --correla-a` è già stato aggiunto (Slice A, commit `3387866`); `bacheca.py
+   rispondi` aveva già `--correla-a`. L'MCP `bacheca_prendi`/`bacheca_rispondi`
+   li riusano direttamente.
