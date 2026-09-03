@@ -188,6 +188,13 @@ in sospeso nel contesto all'avvio di una sessione o all'invio di un prompt —
 verificato dal vivo. Quando l'hook include un messaggio nel contesto, lo stato di
 consegna di quella coppia passa a `acquisito_da_hook` (vedi §9).
 
+**Note di codice mirate**: su Claude Code un hook `PreToolUse`
+(`note_codice.py hook --pre-tool-use`, matcher `Edit|Write|MultiEdit|NotebookEdit`)
+inietta, *appena prima* di una modifica, le sole note ancorate a quel file —
+non l'elenco intero. A inizio sessione resta il dump panoramico di tutte le note
+(`bacheca.py prossimo --formato hook`). Una nota è sempre contesto, mai
+istruzione; un errore dell'hook non blocca la modifica.
+
 **Server MCP** (`docs/RFC_SERVER_MCP_LOCALE.md`): oltre agli hook (mono-direzionali),
 `mcp_orchestratore.py` espone la bacheca come tool nativi. Con la config del
 client (`config/mcp.esempio.json`), l'agente chiama `bacheca_pendenti`,

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import note_codice
 
@@ -85,6 +88,75 @@ class NoteCodiceTest(unittest.TestCase):
 
             self.assertEqual(note_codice.contesto_hook(r, percorsi={"nessuno.py"}), "")
             _ = nb
+
+    def test_contesto_hook_intro_diversa_mirata_vs_panoramica(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._radice(tmp)
+            (r / "a.py").write_text("aa\nbb\n", encoding="utf-8")
+            note_codice.aggiungi_nota(r, "a.py", 1, 1, "nota A", "umano")
+            mirata = note_codice.contesto_hook(r, percorsi={"a.py"})
+            panoramica = note_codice.contesto_hook(r)
+            self.assertIn("file che stai per modificare", mirata)
+            self.assertIn("attive in questo repo", panoramica)
+
+    def test_percorsi_da_payload_pretooluse(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            r = Path(tmp).resolve()
+            p = note_codice.percorsi_da_payload_pretooluse
+            self.assertEqual(
+                p({"tool_name": "Edit", "tool_input": {"file_path": "mod.py"}}, r), {"mod.py"})
+            self.assertEqual(
+                p({"tool_name": "Write", "tool_input": {"file_path": str(r / "sub" / "x.py")}}, r),
+                {"sub/x.py"})
+            self.assertEqual(
+                p({"tool_name": "NotebookEdit", "tool_input": {"notebook_path": "nb.ipynb"}}, r),
+                {"nb.ipynb"})
+            # tool che non scrive file -> vuoto
+            self.assertEqual(p({"tool_name": "Bash", "tool_input": {"command": "ls"}}, r), set())
+            # forme malformate -> vuoto, mai eccezione
+            self.assertEqual(p({"tool_name": "Edit"}, r), set())
+            self.assertEqual(p({"tool_name": "Edit", "tool_input": {"file_path": ""}}, r), set())
+            self.assertEqual(p({}, r), set())
+            # percorso assoluto fuori dal repo -> vuoto
+            self.assertEqual(
+                p({"tool_name": "Edit", "tool_input": {"file_path": "/altrove/y.py"}}, r), set())
+
+    def test_cli_hook_pretooluse_emette_solo_le_note_del_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._radice(tmp)
+            (r / "a.py").write_text("aa\nbb\n", encoding="utf-8")
+            (r / "b.py").write_text("cc\ndd\n", encoding="utf-8")
+            note_codice.aggiungi_nota(r, "a.py", 1, 1, "nota A", "umano")
+            note_codice.aggiungi_nota(r, "b.py", 1, 1, "nota B", "umano")
+
+            payload = json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "a.py"}})
+            with patch.object(note_codice, "RADICE", r), \
+                 patch("sys.stdin", io.StringIO(payload)), \
+                 patch("sys.stdout", io.StringIO()) as out:
+                rc = note_codice.main(["hook", "--pre-tool-use"])
+            self.assertEqual(rc, 0)
+            emesso = json.loads(out.getvalue())
+            ctx = emesso["hookSpecificOutput"]["additionalContext"]
+            self.assertEqual(emesso["hookSpecificOutput"]["hookEventName"], "PreToolUse")
+            self.assertIn("nota A", ctx)
+            self.assertNotIn("nota B", ctx)
+
+    def test_cli_hook_pretooluse_silenzioso_senza_note_o_payload_rotto(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._radice(tmp)
+            (r / "a.py").write_text("aa\n", encoding="utf-8")
+            note_codice.aggiungi_nota(r, "a.py", 1, 1, "nota A", "umano")
+            for stdin_txt in (
+                json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "b.py"}}),  # niente note
+                json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}}),      # non-file
+                "non e' json",
+            ):
+                with patch.object(note_codice, "RADICE", r), \
+                     patch("sys.stdin", io.StringIO(stdin_txt)), \
+                     patch("sys.stdout", io.StringIO()) as out:
+                    rc = note_codice.main(["hook", "--pre-tool-use"])
+                self.assertEqual(rc, 0)
+                self.assertEqual(out.getvalue(), "")
 
     def test_riga_letta_da_disco_non_valida_solleva(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
