@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -18,6 +19,7 @@ from typing import Any, Callable
 
 import bacheca
 import capability_policy
+import piano_overlap
 import profili_operativi
 import registro
 import sentinella
@@ -239,6 +241,72 @@ def _ultimo_tocco_umano(radice: Path, thread_id: str) -> datetime | None:
     if not tocchi:
         return None
     return datetime.fromisoformat(max(tocchi).replace("Z", "+00:00"))
+
+
+def _preflight_dispatch(
+    radice: Path, agente: str, thread_id: str, modo: str,
+    id_messaggio_attivatore: str | None, profilo: dict[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, list[str]]]:
+    """Tutti i controlli che possono fermare il dispatch prima di spendere il
+    lock/CLI. Ritorna (blocco, comandi): se `blocco` non e' None, `dispatch` lo
+    restituisce cosi' com'e'; altrimenti prosegue con `comandi`."""
+    motivo_profilo = _motivo_profilo(profilo)
+    if motivo_profilo is not None:
+        return {"esito": "bloccato", "motivo": motivo_profilo}, {}
+    capability = capability_policy.autorizza_automazione(agente, "headless")
+    if capability["esito"] != "autorizzato":
+        capability_policy.registra_blocco(radice, agente, "headless", capability)
+        return capability, {}
+    if id_messaggio_attivatore is not None and _messaggio_gia_dispatchato(
+        radice, agente, id_messaggio_attivatore,
+    ):
+        return {"esito": "bloccato", "motivo": "messaggio_gia_dispatchato"}, {}
+    policy = autorizza(radice, agente, thread_id, profilo=profilo)
+    if policy["esito"] != "autorizzato":
+        return policy, {}
+    comandi = COMANDI_REVISIONE if modo == "revisione" else COMANDI_PER_PROFILO.get(profilo["profilo"], {})
+    if agente not in comandi:
+        return {"esito": "bloccato", "motivo": "capability_non_autorizzata"}, {}
+    # Contesa sul working tree ("80% leggero" di Slice C, PIANO §15.4): non
+    # spawnare la CLI se un altro attore sta modificando, senza committare, i
+    # file che l'agente sta per scrivere.
+    conteso = _contesa_tree_bloccante(radice, agente, thread_id, modo)
+    if conteso is not None:
+        return conteso, {}
+    return None, comandi
+
+
+def _contesa_tree_bloccante(
+    radice: Path, agente: str, thread_id: str, modo: str
+) -> dict[str, Any] | None:
+    """None se il dispatch puo' proseguire; un dict `bloccato` se sul working
+    tree ci sono modifiche non committate sui file del write_set dell'agente.
+    modo='revisione' e' read-only -> sempre None. Fail-open: qualunque problema
+    nel calcolo lascia proseguire (il check e' un extra, non una barriera -
+    vedi contesa_tree.py e PIANO §15.4)."""
+    import contesa_tree
+    if modo == "revisione":
+        return None
+    try:
+        messaggi = bacheca.leggi_messaggi(_percorso_messaggi(radice))
+        write_set = piano_overlap.write_set_agente(messaggi, thread_id, agente)
+        verdetto = contesa_tree.valuta_contesa(radice, write_set)
+    except Exception as e:  # noqa: BLE001 - il check non deve mai far fallire il dispatch
+        print(f"[TREE] check contesa saltato per {agente}/{thread_id}: {e}", file=sys.stderr)
+        return None
+    if verdetto["esito"] != contesa_tree.CONTESO:
+        return None
+    file_contesi = verdetto.get("file", [])
+    totale = verdetto.get("totale", len(file_contesi))
+    contesa_tree.registra_contesa(
+        radice, agente=agente, thread_id=thread_id,
+        write_set=write_set, file_contesi=file_contesi, totale=totale,
+    )
+    return {"esito": "bloccato", "motivo": "tree_conteso", "file": file_contesi, "totale": totale}
+
+
+def _percorso_messaggi(radice: Path) -> Path:
+    return radice / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
 
 
 def _leggi_stato(radice: Path) -> dict[str, Any] | None:
@@ -744,23 +812,11 @@ def dispatch(
     # finche' ogni provider non espone telemetria strutturata; non le stimiamo.
     inizio_misura = time.perf_counter()
     profilo = profili_operativi.carica(radice)
-    motivo_profilo = _motivo_profilo(profilo)
-    if motivo_profilo is not None:
-        return {"esito": "bloccato", "motivo": motivo_profilo}
-    capability = capability_policy.autorizza_automazione(agente, "headless")
-    if capability["esito"] != "autorizzato":
-        capability_policy.registra_blocco(radice, agente, "headless", capability)
-        return capability
-    if id_messaggio_attivatore is not None and _messaggio_gia_dispatchato(
-        radice, agente, id_messaggio_attivatore,
-    ):
-        return {"esito": "bloccato", "motivo": "messaggio_gia_dispatchato"}
-    policy = autorizza(radice, agente, thread_id, profilo=profilo)
-    if policy["esito"] != "autorizzato":
-        return policy
-    comandi = COMANDI_REVISIONE if modo == "revisione" else COMANDI_PER_PROFILO.get(profilo["profilo"], {})
-    if agente not in comandi:
-        return {"esito": "bloccato", "motivo": "capability_non_autorizzata"}
+    blocco, comandi = _preflight_dispatch(
+        radice, agente, thread_id, modo, id_messaggio_attivatore, profilo,
+    )
+    if blocco is not None:
+        return blocco
 
     # Il clock e' iniettabile per test di integrazione riproducibili; il
     # default conserva il comportamento dei chiamanti esistenti.

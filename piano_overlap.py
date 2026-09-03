@@ -125,6 +125,24 @@ def valuta_collisione(
     return {"esito": "consentito"}
 
 
+def write_set_agente(
+    messaggi: list[dict[str, Any]], thread_id: str, agente: str
+) -> list[str]:
+    """Unione (grezza, non normalizzata) dei `write_set` dei passi `in_corso`
+    posseduti da `agente` nel thread. Lista vuota se il thread non ha piano o
+    l'agente non possiede passi in_corso. Calcolo puro."""
+    import bacheca_proiezioni
+
+    piano = bacheca_proiezioni.deriva_piano(messaggi, thread_id)
+    if piano is None:
+        return []
+    fuori: list[str] = []
+    for passo in bacheca_proiezioni.passi_in_corso(piano):
+        if passo.get("proprietario") == agente:
+            fuori.extend(w for w in (passo.get("write_set") or []) if isinstance(w, str))
+    return sorted(set(fuori))
+
+
 def valuta_dispatch_piano(
     messaggi: list[dict[str, Any]], thread_id: str, agente: str
 ) -> dict[str, Any]:

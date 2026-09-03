@@ -34,9 +34,14 @@ Gli agenti commerciali possono usare le sessioni e le CLI ufficiali per cui l'ut
 
 `bacheca.py` conserva messaggi, risposte, prese in carico dei file, thread e verdetti in JSONL validato. Un thread può fermarsi in attesa di un gate o di una decisione e poi riprendere senza ricostruire a memoria il contesto. Puoi vedere i messaggi pendenti per ciascun lavoratore, i file già in carico e lo stato globale del lavoro.
 
-### Piano dichiarato: chi tocca cosa
+### Gestione dei conflitti: niente due agenti sullo stesso file, mai in silenzio
 
-Un thread può portare un **piano a corsie**: passi con un proprietario e un insieme di file (`write_set`/`read_set`) dichiarati. `bacheca.py piano` permette di creare un passo, prenderlo (compare-and-set atomico: due agenti sullo stesso passo, il secondo perde la corsa) e offrirlo a un altro con un handoff che si trasferisce solo su approvazione esplicita. Prima di un dispatch automatico il watcher confronta il passo dell'agente con quelli già in corso: se i file si sovrappongono non dispatcha e apre una segnalazione, invece di far pestare i piedi a due agenti sullo stesso file. La regola è conservativa — un dubbio è un blocco, mai un falso via libera.
+Quando più agenti lavorano insieme il rischio non è che sbaglino il codice: è che due scritture non coordinate si sovrascrivano a vicenda e nessuno se ne accorga finché non è troppo tardi. Squadra affronta la cosa a strati, e il filo conduttore è sempre lo stesso — **o lo previene, o lo segnala all'umano, e comunque lo registra**; nel dubbio blocca, mai un falso via libera.
+
+- **Piano a corsie.** Un thread può portare un **piano** di passi, ognuno con un proprietario e un insieme di file dichiarati (`write_set`/`read_set`). `bacheca.py piano` crea un passo, lo prende (compare-and-set atomico: due agenti sullo stesso passo, il secondo perde la corsa) o lo offre a un altro con un handoff che si trasferisce solo su approvazione esplicita.
+- **Rilevazione collisioni prima del dispatch.** Prima di svegliare automaticamente un agente, il watcher confronta il suo passo con quelli già in corso: se i file si sovrappongono non dispatcha e apre una `segnalazione_conflitto` per l'umano. Nessun retry che aggira il problema.
+- **Guardia sulla contesa del working tree.** Anche senza un piano, il Postino non lancia la CLI di un agente headless se sul working tree ci sono **modifiche non committate sui file che quell'agente sta per scrivere** — di chiunque siano (un altro dispatch, l'operatore, una sessione parallela). Il dispatch si ferma con `tree_conteso` e apre una segnalazione: committa o metti da parte quelle modifiche, poi risveglia l'agente a mano.
+- **Log di contesa.** Ogni episodio finisce in `contese.jsonl` (append-only). È il dato che dirà, sui numeri e non sull'intuizione, se e quando serve isolare gli agenti in worktree git separati (oggi rimandato: il parallelo headless reale è raro).
 
 ### Stati di consegna: dal risveglio alla presa in carico
 

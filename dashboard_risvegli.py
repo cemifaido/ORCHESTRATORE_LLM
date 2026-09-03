@@ -154,6 +154,42 @@ def _nota_collisione_piano(
         print(f"[PIANO] impossibile postare la segnalazione_conflitto: {e}", file=sys.stderr)
 
 
+def _nota_contesa_tree(
+    percorso_progetto: Path, agente: str, thread_id: str,
+    file_contesi: list[str], totale: int | None = None,
+) -> None:
+    """Posta una segnalazione_conflitto quando il postino ferma il dispatch di
+    `agente` perche' sul working tree ci sono modifiche non committate sui file
+    che l'agente sta per scrivere ("80% leggero" di Slice C). Il check non sa di
+    chi sono le modifiche (altro dispatch, operatore, sessione parallela): e'
+    una contesa del working tree, non un'attribuzione. Non solleva."""
+    n = totale if totale is not None else len(file_contesi)
+    elenco = ", ".join(file_contesi[:8]) + (f", ... (+{n - 8})" if n > 8 else "")
+    testo = (
+        f"[tree] dispatch automatico di {agente} sospeso sul thread {thread_id}: "
+        f"sul working tree ci sono modifiche non committate su {n} file che "
+        f"{agente} sta per scrivere ({elenco}). Committa o metti da parte quelle "
+        f"modifiche, poi risveglia {agente} a mano. Nessun retry automatico."
+    )
+    percorso_bacheca = (
+        percorso_progetto / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+    )
+    try:
+        bacheca.aggiungi_messaggio(
+            percorso_bacheca,
+            bacheca.costruisci_messaggio(
+                mittente="sistema", destinatari=["umano", agente],
+                tipo="segnalazione_conflitto", testo=testo, thread_id=thread_id,
+                metadati={
+                    "origine": "postino_contesa_tree",
+                    "file_contesi": file_contesi[:20], "file_contesi_totale": n,
+                },
+            ),
+        )
+    except Exception as e:  # noqa: BLE001 - il watcher logga e prosegue
+        print(f"[TREE] impossibile postare la segnalazione contesa: {e}", file=sys.stderr)
+
+
 def attesa_poll_ms(timestamp_messaggio: object) -> float | None:
     """Stima l'attesa fra il messaggio e il giro watcher che lo osserva.
 
@@ -469,8 +505,29 @@ class _CicloRisvegli:
             "passo": verdetto.get("passo"),
         })
 
+    def _contesa_tree(self, agente: str, candidato: dict, esito_dispatch: dict) -> None:
+        """tree_conteso (postino): sul working tree ci sono modifiche non
+        committate (di chiunque) sui file dell'agente. Come la collisione di
+        piano - stop, niente retry, nota in bacheca."""
+        _nota_contesa_tree(
+            self.percorso_progetto, agente, candidato["thread_id"],
+            esito_dispatch.get("file", []), esito_dispatch.get("totale"),
+        )
+        self.segna_consegna(
+            agente, candidato["id_messaggio"], consegne_risveglio.CHIUSO_SENZA_CONSEGNA,
+            motivo="tree_conteso",
+        )
+        self.marca_notificato(agente, candidato, {
+            "agente": agente, "thread_id": candidato["thread_id"],
+            "id_messaggio": candidato["id_messaggio"],
+            "status": "tree_conteso", "file": esito_dispatch.get("file", []),
+        })
+
     def _dispatch_fallito(self, agente: str, candidato: dict, esito_dispatch: dict) -> None:
         motivo = esito_dispatch.get("motivo")
+        if motivo == "tree_conteso":
+            self._contesa_tree(agente, candidato, esito_dispatch)
+            return
         azione = _azione_su_dispatch_fallito(
             motivo, agente, candidato["id_messaggio"], self.tentativi,
         )

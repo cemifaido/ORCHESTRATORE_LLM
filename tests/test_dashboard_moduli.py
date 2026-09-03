@@ -491,6 +491,40 @@ class DashboardRisvegliTest(unittest.TestCase):
             ).splitlines()
             self.assertEqual(len(righe2), 1)
 
+    def test_dispatch_tree_conteso_posta_nota_e_non_ritenta(self) -> None:
+        """postino torna 'tree_conteso' -> segnalazione_conflitto in bacheca,
+        coppia chiusa senza consegna, nessun retry."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            dashboard_risvegli.scrivi_stato_risvegli(
+                dashboard_risvegli.percorso_stato_risvegli(radice),
+                {"versione_schema": 1, "notificati": {}},
+            )
+            blocco = {"esito": "bloccato", "motivo": "tree_conteso", "file": ["src/x.py"]}
+            with patch("dashboard_risvegli.thread_pendenti_per_agente", return_value=self._pendente()), \
+                 patch("profili_operativi.carica", return_value={"profilo": "smodata"}), \
+                 patch("profili_operativi.dispatch_abilitato", return_value=True), \
+                 patch("postino.dispatch", return_value=blocco), \
+                 patch("interfaccia._trova_ultima_sessione_claude", return_value=None), \
+                 patch("interfaccia._esegui_risveglio_os") as risveglio:
+                _, esiti = dashboard_risvegli.calcola_ed_esegui_risvegli(radice, [])
+
+            risveglio.assert_not_called()
+            self.assertEqual(esiti[0]["status"], "tree_conteso")
+            segn = [
+                json.loads(r) for r in
+                (radice / "dati_locali" / "orchestrazione" / "messaggi.jsonl").read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            ]
+            self.assertEqual(len(segn), 1)
+            self.assertEqual(segn[0]["tipo"], "segnalazione_conflitto")
+            self.assertIn("src/x.py", segn[0]["testo"])
+
+            import consegne_risveglio
+            s = consegne_risveglio.stato_coppia(radice, [], "claude", "m-nuovo")
+            self.assertEqual(s["stato"], consegne_risveglio.CHIUSO_SENZA_CONSEGNA)
+
     def test_standard_esegue_risveglio_passivo_senza_gating(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             radice = Path(tmp)

@@ -277,6 +277,34 @@ class PostinoDispatchTest(unittest.TestCase):
             self.assertIsNone(misura["autenticazione_trust_ms"])
             self.assertIsNone(misura["generazione_ragionamento_ms"])
 
+    def test_dispatch_bloccato_da_contesa_sul_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            esegui = MagicMock(return_value=MagicMock(returncode=0))
+            with patch("postino.piano_overlap.write_set_agente", return_value=["src/x.py"]), \
+                 patch("contesa_tree.file_non_committati", return_value=["src/x.py", "altro.md"]), \
+                 patch("postino.shutil.which", return_value=r"C:\fake\claude.cmd"):
+                esito = postino.dispatch(radice, "claude", "t-postino", esegui=esegui)
+
+            self.assertEqual(esito["esito"], "bloccato")
+            self.assertEqual(esito["motivo"], "tree_conteso")
+            self.assertIn("src/x.py", esito["file"])
+            esegui.assert_not_called()  # la CLI non e' mai partita
+            righe = (radice / "dati_locali" / "orchestrazione" / "contese.jsonl").read_text(
+                encoding="utf-8"
+            ).splitlines()
+            self.assertEqual(len(righe), 1)
+
+    def test_dispatch_non_bloccato_se_contesa_disgiunta(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = _radice_attiva(tmp)
+            esegui = MagicMock(return_value=MagicMock(returncode=0))
+            with patch("postino.piano_overlap.write_set_agente", return_value=["src/x.py"]), \
+                 patch("contesa_tree.file_non_committati", return_value=["docs/altro.md"]), \
+                 patch("postino.shutil.which", return_value=r"C:\fake\claude.cmd"):
+                esito = postino.dispatch(radice, "claude", "t-postino", esegui=esegui)
+            self.assertEqual(esito["esito"], "inviato")
+
     def test_dispatch_registra_l_attesa_poll_passata_dal_watcher(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             radice = _radice_attiva(tmp)

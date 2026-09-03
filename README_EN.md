@@ -34,9 +34,14 @@ Commercial agents can use their official CLIs and existing authenticated session
 
 `bacheca.py` stores messages, responses, file locks, threads, and verdicts in validated JSONL. A thread can pause awaiting a quality gate or human review, then resume without relying on human memory to reconstruct context. You can monitor pending messages for each worker, inspect locked files, and view global project status.
 
-### Declared Plan: Who Touches What
+### Conflict Handling: Never Two Agents on the Same File, Never Silently
 
-A thread can carry a **plan with lanes**: steps with an owner and a declared set of files (`write_set`/`read_set`). `bacheca.py piano` creates a step, takes it (atomic compare-and-set: two agents on the same step, the second one loses the race), or offers it to another via a handoff that only transfers on explicit approval. Before an automated dispatch the watcher compares the agent's step against the ones already in progress: if the files overlap it does not dispatch and raises a flag, instead of letting two agents step on the same file. The rule is conservative — a doubt is a block, never a false clearance.
+When several agents work together the risk is not that they get the code wrong: it is that two uncoordinated writes overwrite each other and nobody notices until it is too late. Squadra handles this in layers, and the through-line is always the same — **it either prevents it, or flags it to the human, and records it either way**; when in doubt it blocks, never a false clearance.
+
+- **Plan with lanes.** A thread can carry a **plan** of steps, each with an owner and a declared set of files (`write_set`/`read_set`). `bacheca.py piano` creates a step, takes it (atomic compare-and-set: two agents on the same step, the second one loses the race), or offers it to another via a handoff that only transfers on explicit approval.
+- **Collision detection before dispatch.** Before waking an agent automatically, the watcher compares its step against the ones already in progress: if the files overlap it does not dispatch and raises a `segnalazione_conflitto` for the human. No retry that works around the problem.
+- **Working-tree contention guard.** Even without a plan, the Postman does not launch a headless agent's CLI if the working tree has **uncommitted changes to files that agent is about to write** — whoever made them (another dispatch, the operator, a parallel session). The dispatch stops with `tree_conteso` and raises a flag: commit or stash those changes, then wake the agent manually.
+- **Contention log.** Every episode is appended to `contese.jsonl`. That is the data that will tell us, on the numbers rather than on a hunch, whether and when agents need to be isolated in separate git worktrees (deferred for now: real headless parallelism is rare).
 
 ### Delivery States: From Wake-Up to Ownership
 

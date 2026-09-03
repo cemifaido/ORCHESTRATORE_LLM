@@ -173,7 +173,12 @@ fa nascere già `in_corso` (crea + prende in un colpo), risparmiando il
 `prendi-passo`.
 Prima di un dispatch automatico il watcher blocca un passo che si sovrappone a
 uno già in corso e apre una `segnalazione_conflitto` (avviso, non blocco per
-l'umano).
+l'umano). In più, il Postino non lancia la CLI di un agente headless se sul
+working tree ci sono **modifiche non committate sui file che quell'agente sta
+per scrivere** (`git status` vs `write_set` del passo): il dispatch si ferma con
+`tree_conteso`, apre una segnalazione e registra l'episodio in
+`dati_locali/orchestrazione/contese.jsonl`. Committa o metti da parte quelle
+modifiche e risveglia l'agente a mano.
 
 **Nella dashboard**, il pannello "🗂️ Bacheca Multi-Agente" (sopra la Timeline
 eventi) mostra: tabella dei thread con stato e chi aspetta, banner se c'è un
