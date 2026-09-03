@@ -89,6 +89,35 @@ class NoteCodiceTest(unittest.TestCase):
             self.assertEqual(note_codice.contesto_hook(r, percorsi={"nessuno.py"}), "")
             _ = nb
 
+    def test_contesto_hook_compatto_sintetizza_le_attive_e_mostra_solo_i_problemi(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._radice(tmp)
+            (r / "a.py").write_text("aa\nbb\n", encoding="utf-8")
+            (r / "b.py").write_text("cc\ndd\n", encoding="utf-8")
+            note_codice.aggiungi_nota(r, "a.py", 1, 1, "gotcha attivo su A", "umano")
+            note_codice.aggiungi_nota(r, "b.py", 1, 1, "gotcha su B", "umano")
+            (r / "b.py").write_text("CC!\ndd\n", encoding="utf-8")  # B -> da_rivedere
+
+            compatto = note_codice.contesto_hook(r, compatto=True)
+            # la nota attiva non compare per esteso, solo nel conteggio + file
+            self.assertNotIn("gotcha attivo su A", compatto)
+            self.assertIn("1 note di codice ancorate attive", compatto)
+            self.assertIn("a.py", compatto)
+            # la nota problematica compare per esteso
+            self.assertIn("gotcha su B", compatto)
+            self.assertIn("[DA_RIVEDERE]", compatto)
+
+            # senza problemi: solo la riga di conteggio
+            (r / "b.py").write_text("cc\ndd\n", encoding="utf-8")  # B torna attiva
+            solo_conteggio = note_codice.contesto_hook(r, compatto=True)
+            self.assertIn("2 note di codice ancorate attive", solo_conteggio)
+            self.assertNotIn("da verificare", solo_conteggio)
+
+    def test_contesto_hook_compatto_vuoto_se_nessuna_nota(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._radice(tmp)
+            self.assertEqual(note_codice.contesto_hook(r, compatto=True), "")
+
     def test_contesto_hook_intro_diversa_mirata_vs_panoramica(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             r = self._radice(tmp)

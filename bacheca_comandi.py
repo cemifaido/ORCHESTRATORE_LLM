@@ -75,13 +75,19 @@ def _arricchisci_hook_con_profilo(testo: str, percorso_bacheca: Path) -> str:
     return _b().arricchisci_hook_con_profilo(testo, percorso_bacheca.parent.parent.parent)
 
 
-def _contesto_note_codice(percorso_bacheca: Path) -> str:
+def _contesto_note_codice(percorso_bacheca: Path, agente: str = "") -> str:
     """Note di codice ancorate (note_codice.py) per l'iniezione via hook. Una
     nota e' contesto, non un'istruzione; un fallimento qui non deve mai far
-    fallire l'hook della bacheca."""
+    fallire l'hook della bacheca.
+
+    Per Claude (unico con un hook PreToolUse per-file, §14.1 v2) la panoramica
+    a inizio sessione e' SINTETICA: il testo pieno delle note attive arriva
+    quando serve. Codex e Gemini non hanno quell'hook -> panoramica piena."""
     try:
         import note_codice
-        return note_codice.contesto_hook(percorso_bacheca.parent.parent.parent)
+        return note_codice.contesto_hook(
+            percorso_bacheca.parent.parent.parent, compatto=(agente == "claude")
+        )
     except Exception:  # noqa: BLE001
         return ""
 
@@ -189,7 +195,7 @@ def comando_prossimo(args: argparse.Namespace) -> int:
         testo = _arricchisci_hook_con_profilo(
             _formatta_per_hook(pendenti, riprese_pronte(messaggi, agente)), percorso_bacheca
         )
-        note = _contesto_note_codice(percorso_bacheca)
+        note = _contesto_note_codice(percorso_bacheca, agente)
         if note:
             testo = f"{testo}\n\n{note}" if testo else note
         output: dict[str, Any]
