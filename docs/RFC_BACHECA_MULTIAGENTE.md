@@ -852,6 +852,14 @@ stampato a video per un umano. Nessuna modifica a `adattatori/litellm.py` o a
 `bacheca.py` per la lettura/scrittura file: erano già corretti, cambiarli
 sarebbe stato un fix per un bug che non esisteva lì.
 
+**Estensione (2026-09-03)**: lo stesso forcing è stato spostato in un modulo
+condiviso `console_utf8.py` (`forza_console_utf8()`) ed esteso a `registro.py` e
+`note_codice.py` (ristampano `note`/testo-nota liberi) e a `mcp_orchestratore.py`
+(con `anche_stdin=True`: il protocollo MCP è UTF-8 e una risposta JSON-RPC con
+un accento romperebbe il loop su una console cp1252). Motivo del modulo: il
+blocco era già copiato a mano in quattro entry point e ogni nuovo comando se ne
+dimenticava.
+
 ## 7. Punti aperti, non ancora decisi
 
 - ~~`destinatari` con valore "tutti"~~ — **deciso**: enumerazione esplicita in v1,
@@ -871,8 +879,13 @@ sarebbe stato un fix per un bug che non esisteva lì.
   decisore — in v1 un conflitto è un allarme per l'umano, non una sentenza, quindi un
   falso negativo su un caso sfumato degrada silenziosamente a "l'umano non viene
   avvisato", non a una decisione sbagliata presa in autonomia dal sistema.
-- **Bug di encoding UTF-8** (§6.4): causa non confermata; ricetta di indagine
-  annotata, non ancora eseguita.
+- ~~**Bug di encoding UTF-8** (§6.4)~~ — **chiuso** (2026-08-25): causa isolata
+  con una riproduzione byte-per-byte (console Windows non-UTF-8, non la pipeline
+  dati). Il forcing UTF-8 dei flussi standard, prima copiato a mano in ogni
+  entry point, e' ora nel modulo `console_utf8.py` (`forza_console_utf8()`),
+  usato da `bacheca`, `sentinella`, `triage_locale`, `registro`, `note_codice`
+  e — con `anche_stdin=True`, il protocollo lo richiede — dal server MCP
+  (2026-09-03).
 - ~~**Verifica empirica hook su Antigravity IDE**~~ — **chiusa** (§4.3): provati
   `BeforeAgent` in `.gemini/settings.json` e `PreInvocation` in `.agents/hooks.json`,
   entrambi senza iniezione nel contesto. Resta il fallback manuale assistito dalla

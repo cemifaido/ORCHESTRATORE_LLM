@@ -13,6 +13,8 @@ from typing import Any
 
 import jsonschema
 
+import console_utf8
+
 
 RADICE = Path(__file__).resolve().parent
 PERCORSO_REGISTRO_PREDEFINITO = Path("dati_locali") / "orchestrazione" / "eventi.jsonl"
@@ -306,6 +308,7 @@ def comando_riepilogo(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    console_utf8.forza_console_utf8()  # `note` libera ristampata a video su console Windows
     parser = argparse.ArgumentParser(description="Registro append-only dell'orchestratore LLM")
     parser.add_argument("--registro", default=str(PERCORSO_REGISTRO_PREDEFINITO))
     sotto = parser.add_subparsers(dest="comando", required=True)

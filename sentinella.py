@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+import console_utf8
 import registro
 import triage_locale
 
@@ -326,12 +327,7 @@ def classifica_con_guardia_locale(esito: str, codice: int, output: str, contesto
 
 
 def main() -> int:
-    # L7 risolto (2026-08-25): print() su un terminale Windows non-UTF-8
-    # sostituisce silenziosamente gli accenti - i dati stessi sono sempre
-    # stati corretti (vedi il commento esteso in triage_locale.py:main() e
-    # docs/RFC_BACHECA_MULTIAGENTE.md §6.4).
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    console_utf8.forza_console_utf8()  # accenti dell'output su console Windows non-UTF-8
     parser = argparse.ArgumentParser(description="Sentinella deterministica: esegue solo comandi whitelistati")
     parser.add_argument("comando")
     parser.add_argument("--config", default=str(PERCORSO_COMANDI_PREDEFINITO))

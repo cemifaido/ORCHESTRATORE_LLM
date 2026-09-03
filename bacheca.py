@@ -15,6 +15,7 @@ from typing import Any
 RADICE = Path(__file__).resolve().parent
 sys.path.insert(0, str(RADICE))
 
+import console_utf8  # noqa: E402
 import registro  # noqa: E402
 from registro import adesso_utc, lista_csv as lista_csv, messaggio_errore, validatore_per_schema  # noqa: E402
 import bacheca_proiezioni as proiezioni  # noqa: E402
@@ -299,14 +300,10 @@ def comando_piano(args: Any) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    # L7 risolto (2026-08-25): print() su un terminale Windows non-UTF-8
-    # sostituisce silenziosamente gli accenti nel testo dei messaggi mostrati
-    # a CLI - i dati stessi sono sempre stati corretti (vedi il commento
-    # esteso in triage_locale.py:main() e docs/RFC_BACHECA_MULTIAGENTE.md
-    # §6.4). Qui conta piu' che altrove: il testo dei thread e' proprio
-    # quello che l'umano legge da riga di comando.
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    # Il testo dei thread e' proprio quello che l'umano legge da riga di
+    # comando: su una console Windows non-UTF-8 gli accenti si perdono
+    # (dati su disco sempre corretti - docs/RFC_BACHECA_MULTIAGENTE.md §6.4).
+    console_utf8.forza_console_utf8()
     parser = argparse.ArgumentParser(description="Bacheca multi-agente dell'orchestratore LLM")
     parser.add_argument("--bacheca", default=str(PERCORSO_BACHECA_PREDEFINITO))
     sotto = parser.add_subparsers(dest="comando", required=True)

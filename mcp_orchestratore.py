@@ -35,6 +35,8 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+import console_utf8
+
 # Versioni del protocollo MCP che sappiamo servire. Alla `initialize` si risponde
 # con quella richiesta se e' fra queste, altrimenti con la piu' recente nostra
 # (negoziazione, non eco incondizionato - revisione Codex 2026-09-02).
@@ -456,6 +458,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Identita' dell'agente di questa sessione (dichiarata, non provata).",
     )
     args = parser.parse_args(argv)
+    # Il protocollo MCP e' UTF-8; su Windows sys.stdin/stdout ripiegano su
+    # cp1252 e un thread di bacheca con un accento romperebbe la risposta
+    # JSON-RPC (o farebbe cadere il loop con UnicodeEncodeError).
+    console_utf8.forza_console_utf8(anche_stdin=True)
     servi(sys.stdin, sys.stdout, args.radice.resolve(), args.agente)
     return 0
 

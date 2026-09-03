@@ -21,6 +21,7 @@ RADICE = Path(__file__).resolve().parent
 sys.path.insert(0, str(RADICE))
 
 from adattatori import litellm  # noqa: E402
+import console_utf8  # noqa: E402
 import registro  # noqa: E402
 
 PERCORSO_REGISTRO_PREDEFINITO = Path("dati_locali") / "orchestrazione" / "eventi.jsonl"
@@ -115,16 +116,10 @@ def registra_classificazione(
 
 
 def main() -> int:
-    # L7 risolto (2026-08-25): i dati non erano mai corrotti (verificato byte
-    # per byte: risposta HTTP di llama-server, testo estratto da litellm,
-    # scrittura/lettura su messaggi.jsonl sono tutti UTF-8 corretto end-to-end
-    # - vedi docs/RFC_BACHECA_MULTIAGENTE.md §6.4). L'unico punto dove un
-    # accento si perdeva era qui: print() su un terminale Windows la cui
-    # codepage attiva non e' UTF-8 (cp1252/OEM) sostituisce silenziosamente i
-    # caratteri non rappresentabili. reconfigure() forza l'encoding di stdout
-    # a UTF-8 indipendentemente dalla codepage del terminale che lo ospita.
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    # L7 risolto (2026-08-25): i dati non erano mai corrotti end-to-end
+    # (verificato byte per byte - docs/RFC_BACHECA_MULTIAGENTE.md §6.4).
+    # L'unico punto fragile e' print() su una console Windows non-UTF-8.
+    console_utf8.forza_console_utf8()
     parser = argparse.ArgumentParser(description="Triage a costo zero con il modello locale")
     parser.add_argument("--registro", default=str(PERCORSO_REGISTRO_PREDEFINITO))
     parser.add_argument("--id-compito", default=f"triage-{uuid.uuid4().hex[:8]}")

@@ -24,6 +24,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import console_utf8
 import registro
 import scrittura_jsonl
 
@@ -219,6 +220,7 @@ def _cli_hook(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    console_utf8.forza_console_utf8()  # testo libero della nota ristampato a video
     parser = argparse.ArgumentParser(description="Note di codice ancorate")
     sotto = parser.add_subparsers(dest="comando", required=True)
 
