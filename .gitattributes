@@ -1,0 +1,13 @@
+# Fine-riga uniformi: LF nel repo E in checkout, a prescindere da core.autocrlf
+# della macchina. Chiude la trappola "git tocca un .py (checkout/pull/commit) ->
+# lo riscrive in CRLF -> mismatch dell'impronta blake2b -> auto-riavvio della
+# dashboard" (nota di codice su interfaccia.py; docs/PIANO_INDUSTRIALIZZAZIONE.md S10).
+* text=auto eol=lf
+
+# Gli script batch di Windows si aspettano CRLF
+*.bat text eol=crlf
+
+# Binari: nessuna conversione di fine-riga
+*.png binary
+*.gif binary
+*.ico binary
