@@ -38,7 +38,7 @@ def _percorso_lock(percorso: Path) -> Path:
 
 
 @contextlib.contextmanager
-def _blocco(percorso: Path, *, timeout_secondi: float = TIMEOUT_LOCK_SECONDI_PREDEFINITO):
+def blocco_file(percorso: Path, *, timeout_secondi: float = TIMEOUT_LOCK_SECONDI_PREDEFINITO):
     """Lock a file (stesso pattern di postino._blocco_stato): creazione
     atomica garantita dal sistema operativo sia su Windows sia su POSIX
     (os.O_CREAT | os.O_EXCL), senza bisogno di fcntl/msvcrt specifici per
@@ -106,7 +106,7 @@ def aggiungi_riga_jsonl(
         if errori:
             raise ValueError("; ".join(errori))
     percorso.parent.mkdir(parents=True, exist_ok=True)
-    with _blocco(percorso, timeout_secondi=timeout_lock_secondi):
+    with blocco_file(percorso, timeout_secondi=timeout_lock_secondi):
         _scrivi_riga(percorso, record)
 
 
@@ -135,7 +135,7 @@ def transazione_jsonl(
     soddisfatta (in tal caso non si scrive nulla). Ritorna il record scritto o
     None."""
     percorso.parent.mkdir(parents=True, exist_ok=True)
-    with _blocco(percorso, timeout_secondi=timeout_lock_secondi):
+    with blocco_file(percorso, timeout_secondi=timeout_lock_secondi):
         record = calcola_record()
         if record is None:
             return None

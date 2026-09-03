@@ -23,6 +23,7 @@ import dashboard_os
 import piano_overlap
 import postino
 import profili_operativi
+import scrittura_jsonl
 
 AGENTI_BACHECA_DASHBOARD = dashboard_config.AGENTI_BACHECA_DASHBOARD
 
@@ -61,7 +62,38 @@ def _risveglio_os_disponibile(stato: dict, ora: datetime) -> bool:
         momento = datetime.fromisoformat(ultimo)
     except ValueError:
         return True
+    if momento.tzinfo is None:
+        momento = momento.replace(tzinfo=timezone.utc)
     return (ora - momento).total_seconds() >= COOLDOWN_RISVEGLIO_OS_SECONDI
+
+
+def _fondi_stato_risvegli(base: dict, mio: dict) -> None:
+    """Fonde `mio` (stato di questo ciclo) dentro `base` (riletto dal disco sotto
+    lock), in place. Regole:
+    - `ultimo_risveglio_os`: il piu' recente dei due timestamp ISO-UTC (mai perso
+      dallo snapshot stantio di un altro ciclo);
+    - `notificati`: unione per agente;
+    - `tentativi_falliti`: unione (valore di `mio` in caso di conflitto di
+      chiave), meno le coppie ormai presenti in `notificati` (gia' consegnate,
+      niente piu' retry pendente)."""
+    marcatori = [m for m in (base.get("ultimo_risveglio_os"), mio.get("ultimo_risveglio_os"))
+                 if isinstance(m, str)]
+    if marcatori:
+        base["ultimo_risveglio_os"] = max(marcatori)
+
+    notificati = base.setdefault("notificati", {})
+    if not isinstance(notificati, dict):
+        notificati = base["notificati"] = {}
+    for agente, ids in mio.get("notificati", {}).items():
+        notificati[agente] = sorted(set(notificati.get(agente, [])) | set(ids))
+
+    tentativi = {**base.get("tentativi_falliti", {}), **mio.get("tentativi_falliti", {})}
+    gia_notificati = {i for ids in notificati.values() for i in ids}
+    base["tentativi_falliti"] = {
+        chiave: valore for chiave, valore in tentativi.items()
+        if chiave.split(":", 1)[-1] not in gia_notificati
+    }
+    base.setdefault("versione_schema", 1)
 
 
 def _azione_su_dispatch_fallito(
@@ -352,16 +384,69 @@ class _CicloRisvegli:
             canale=canale, origine=origine,
         )
 
+    def _prenota_risveglio_os(self) -> bool:
+        """Check-and-set atomico del cooldown OS, sul file di stato, sotto lock.
+
+        Senza questo: il watcher e la route POST /api/bacheca/risvegli possono
+        girare in contemporanea, leggere lo stesso `ultimo_risveglio_os` (ancora
+        vecchio), passare entrambi il controllo cooldown e sparare due risvegli
+        OS di fila rubando il primo piano - il cooldown "non teneva", ~8s fra i
+        due. Qui lo stato viene riletto dal disco DENTRO il lock, la decisione e
+        la scrittura del nuovo marcatore avvengono prima di rilasciarlo, quindi
+        il secondo ciclo vede gia' il marcatore aggiornato. Fail-closed: lock
+        conteso o stato illeggibile -> non si sveglia."""
+        percorso = percorso_stato_risvegli(self.percorso_progetto)
+        try:
+            with scrittura_jsonl.blocco_file(percorso, timeout_secondi=3.0):
+                stato_disco, inizializzato = leggi_stato_risvegli(percorso)
+                if not inizializzato:
+                    return False
+                self.stato["ultimo_risveglio_os"] = stato_disco.get("ultimo_risveglio_os")
+                if not _risveglio_os_disponibile(stato_disco, self.ora):
+                    return False
+                marcatore = self.ora.isoformat()
+                stato_disco["ultimo_risveglio_os"] = marcatore
+                scrivi_stato_risvegli(percorso, stato_disco)
+                self.stato["ultimo_risveglio_os"] = marcatore
+                self.modificato = True
+                return True
+        except TimeoutError:
+            return False
+
+    def persisti_stato(self) -> None:
+        """Scrive lo stato di fine ciclo con un read-merge-write sotto lock.
+
+        Un `scrivi_stato_risvegli(stato)` nudo qui cancellerebbe le modifiche di
+        un ciclo concorrente (rilievo Codex 2026-09-03): il ciclo A parte da uno
+        stato senza marcatore, va sul ramo headless senza toccare
+        `ultimo_risveglio_os`, nel frattempo B prenota il risveglio OS e persiste
+        il marcatore, poi A scrive il suo snapshot stantio e il marcatore sparisce
+        -> il cooldown si riapre. Rileggendo il disco dentro il lock e fondendo
+        (marcatore = il piu' recente, `notificati` in unione) nessun ciclo perde
+        il lavoro di un altro. Il lock NON copre `postino.dispatch` (fino a 300s):
+        e' preso solo qui, per la durata di una lettura + scrittura di un JSON
+        piccolo. Su lock conteso oltre il timeout si salta la persistenza: i
+        pendenti verranno ripassati al giro dopo, il marcatore su disco resta."""
+        percorso = percorso_stato_risvegli(self.percorso_progetto)
+        try:
+            with scrittura_jsonl.blocco_file(percorso, timeout_secondi=5.0):
+                disco, inizializzato = leggi_stato_risvegli(percorso)
+                base = disco if inizializzato else dict(self.stato)
+                _fondi_stato_risvegli(base, self.stato)
+                scrivi_stato_risvegli(percorso, base)
+        except TimeoutError:
+            print(
+                f"[RISVEGLIO] persistenza stato saltata (lock conteso): {percorso}",
+                file=sys.stderr,
+            )
+
     def risveglio_os(self, agente: str, cronologia: list) -> dict | None:
         """Risveglio OS con cooldown anti-stealing del focus: None se un altro
         risveglio OS e' avvenuto da meno di COOLDOWN_RISVEGLIO_OS_SECONDI."""
         import interfaccia
-        if not _risveglio_os_disponibile(self.stato, self.ora):
+        if not self._prenota_risveglio_os():
             return None
-        esito = interfaccia._esegui_risveglio_os(agente, cronologia, self.claude_session_id)
-        self.stato["ultimo_risveglio_os"] = self.ora.isoformat()
-        self.modificato = True
-        return esito
+        return interfaccia._esegui_risveglio_os(agente, cronologia, self.claude_session_id)
 
     def marca_notificato(self, agente: str, candidato: dict, record: dict) -> None:
         lista = set(self.notificati.get(agente, []))
@@ -495,9 +580,22 @@ def calcola_ed_esegui_risvegli(
         tentativi = stato["tentativi_falliti"] = {}
 
     if not gia_inizializzato:
+        # Bootstrap: marca come "gia' notificato" tutto il pendente attuale, cosi'
+        # il watcher non sveglia per messaggi anteriori alla sua prima esecuzione.
+        # Anche qui read-merge-write sotto lock: due prime esecuzioni concorrenti
+        # con insiemi di pendenti diversi si sovrascriverebbero (rilievo Codex
+        # 2026-09-03). Non riapre il race OS - nel primo giro non si sveglia
+        # nessuno - ma chiude l'ultimo lost-update su `notificati`.
         for agente, items in pendenti.items():
             notificati[agente] = [item["id_messaggio"] for item in items]
-        scrivi_stato_risvegli(percorso_stato, stato)
+        try:
+            with scrittura_jsonl.blocco_file(percorso_stato, timeout_secondi=5.0):
+                disco, gia_scritto = leggi_stato_risvegli(percorso_stato)
+                base = disco if gia_scritto else stato
+                _fondi_stato_risvegli(base, stato)
+                scrivi_stato_risvegli(percorso_stato, base)
+        except TimeoutError:
+            scrivi_stato_risvegli(percorso_stato, stato)
         return True, []
 
     # Il profilo operativo e' l'unica fonte runtime di autorizzazione: i marker
@@ -517,5 +615,5 @@ def calcola_ed_esegui_risvegli(
     ciclo.esegui(pendenti, profili_operativi.dispatch_abilitato(profilo))
 
     if ciclo.modificato:
-        scrivi_stato_risvegli(percorso_stato, stato)
+        ciclo.persisti_stato()
     return True, ciclo.risvegli

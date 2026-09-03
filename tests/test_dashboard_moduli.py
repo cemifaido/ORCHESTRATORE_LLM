@@ -536,6 +536,134 @@ class DashboardRisvegliTest(unittest.TestCase):
             )
             self.assertNotIn("m-nuovo", stato["notificati"].get("claude", []))
 
+    def test_cooldown_os_regge_a_due_cicli_concorrenti(self) -> None:
+        """Il watcher e la route POST /api/bacheca/risvegli possono girare in
+        contemporanea: senza il check-and-set atomico leggerebbero lo stesso
+        `ultimo_risveglio_os` e sparerebbero due risvegli OS di fila (bug: il
+        cooldown 'non teneva'). Qui il primo risveglio, mentre e' in corso,
+        innesca un secondo ciclo: deve vedere il marcatore gia' scritto e
+        NON svegliare una seconda volta."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            dashboard_risvegli.scrivi_stato_risvegli(
+                dashboard_risvegli.percorso_stato_risvegli(radice),
+                {"versione_schema": 1, "notificati": {}},
+            )
+            chiamate: list[str] = []
+
+            def _sveglia_e_rientra(agente, cronologia, session_id):
+                chiamate.append(agente)
+                if len(chiamate) == 1:
+                    # ciclo concorrente mentre il primo risveglio e' "in volo"
+                    with patch("dashboard_risvegli.thread_pendenti_per_agente",
+                               return_value=self._pendente()), \
+                         patch("profili_operativi.carica",
+                               return_value=profili_operativi.profilo_standard()), \
+                         patch("profili_operativi.dispatch_abilitato", return_value=False), \
+                         patch("interfaccia._trova_ultima_sessione_claude", return_value=None):
+                        dashboard_risvegli.calcola_ed_esegui_risvegli(radice, [])
+                return {"status": "eseguito", "modalita": "focus_ide"}
+
+            with patch("dashboard_risvegli.thread_pendenti_per_agente", return_value=self._pendente()), \
+                 patch("profili_operativi.carica", return_value=profili_operativi.profilo_standard()), \
+                 patch("profili_operativi.dispatch_abilitato", return_value=False), \
+                 patch("interfaccia._trova_ultima_sessione_claude", return_value=None), \
+                 patch("interfaccia._esegui_risveglio_os", side_effect=_sveglia_e_rientra):
+                _, esiti = dashboard_risvegli.calcola_ed_esegui_risvegli(radice, [])
+
+            self.assertEqual(chiamate, ["claude"])  # una sola sveglia, non due
+            self.assertEqual(esiti[0]["status"], "eseguito")
+
+    def test_persisti_stato_non_perde_marcatore_di_ciclo_concorrente(self) -> None:
+        """Timeline A/B (rilievo Codex): A parte da uno stato senza marcatore e
+        va sul ramo headless; B nel frattempo prenota il risveglio OS e persiste
+        il marcatore; A finisce e persiste il suo snapshot. Con il read-merge-
+        write il marcatore di B sopravvive e `notificati` va in unione."""
+        from datetime import datetime, timezone
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            percorso = dashboard_risvegli.percorso_stato_risvegli(radice)
+            ora = datetime.now(timezone.utc)
+            # stato dopo che B ha prenotato e persistito
+            dashboard_risvegli.scrivi_stato_risvegli(percorso, {
+                "versione_schema": 1,
+                "notificati": {"gemini": ["m-b"]},
+                "ultimo_risveglio_os": ora.isoformat(),
+            })
+            # A: snapshot stantio, nessun marcatore, un altro messaggio notificato
+            ciclo_a = dashboard_risvegli._CicloRisvegli(
+                percorso_progetto=radice, messaggi=[],
+                stato={"versione_schema": 1, "notificati": {"claude": ["m-a"]},
+                       "tentativi_falliti": {}},
+                notificati={"claude": ["m-a"]}, tentativi={},
+                claude_session_id=None, ora=ora,
+            )
+            ciclo_a.persisti_stato()
+
+            disco, _ = dashboard_risvegli.leggi_stato_risvegli(percorso)
+            self.assertEqual(disco["ultimo_risveglio_os"], ora.isoformat())
+            self.assertEqual(set(disco["notificati"]["claude"]), {"m-a"})
+            self.assertEqual(set(disco["notificati"]["gemini"]), {"m-b"})
+
+    def test_fondi_stato_risvegli_regole(self) -> None:
+        base: dict = {
+            "versione_schema": 1,
+            "notificati": {"claude": ["x"]},
+            "tentativi_falliti": {"codex:k1": 2, "gemini:g1": 1},
+            "ultimo_risveglio_os": "2026-09-03T06:00:00+00:00",
+        }
+        mio: dict = {
+            "notificati": {"claude": ["x", "y"], "gemini": ["g1"]},
+            "tentativi_falliti": {"gemini:g1": 3},
+            "ultimo_risveglio_os": "2026-09-03T06:00:30+00:00",
+        }
+        dashboard_risvegli._fondi_stato_risvegli(base, mio)
+        self.assertEqual(base["ultimo_risveglio_os"], "2026-09-03T06:00:30+00:00")  # piu' recente
+        self.assertEqual(set(base["notificati"]["claude"]), {"x", "y"})            # unione
+        self.assertEqual(set(base["notificati"]["gemini"]), {"g1"})
+        # g1 ora e' notificato -> niente piu' tentativo pendente; k1 resta
+        self.assertNotIn("gemini:g1", base["tentativi_falliti"])
+        self.assertEqual(base["tentativi_falliti"], {"codex:k1": 2})
+
+    def test_persistenze_concorrenti_reali_si_fondono(self) -> None:
+        """Due thread che chiamano persisti_stato() in contemporanea sullo stesso
+        file: il lock li serializza e nessuno dei due perde il proprio contributo."""
+        import threading
+        from datetime import datetime, timezone
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            percorso = dashboard_risvegli.percorso_stato_risvegli(radice)
+            dashboard_risvegli.scrivi_stato_risvegli(
+                percorso, {"versione_schema": 1, "notificati": {}})
+            ora = datetime.now(timezone.utc)
+            barriera = threading.Barrier(2)
+
+            def _persisti(agente: str, msg_id: str, con_marcatore: bool) -> None:
+                notificati: dict = {agente: [msg_id]}
+                stato: dict = {"versione_schema": 1, "notificati": notificati,
+                               "tentativi_falliti": {}}
+                if con_marcatore:
+                    stato["ultimo_risveglio_os"] = ora.isoformat()
+                ciclo = dashboard_risvegli._CicloRisvegli(
+                    percorso_progetto=radice, messaggi=[], stato=stato,
+                    notificati=notificati, tentativi={},
+                    claude_session_id=None, ora=ora,
+                )
+                barriera.wait()
+                ciclo.persisti_stato()
+
+            t1 = threading.Thread(target=_persisti, args=("claude", "m1", True))
+            t2 = threading.Thread(target=_persisti, args=("codex", "m2", False))
+            for t in (t1, t2):
+                t.start()
+            for t in (t1, t2):
+                t.join()
+
+            disco, _ = dashboard_risvegli.leggi_stato_risvegli(percorso)
+            self.assertEqual(set(disco["notificati"]["claude"]), {"m1"})
+            self.assertEqual(set(disco["notificati"]["codex"]), {"m2"})
+            self.assertEqual(disco["ultimo_risveglio_os"], ora.isoformat())
+
     def test_riconcilia_notificati_con_la_prova_di_bacheca(self) -> None:
         """Se l'agente ha risposto a un risveglio (correla_a) senza dispatch, la
         proiezione lo dice consegnato: il watcher non deve ri-notificarlo."""
