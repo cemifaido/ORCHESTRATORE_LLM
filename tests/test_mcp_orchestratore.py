@@ -10,6 +10,8 @@ from pathlib import Path
 
 import bacheca
 import mcp_orchestratore as mcp
+import piano_comandi
+import registro
 
 
 def _dialogo(radice: Path, agente: str, richieste: list[dict]) -> list[dict]:
@@ -180,7 +182,50 @@ class McpOrchestratoreTest(unittest.TestCase):
             self.assertEqual(nomi, {
                 "bacheca_pendenti", "bacheca_thread", "piano_stato", "note_codice_elenco",
                 "bacheca_rispondi", "bacheca_prendi", "piano_prendi_passo", "piano_offri_passo",
+                "piano_approva_handoff", "registro_aggiungi",
             })
+
+    def test_registro_aggiungi_fissa_agente_e_costo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice, _ = self._radice_con_thread(tmp)
+            [risp] = _dialogo(radice, "codex", [
+                {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                    "name": "registro_aggiungi",
+                    "arguments": {
+                        "id_compito": "mcp-fase2", "tipo_compito": "servizi", "stato": "passato",
+                        "esito_gate": "superato", "note": "gate verificato",
+                    },
+                }},
+            ])
+            self.assertFalse(risp["result"]["isError"])
+            evento = registro.leggi_eventi(radice / "dati_locali" / "orchestrazione" / "eventi.jsonl")[0]
+            self.assertEqual(evento["agente"], "codex")
+            self.assertEqual(evento["costo_stimato_usd"], 0.0)
+            self.assertEqual(evento["esito_gate"], "superato")
+
+    def test_piano_approva_handoff(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice, msg = self._radice_con_thread(tmp)
+            percorso = radice / "dati_locali" / "orchestrazione" / "messaggi.jsonl"
+            piano_comandi.crea_passo(
+                percorso, piano_id="P", passo_id="s1", descrizione="passo",
+                attore="umano", thread_id=msg["thread_id"],
+            )
+            self.assertEqual(
+                piano_comandi.prendi_passo(percorso, msg["thread_id"], "s1", "codex")["esito"],
+                "ok",
+            )
+            self.assertEqual(
+                piano_comandi.offri_passo(percorso, msg["thread_id"], "s1", "codex", "gemini")["esito"],
+                "ok",
+            )
+            [risp] = _dialogo(radice, "codex", [
+                {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                    "name": "piano_approva_handoff",
+                    "arguments": {"thread_id": msg["thread_id"], "passo_id": "s1"},
+                }},
+            ])
+            self.assertEqual(json.loads(risp["result"]["content"][0]["text"])["esito"], "ok")
 
     def test_bacheca_rispondi_scrive_e_idempotente(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -242,6 +287,7 @@ class McpOrchestratoreTest(unittest.TestCase):
             self.assertEqual({t["name"] for t in righe[1]["result"]["tools"]}, {
                 "bacheca_pendenti", "bacheca_thread", "piano_stato", "note_codice_elenco",
                 "bacheca_rispondi", "bacheca_prendi", "piano_prendi_passo", "piano_offri_passo",
+                "piano_approva_handoff", "registro_aggiungi",
             })
             self.assertFalse(righe[2]["result"]["isError"])
 

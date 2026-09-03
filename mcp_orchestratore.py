@@ -8,6 +8,7 @@ Espone come tool MCP tipizzati le funzioni di dominio dell'orchestratore:
   piano_prendi_passo, piano_offri_passo. Ogni scrittura e' idempotente
   (`idempotency_key`, contratto in bacheca_scritture.py); i tool piano usano il
   compare-and-set atomico gia' in piano_comandi.
+- scrittura di audit e piano: registro_aggiungi, piano_approva_handoff.
 ESCLUSI tassativamente: I/O di file arbitrari, dispatch/risveglio, toggle del
 profilo Postino, qualunque comando git o shell.
 
@@ -32,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
@@ -174,6 +176,57 @@ def _tool_piano_offri_passo(radice: Path, agente: str, args: dict[str, Any]) -> 
     )
 
 
+def _tool_piano_approva_handoff(radice: Path, agente: str, args: dict[str, Any]) -> Any:
+    import piano_comandi
+
+    return piano_comandi.approva_handoff(
+        _percorso_bacheca(radice),
+        _testo_richiesto(args, "thread_id"),
+        _testo_richiesto(args, "passo_id"),
+        agente,
+    )
+
+
+def _tool_registro_aggiungi(radice: Path, agente: str, args: dict[str, Any]) -> Any:
+    import registro
+
+    evento: dict[str, Any] = {
+        "versione_schema": 1,
+        "id_evento": str(args.get("id_evento") or uuid.uuid4()),
+        "timestamp": str(args.get("timestamp") or registro.adesso_utc()),
+        "id_compito": _testo_richiesto(args, "id_compito"),
+        "agente": agente,
+        "tipo_compito": _testo_richiesto(args, "tipo_compito"),
+        "stato": _testo_richiesto(args, "stato"),
+        "esito_gate": args.get("esito_gate") or "non_eseguito",
+        "verdetto_umano": args.get("verdetto_umano") or "non_revisionato",
+        "costo_stimato_usd": 0.0,
+        "origine_costo": "stimato",
+        "latenza_ms": args.get("latenza_ms") or 0,
+        "regole_incluse": args.get("regole_incluse") or [],
+        "file_modificati": args.get("file_modificati") or [],
+        "artefatti_flusso": args.get("artefatti_flusso") or [],
+        "voto_qualita": args.get("voto_qualita"),
+        "voto_velocita": args.get("voto_velocita"),
+        "note": str(args.get("note") or ""),
+        "metadati": {},
+    }
+    thread_id = args.get("thread_id")
+    if thread_id:
+        evento["thread_id"] = str(thread_id)
+    if not isinstance(evento["latenza_ms"], int) or isinstance(evento["latenza_ms"], bool):
+        raise _ErroreTool("latenza_ms deve essere un intero")
+    for chiave in ("regole_incluse", "file_modificati", "artefatti_flusso"):
+        if not isinstance(evento[chiave], list) or not all(isinstance(v, str) for v in evento[chiave]):
+            raise _ErroreTool(f"{chiave} deve essere una lista di stringhe")
+    percorso = radice / "dati_locali" / "orchestrazione" / "eventi.jsonl"
+    try:
+        registro.aggiungi_evento(percorso, evento)
+    except ValueError as err:
+        raise _ErroreTool(str(err)) from err
+    return {"esito": "ok", "evento": evento}
+
+
 def _tool_note_codice_elenco(radice: Path, _agente: str, args: dict[str, Any]) -> Any:
     import note_codice
 
@@ -197,6 +250,14 @@ def _tool_note_codice_elenco(radice: Path, _agente: str, args: dict[str, Any]) -
 
 
 _STRINGA = {"type": "string"}
+_ENUM_TIPO_COMPITO = [
+    "interfaccia", "servizi", "database", "documentazione", "errore_test",
+    "revisione", "sicurezza", "monitoraggio", "orchestrazione", "sconosciuto",
+]
+_ENUM_STATO = [
+    "nuovo", "pianificato", "approvato", "in_corso", "da_rivedere", "gate_in_corso",
+    "passato", "fallito", "errore_ambiente", "accettato", "respinto",
+]
 _TOOL: dict[str, tuple[dict[str, Any], Callable[[Path, str, dict[str, Any]], Any]]] = {
     "bacheca_pendenti": (
         {
@@ -343,6 +404,53 @@ _TOOL: dict[str, tuple[dict[str, Any], Callable[[Path, str, dict[str, Any]], Any
             },
         },
         _tool_piano_offri_passo,
+    ),
+    "piano_approva_handoff": (
+        {
+            "description": (
+                "Approva un handoff aperto di un passo. Lo puo' fare il proprietario "
+                "corrente del passo oppure l'umano; l'identita' e' quella della sessione. "
+                "Compare-and-set atomico."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {"thread_id": _STRINGA, "passo_id": _STRINGA},
+                "required": ["thread_id", "passo_id"],
+                "additionalProperties": False,
+            },
+        },
+        _tool_piano_approva_handoff,
+    ),
+    "registro_aggiungi": (
+        {
+            "description": (
+                "Appende un evento validato al registro locale come agente di questa sessione. "
+                "Il costo stimato e' sempre 0.0 (non inventare costi). Imposta esito_gate "
+                "a 'superato' solo dopo aver eseguito e verificato davvero il gate; altrimenti "
+                "usa 'non_eseguito' o l'esito reale."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id_compito": _STRINGA, "thread_id": _STRINGA, "id_evento": _STRINGA,
+                    "timestamp": _STRINGA,
+                    "tipo_compito": {"type": "string", "enum": _ENUM_TIPO_COMPITO},
+                    "stato": {"type": "string", "enum": _ENUM_STATO},
+                    "esito_gate": {"type": "string", "enum": ["non_eseguito", "superato", "fallito", "errore_ambiente", "timeout", "sconosciuto"]},
+                    "verdetto_umano": {"type": "string", "enum": ["non_revisionato", "approvato", "respinto", "modifiche_richieste"]},
+                    "latenza_ms": {"type": "integer", "minimum": 0},
+                    "regole_incluse": {"type": "array", "items": _STRINGA},
+                    "file_modificati": {"type": "array", "items": _STRINGA},
+                    "artefatti_flusso": {"type": "array", "items": _STRINGA},
+                    "voto_qualita": {"type": ["integer", "null"], "enum": [1, 2, 3, 4, 5, None]},
+                    "voto_velocita": {"type": ["integer", "null"], "enum": [1, 2, 3, 4, 5, None]},
+                    "note": _STRINGA,
+                },
+                "required": ["id_compito", "tipo_compito", "stato"],
+                "additionalProperties": False,
+            },
+        },
+        _tool_registro_aggiungi,
     ),
 }
 

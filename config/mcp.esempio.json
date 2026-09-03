@@ -1,5 +1,5 @@
 {
-  "_nota": "Configurazione di esempio per collegare mcp_orchestratore.py ai tre client MCP. Sostituisci <RADICE> con il percorso assoluto del repo su questa macchina e <AGENTE> con claude|codex|gemini. --radice e' OBBLIGATORIA (nessun fallback: in un worktree __file__ punterebbe al posto sbagliato). Il file reale con i percorsi assoluti resta fuori da Git, come config/comandi.json.",
+  "_nota": "Configurazione di esempio per collegare mcp_orchestratore.py ai tre client MCP. Sostituisci <RADICE> con il percorso assoluto del repo su questa macchina e <AGENTE> con claude|codex|gemini. --radice e' OBBLIGATORIA (nessun fallback: in un worktree __file__ punterebbe al posto sbagliato). Il server espone letture, scritture di bacheca/piano e gli strumenti Fase 2 registro_aggiungi e piano_approva_handoff. Il file reale con i percorsi assoluti resta fuori da Git, come config/comandi.json.",
   "_documentazione": "docs/RFC_SERVER_MCP_LOCALE.md",
 
   "claude_code": {

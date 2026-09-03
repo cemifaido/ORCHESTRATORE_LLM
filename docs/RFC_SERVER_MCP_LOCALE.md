@@ -1,6 +1,6 @@
 # RFC — Server MCP locale per bacheca, piano e registro
 
-**Stato:** APPROVATA (umano, 2026-09-02) e **implementata (lettura + scrittura)**.
+**Stato:** APPROVATA (umano, 2026-09-02) e **implementata (lettura + scrittura, inclusa Fase 2)**.
 Smoke-tested su tutti e tre i client (`mcp_orchestratore.py`). Tool di scrittura
 (`bacheca_rispondi`, `bacheca_prendi`, `piano_prendi_passo`, `piano_offri_passo`)
 con idempotenza obbligatoria — contratto in `bacheca_scritture.py`. Gemini approva; Codex
@@ -102,7 +102,7 @@ L'`agente` è sempre quello di avvio del server (`--agente`), mai da un tool cal
 `mittente` sui record scritti = quell'agente. `bacheca_scritture` usa
 `transazione_jsonl` direttamente (non `aggiungi_messaggio`, non reentrante).
 
-### Fase 2 (dopo che l'MVP è in uso reale)
+### Fase 2 — implementata
 
 | Tool | Funzione di dominio |
 |---|---|
@@ -270,8 +270,8 @@ logica vera sta tutta nelle funzioni di dominio.
    `conflitto` / `ok`); `agente` sempre da `--agente` di avvio, mai da tool
    call. Test: `test_bacheca_scritture` (8, incl. retry concorrenti) +
    `test_mcp_orchestratore` scritture.
-5. **Fase 2** — `registro_aggiungi`, `piano_approva_handoff`. Da fare quando
-   l'MVP è in uso reale.
+5. **Fase 2** — FATTA: `registro_aggiungi` (costo sempre 0.0 e vincolo sul gate
+   esplicitati nella descrizione) e `piano_approva_handoff`.
 6. Worktree-awareness (Slice C): quando esisterà, il server dovrà sapere che
    `dati_locali/` è nel root del repo, non nel worktree — stesso nodo di §15.4.
 
