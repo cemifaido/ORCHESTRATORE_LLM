@@ -1,11 +1,11 @@
 # RFC — Piano dichiarato e passi posseduti
 
-**Stato:** APPROVATA (umano, 2026-09-02) e implementata. Slice (a) — campo `piano`, proiezione, `piano_overlap`,
-`piano_comandi`/`bacheca.py piano` — e slice (b) — enforcement del dispatch in
-`dashboard_risvegli` via `piano_overlap.valuta_dispatch_piano` — sono chiuse
-(2026-08-31 → 2026-09-02, vedi `docs/PIANO_INDUSTRIALIZZAZIONE.md` §14.3). Resta
-la slice (c): widget "corsie" in dashboard. Questo documento è la spec di
-riferimento, aggiornato dove l'implementazione ha precisato una scelta.  
+**Stato:** APPROVATA (umano, 2026-09-02) e **completamente implementata**. Slice (a) — campo `piano`, proiezione, `piano_overlap`,
+`piano_comandi`/`bacheca.py piano` —, slice (b) — enforcement del dispatch in
+`dashboard_risvegli` via `piano_overlap.valuta_dispatch_piano` — e slice (c) — widget "corsie"
+in dashboard (`/api/bacheca/piano`, `static/interfaccia.{js,css}`) con collisione calcolata dal backend —
+sono chiuse e verificate (2026-08-31 → 2026-09-02, vedi `docs/PIANO_INDUSTRIALIZZAZIONE.md` §14.3).
+Questo documento è la spec di riferimento.  
 **Ambito:** progetto S14.3.
 
 ## Obiettivo e confini

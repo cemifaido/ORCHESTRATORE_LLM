@@ -464,21 +464,19 @@ non lancia nuovi compiti.
 
 Al momento sono stati aggiunti:
 
-- `schema/messaggio.v1.json`: schema dei messaggi;
-- `bacheca.py`: CLI per leggere/scrivere la bacheca;
+- `schema/messaggio.v1.json` e `v2`: schema dei messaggi e checkpoint ripristinabili;
+- `bacheca.py`: CLI per leggere/scrivere la bacheca e gestire il piano a corsie (`bacheca.py piano`);
 - `tests/test_bacheca.py`: test del comportamento principale;
-- `.claude/settings.json`: hook Claude;
+- `.claude/settings.json`: hook Claude Code (incluso `PreToolUse` per note mirate);
 - `.codex/hooks.json`: hook Codex;
-- `.gemini/settings.json` e `.agents/hooks.json`: hook di test per
-  Antigravity/Gemini, entrambi verificati come non efficaci nell'IDE;
+- `.agents/hooks.json`: hook per Antigravity/Gemini (verificato e funzionante dal vivo nell'IDE);
+- `mcp_orchestratore.py`: server MCP stdio locale per interagire con bacheca e piano via tool nativi;
+- `consegne_risveglio.py`: tracciamento degli stati di consegna dei messaggi;
+- `note_codice.py`: note di codice ancorate a blocchi di righe con verifica dell'hash;
 - `docs/RFC_BACHECA_MULTIAGENTE.md`: disegno tecnico completo;
 - `docs/CONFORMITA_TOS_BACHECA.md`: guardrail rispetto ai termini di servizio.
 
-Gli hook di Claude Code e Codex sono configurati e verificati empiricamente in
-sessioni fresche. Gemini/Antigravity è stato verificato con due meccanismi diversi
-(`BeforeAgent` e `PreInvocation`), ma nessuno dei due inietta contesto nell'IDE: per
-Gemini resta quindi il pull manuale con `python bacheca.py prossimo --agente gemini`,
-assistito dal badge nella dashboard.
+Gli hook di sessione sono configurati e verificati empiricamente per tutti e tre gli assistenti (Claude Code, Codex, Antigravity/Gemini). Ciascuno riceve automaticamente nel proprio contesto i messaggi in sospeso. Resta sempre disponibile anche il comando manuale di pull (`.\pull <agente>`), supportato dai badge informativi nella dashboard operativa.
 
 ## Cosa non è
 

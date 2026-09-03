@@ -48,7 +48,7 @@ Un risveglio non è una consegna. Per ogni coppia `(agente, messaggio)` il siste
 
 ### Note di codice ancorate al blocco
 
-`note_codice.py` tiene post-it brevi (gotcha, decisioni, convenzioni) agganciati a un blocco di righe di un file. L'ancora è percorso + intervallo + hash del contenuto: quando quel blocco cambia, la nota passa da `attiva` a `da_rivedere` invece di restare a mentire come un commento dimenticato. Le note dell'area su cui un agente sta lavorando gli arrivano nel contesto via hook.
+`note_codice.py` tiene post-it brevi (gotcha, decisioni, convenzioni) agganciati a un blocco di righe di un file. L'ancora è percorso + intervallo + hash del contenuto: quando quel blocco cambia, la nota passa da `attiva` a `da_rivedere` invece di restare a mentire come un commento dimenticato. Le note arrivano nel contesto via hook: all'avvio sessione la panoramica generale, e prima di ogni modifica (hook `PreToolUse`) l'iniezione mirata delle sole note pertinenti al file che si sta toccando.
 
 ### Workflow dichiarati e verificabili
 

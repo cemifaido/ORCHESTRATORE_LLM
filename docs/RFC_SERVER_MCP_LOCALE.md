@@ -11,7 +11,6 @@ CLI, B3 Antigravity tutti PASS end-to-end). Correzioni della revisione recepite:
 negoziazione `protocolVersion`, limite su `bacheca_thread`, smoke-test
 subprocess, contratto di idempotenza per le scritture, correzione del claim su
 `scrittura_jsonl` (poi `bacheca.aggiungi_messaggio` migrata davvero).
-**Resta il verdetto umano prima di aprire la fase scrittura.**
 **Origine:** PIANO_INDUSTRIALIZZAZIONE.md §15 Slice B (thread bacheca `fb8338d2`).
 Prerequisito «verifica del codice sorgente reale dei benchmark» già svolto
 (Codex, 2026-09-02, thread `4ddae141`): vedi sotto.

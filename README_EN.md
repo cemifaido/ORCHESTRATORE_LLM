@@ -48,7 +48,7 @@ A wake-up is not a delivery. For each `(agent, message)` pair the system tracks 
 
 ### Code Notes Anchored to a Block
 
-`note_codice.py` keeps short stickies (gotchas, decisions, conventions) attached to a block of lines in a file. The anchor is path + range + content hash: when that block changes, the note flips from `attiva` to `da_rivedere` instead of lying like a forgotten comment. Notes for the area an agent is working on reach it in context via a hook.
+`note_codice.py` keeps short stickies (gotchas, decisions, conventions) attached to a block of lines in a file. The anchor is path + range + content hash: when that block changes, the note flips from `attiva` to `da_rivedere` instead of lying like a forgotten comment. Notes reach context via hooks: a full overview at session startup, and targeted injection of only relevant notes for the specific file being edited right before modification (`PreToolUse` hook).
 
 ### Declared & Verifiable Workflows
 

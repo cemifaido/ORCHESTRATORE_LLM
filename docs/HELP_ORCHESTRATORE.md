@@ -151,6 +151,7 @@ pannello dedicato nella dashboard.
 ```powershell
 python bacheca.py chiedi --a codex --testo "Obiettivo: ... Contesto: ... Output atteso: ... Vincoli: ..."
 python bacheca.py stato
+python bacheca.py thread <id>       # nota: l'ID del thread va indicato come argomento posizionale (senza --thread-id)
 python bacheca.py prossimo --agente claude
 python bacheca.py rispondi --correla-a <id> --mittente claude --testo "..."
 python bacheca.py prendi --thread-id <id> --agente codex --correla-a <id-del-risveglio>

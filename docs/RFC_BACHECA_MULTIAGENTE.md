@@ -6,15 +6,12 @@ Code e Codex (sessioni fresche reali, non solo configurazione — vedi §9): l'i
 automatica del contesto dalla bacheca funziona senza intervento umano su entrambi.
 Per Codex serve un'autorizzazione esplicita una tantum nell'IDE (Antigravity/Codex
 extension chiede di approvare gli hook trovati la prima volta — un gate di sicurezza
-atteso, non un difetto). **Gemini/Antigravity verificato e confermato non
-funzionante**: l'hook di test (`TEST_HOOK_BACHECA_OK` in `.gemini/settings.json`)
-non compare nel contesto di una sessione fresca — Gemini stesso lo ha controllato
-esplicitamente e non l'ha trovato. Per Gemini resta quindi **solo il fallback
-manuale** (istruzione in `GEMINI.md` di leggere `bacheca.py prossimo --agente
-gemini`), non un problema: era già il piano B previsto per questo caso in §4.3, e
-il fallback stesso funziona (Gemini ha letto e risposto ai thread a lui indirizzati
-senza intervento umano oltre all'apertura della sessione). Con questo si chiude
-l'ultimo punto davvero aperto sul lato hook per tutti e tre gli strumenti.
+atteso, non un difetto). **Gemini/Antigravity**: il vecchio tentativo (`TEST_HOOK_BACHECA_OK` in `.gemini/settings.json`)
+non veniva recepito dall'IDE, ma la configurazione tramite `.agents/hooks.json`
+è stata successivamente introdotta, verificata empiricamente e confermata funzionante
+(tutti e tre gli agenti ricevono l'iniezione automatica del contesto in sessione).
+Resta comunque documentata la scorciatoia manuale (`.\pull gemini` / `bacheca.py prossimo --agente gemini`)
+come fallback operativo. Con questo gli hook sono confermati attivi su tutti e tre gli strumenti.
 **Aggiunto anche**: coordinamento cooperativo sui file (`occupati`/`prendi
 --file-modificati`), interruzione/ripresa (`checkpoint`/`ripresa`/`emergenza`),
 integrazione vera del modello locale (`sintetizza`), e un pannello "Bacheca" nella
