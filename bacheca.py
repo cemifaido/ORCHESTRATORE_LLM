@@ -442,7 +442,11 @@ def main(argv: list[str] | None = None) -> int:
     p_crea.add_argument("--passo-id", required=True)
     p_crea.add_argument("--descrizione", required=True)
     p_crea.add_argument("--attore", required=True, choices=["gemini", "claude", "codex", "umano"])
-    p_crea.add_argument("--proprietario", default=None, choices=["gemini", "claude", "codex", "umano"])
+    p_crea.add_argument(
+        "--proprietario", default=None, choices=["gemini", "claude", "codex", "umano"],
+        help="Se dato, il passo nasce gia' 'in_corso' assegnato a lui (crea + prende in "
+        "un colpo). Senza, nasce 'non_iniziato' e va preso con 'prendi-passo'.",
+    )
     p_crea.add_argument("--write-set", default="", help="CSV di path/glob relativi alla root")
     p_crea.add_argument("--read-set", default="")
     p_crea.add_argument("--thread-id", default=None)

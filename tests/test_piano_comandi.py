@@ -86,6 +86,24 @@ class PianoComandiTest(unittest.TestCase):
                           attore="umano", thread_id=tid)
             self.assertEqual(sorted(self._piano(b, tid)["passi"]), ["s1", "s2"])
 
+    def test_crea_passo_con_proprietario_nasce_in_corso(self) -> None:
+        """crea + prende in un colpo: senza questo un passo con proprietario ma
+        non_iniziato resterebbe bloccato (prendi_passo lo rifiuta)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            b = self._bacheca(tmp)
+            tid = self._crea(b, proprietario="claude", write_set=["x.py"])
+            passo = self._piano(b, tid)["passi"]["s1"]
+            self.assertEqual(passo["proprietario"], "claude")
+            self.assertEqual(passo["stato"], "in_corso")
+
+    def test_crea_passo_senza_proprietario_nasce_non_iniziato(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            b = self._bacheca(tmp)
+            tid = self._crea(b)
+            passo = self._piano(b, tid)["passi"]["s1"]
+            self.assertIsNone(passo["proprietario"])
+            self.assertEqual(passo["stato"], "non_iniziato")
+
 
 if __name__ == "__main__":
     unittest.main()

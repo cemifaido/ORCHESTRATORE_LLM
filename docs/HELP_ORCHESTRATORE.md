@@ -168,6 +168,9 @@ python bacheca.py piano prendi-passo --thread-id <id> --passo-id build --attore 
 python bacheca.py piano offri-passo --thread-id <id> --passo-id build --attore claude --a codex
 python bacheca.py piano mostra --thread-id <id>
 ```
+Se chi crea il passo è anche chi lo lavora, `crea-passo --proprietario claude` lo
+fa nascere già `in_corso` (crea + prende in un colpo), risparmiando il
+`prendi-passo`.
 Prima di un dispatch automatico il watcher blocca un passo che si sovrappone a
 uno già in corso e apre una `segnalazione_conflitto` (avviso, non blocco per
 l'umano).

@@ -52,7 +52,12 @@ def crea_passo(
     thread_id: str | None = None,
 ) -> dict[str, Any]:
     """Aggiunge un passo al piano di un thread. Il thread deve gia' esistere se
-    thread_id e' dato; altrimenti apre un thread nuovo (thread_id = id_messaggio)."""
+    thread_id e' dato; altrimenti apre un thread nuovo (thread_id = id_messaggio).
+
+    Con `proprietario` il passo nasce gia' `in_corso` assegnato a lui (crea +
+    prende in un colpo): senza questo, un `crea_passo` con proprietario ma
+    `non_iniziato` resterebbe bloccato - `prendi_passo` rifiuta i passi che hanno
+    gia' un proprietario e nessun altro comando li porta a `in_corso`."""
     import bacheca
     messaggi = bacheca.leggi_messaggi(percorso_bacheca)
     if thread_id is not None:
@@ -60,6 +65,7 @@ def crea_passo(
     campi: dict[str, Any] = {"descrizione": descrizione}
     if proprietario is not None:
         campi["proprietario"] = proprietario
+        campi["stato"] = "in_corso"
     if write_set:
         campi["write_set"] = _lista(write_set)
     if read_set:
