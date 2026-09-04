@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -22,9 +23,11 @@ class InstallaHookTest(unittest.TestCase):
             self.assertTrue(hook_file.exists())
             contenuto = hook_file.read_text(encoding="utf-8")
 
-            # Verifichiamo lo shebang e il percorso assoluto iniettato
+            # Verifichiamo lo shebang e il percorso assoluto iniettato.
+            # N8: il percorso finisce in un letterale via json.dumps (valido anche
+            # con virgolette/backslash nel path), non piu' in un r"...".
             self.assertTrue(contenuto.startswith("#!/usr/bin/env python"))
-            self.assertIn('Path(r"' + str(radice_progetto) + '")', contenuto)
+            self.assertIn("radice = Path(" + json.dumps(str(radice_progetto)) + ")", contenuto)
             self.assertIn('"controllo_lint"', contenuto)
             self.assertIn('"controllo_tipi"', contenuto)
             self.assertIn('"controllo_complessita"', contenuto)

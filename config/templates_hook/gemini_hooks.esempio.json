@@ -3,7 +3,7 @@
     "PreInvocation": [
       {
         "type": "command",
-        "command": "python -u ../hook_gemini.py",
+        "command": "python -u \"__RADICE_ORCHESTRATORE__/hook_gemini.py\"",
         "timeout": 15
       }
     ]

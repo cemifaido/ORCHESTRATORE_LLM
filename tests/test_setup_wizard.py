@@ -46,7 +46,10 @@ class GeneraFileEnvTest(unittest.TestCase):
             self.assertIn("AGENTI_ABILITATI=claude,gemini", contenuto)
             self.assertIn("LLM_LOCALE_ABILITATO=false", contenuto)
             self.assertIn("PORTA_LLAMA=8080", contenuto)
-            self.assertIn("POSTINO_HEADLESS_DEFAULT=true", contenuto)
+            # POSTINO_*_DEFAULT non si scrivono piu' come assegnazione (legacy,
+            # review v4): il profilo operativo si sceglie in dashboard, non in .env.
+            righe_assegnazione = [r for r in contenuto.splitlines() if r and not r.startswith("#")]
+            self.assertFalse(any(r.startswith("POSTINO_") for r in righe_assegnazione))
 
 
 class InizializzaProgettiTest(unittest.TestCase):
@@ -69,9 +72,15 @@ class InizializzaConfigAgentiTest(unittest.TestCase):
             self.assertIn("claude", risultati)
             file_claude = radice / ".claude" / "settings.json"
             self.assertTrue(file_claude.exists())
-            data = json.loads(file_claude.read_text(encoding="utf-8"))
+            testo = file_claude.read_text(encoding="utf-8")
+            data = json.loads(testo)
             self.assertIn("hooks", data)
             self.assertIn("SessionStart", data["hooks"])
+            # N7: il comando dell'hook porta il percorso ASSOLUTO di bacheca.py,
+            # non 'python bacheca.py' relativo alla CWD dell'agente.
+            self.assertNotIn("__RADICE_ORCHESTRATORE__", testo)
+            cmd = data["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+            self.assertIn(f'"{sw.RADICE.as_posix()}/bacheca.py"', cmd)
 
     def test_genera_config_codex(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python bacheca.py prossimo --agente codex --formato hook --evento SessionStart",
+            "command": "python \"__RADICE_ORCHESTRATORE__/bacheca.py\" prossimo --agente codex --formato hook --evento SessionStart",
             "timeout": 15
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python bacheca.py prossimo --agente codex --formato hook --evento UserPromptSubmit",
+            "command": "python \"__RADICE_ORCHESTRATORE__/bacheca.py\" prossimo --agente codex --formato hook --evento UserPromptSubmit",
             "timeout": 15
           }
         ]

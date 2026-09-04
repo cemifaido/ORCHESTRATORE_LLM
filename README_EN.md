@@ -43,6 +43,8 @@ When several agents work together the risk is not that they get the code wrong: 
 - **Working-tree contention guard.** Even without a plan, the Postman does not launch a headless agent's CLI if the working tree has **uncommitted changes to files that agent is about to write** — whoever made them (another dispatch, the operator, a parallel session). The dispatch stops with `tree_conteso` and raises a flag: commit or stash those changes, then wake the agent manually.
 - **Contention log.** Every episode is appended to `contese.jsonl`. That is the data that will tell us, on the numbers rather than on a hunch, whether and when agents need to be isolated in separate git worktrees (deferred for now: real headless parallelism is rare).
 
+One honest limit: these checks act **on automated dispatch**. An *interactive* agent (Claude Code, Gemini in Antigravity) can still write any file — the `write_set` it declares is a promise, not a technical constraint. None of these layers stop a *malicious* agent: this is coordination against the accidental *lost update*, not a security barrier.
+
 ### Delivery States: From Wake-Up to Ownership
 
 A wake-up is not a delivery. For each `(agent, message)` pair the system tracks a progression — `in_attesa` → `attenzione_richiamata` (the watcher acted) → `acquisito_da_hook` (the agent saw it in context) → `preso_in_carico` (it replied) — plus the terminal `chiuso_senza_consegna` when giving up. Events live in an append-only log; the dashboard shows the state next to every pending recipient. An OS wake-up has a cooldown so it doesn't keep stealing focus.

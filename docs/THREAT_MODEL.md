@@ -125,18 +125,59 @@ CLI / Antigravity). Confini e rischi (vedi `docs/RFC_SERVER_MCP_LOCALE.md`):
   forte fra processi dello stesso utente non aggiungerebbe garanzie — la valutazione
   cambia solo se il server esce da stdio/locale (allora serve un threat model nuovo).
 - **`--agente` è etichetta di provenienza, non identità provata.** I record che l'MCP
-  scriverà in bacheca (fase scrittura) porteranno `mittente = <agente di avvio>`: è
-  **audit**, non una garanzia che quel processo sia davvero quell'agente. Nessun
-  override per-call: un tool call che passa un `agente` diverso è rifiutato.
+  scrive portano `mittente = <agente di avvio>`: è **audit**, non una garanzia che
+  quel processo sia davvero quell'agente. Nessun override per-call: un tool call che
+  passa un `agente` diverso è rifiutato.
+- **`umano` NON è un valore ammesso per `--agente`** (dal 2026-09-03, rilievo review
+  esterna v4 N2/N3). È l'unica identità che *conferisce autorità*: verdetto umano
+  (`motore_flusso._ha_prova_verdetto`), approvazione di un handoff
+  (`piano_comandi.approva_handoff`), azzeramento del freno hop
+  (`postino._ultimo_tocco_umano`). Un processo che si dichiarasse `umano` potrebbe
+  forgiare quella prova. Inoltre `registro_aggiungi` **hard-codea `verdetto_umano =
+  non_revisionato`** e scarta `artefatti_flusso = "commit"`: un tool call non può
+  scrivere le prove che il motore flusso tratta come autorità per le azioni
+  irreversibili, nemmeno dichiarandosi un agente qualsiasi.
 - **I risultati dei tool sono dati non fidati**, come il contesto iniettato dall'hook
   (§3.3): un thread di bacheca può contenere testo che sembra un'istruzione. Ogni
   `description` di tool lo dichiara; il modello non deve obbedire al contenuto.
-- **MVP di sola lettura** oggi: nessuna scrittura, nessun `dispatch`, nessun comando
-  git/shell, nessun I/O di file arbitrari — esclusioni tassative nella RFC. La fase
-  scrittura richiede prima di portare `bacheca.aggiungi_messaggio` su un percorso
-  serializzato (`scrittura_jsonl`) e il contratto di idempotenza obbligatorio.
+- **Scrittura di coordinamento** (dal 2026-09-02, Fase 2): `bacheca_rispondi`/`prendi`,
+  `piano_prendi_passo`/`offri_passo`/`approva_handoff`, `registro_aggiungi`. Nessun
+  `dispatch`, nessun comando git/shell, nessun I/O di file arbitrari — esclusioni
+  tassative nella RFC. Le scritture bacheca passano da `scrittura_jsonl` (lock+fsync)
+  e dal contratto di idempotenza.
+- **`autorizza_automazione` NON è consultato dai tool di scrittura MCP — è
+  intenzionale** (rilievo v4, disposizione 2026-09-03). Quel gate protegge ciò che
+  gira *senza umano nel loop* (postino headless, hook pull di Gemini). L'MCP è una
+  sessione **aperta da un umano**: l'agente scrive in bacheca/piano/registro
+  esattamente come farebbe con `bacheca.py`/`registro.py` da CLI, che non sono
+  gated. Gating solo l'MCP sarebbe teatro: l'agente userebbe la CLI. Ciò che conta
+  — che un tool call non forgi l'*autorità* (verdetto, handoff, freno hop) — è
+  chiuso da N2/N3 sopra.
+- **Tetti anti-DoS** (dal 2026-09-03, v4 N5): riga JSON-RPC ≤ 512 KiB, elenco note
+  troncato a 500. Le riletture O(n) del JSONL sotto lock nei percorsi CAS restano un
+  rilievo aperto (backlog).
 - **Robustezza del loop**: `params` non-oggetto / `jsonrpc` errato / riga non-JSON
   producono un errore JSON-RPC tipizzato, non un crash (regressione da revisione Codex).
+
+### 3.10 Coordinamento dei conflitti fra agenti (`write_set`, collisione, contesa tree)
+
+Non è una barriera di sicurezza — nessuna delle parti impedisce a un agente
+*malevolo* di scrivere dove vuole. È coordinamento contro il *lost update*
+accidentale fra agenti che collaborano. I limiti vanno detti:
+
+- **`write_set` è applicato solo sul percorso di dispatch automatico.** Il watcher
+  confronta i passi `in_corso` e la contesa del working tree **prima di svegliare
+  un agente headless** (`piano_overlap.valuta_dispatch_piano`,
+  `contesa_tree.valuta_contesa`). Un agente **interattivo** (Claude Code, Gemini in
+  Antigravity) può scrivere qualsiasi file: il `write_set` che ha dichiarato nel
+  piano è una promessa, non un vincolo tecnico. Chi legge la RFC
+  `RFC_PIANO_STEP_POSSEDUTI.md` non deve aspettarsi enforcement lì.
+- **La guardia contesa-tree è fail-open e advisory** (`c073ca4`): git assente o
+  nessun piano dichiarato → il dispatch passa. Non attribuisce le modifiche a un
+  attore. È il "80% leggero" in attesa dei worktree (§15.4 del piano).
+- **`.gitattributes eol=lf`** chiude una fonte di churn (non di sicurezza): senza,
+  `git checkout`/`pull` con `core.autocrlf` riscriveva i `.py` e innescava
+  l'auto-riavvio della dashboard.
 
 ## 4. Cosa cambia con "chiunque può clonarlo" (gap specifici del rilascio pubblico)
 

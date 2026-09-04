@@ -14,6 +14,7 @@ from typing import Any
 import jsonschema
 
 import console_utf8
+import scrittura_jsonl
 
 
 RADICE = Path(__file__).resolve().parent
@@ -110,13 +111,10 @@ def valida_evento(evento: dict[str, Any], schema: dict[str, Any] | None = None) 
 
 
 def aggiungi_evento(percorso: Path, evento: dict[str, Any]) -> None:
-    errori = valida_evento(evento)
-    if errori:
-        raise ValueError("; ".join(errori))
-    percorso.parent.mkdir(parents=True, exist_ok=True)
-    with percorso.open("a", encoding="utf-8", newline="\n") as file:
-        file.write(json.dumps(evento, ensure_ascii=False, sort_keys=True))
-        file.write("\n")
+    """Append serializzato (lock di file + fsync) - stesso contratto di
+    `bacheca.aggiungi_messaggio` (rilievo review v4 N9: prima era un `open("a")`
+    nudo, lost-update possibile fra scrittori concorrenti su Windows)."""
+    scrittura_jsonl.aggiungi_riga_jsonl(percorso, evento, valida=valida_evento)
 
 
 def leggi_eventi(percorso: Path) -> list[dict[str, Any]]:

@@ -7,7 +7,7 @@
           {
             "name": "bacheca-gemini",
             "type": "command",
-            "command": "python bacheca.py prossimo --agente gemini --formato hook --evento BeforeAgent",
+            "command": "python \"__RADICE_ORCHESTRATORE__/bacheca.py\" prossimo --agente gemini --formato hook --evento BeforeAgent",
             "timeout": 15
           }
         ]

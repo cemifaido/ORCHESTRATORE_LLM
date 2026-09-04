@@ -19,6 +19,14 @@ consulta `piano_overlap.valuta_dispatch_piano` prima di `postino.dispatch` e su
 collisione sospende il risveglio automatico, postando una `segnalazione_conflitto`
 senza retry.
 
+**Confine dell'enforcement (esplicitato dopo la review v4).** Il vincolo
+`write_set` è applicato **solo sul percorso di dispatch automatico**. Un agente
+*interattivo* (Claude Code in terminale, Gemini in Antigravity) può scrivere
+qualsiasi file: il `write_set` che dichiara nel piano è una promessa di
+coordinamento, non un perimetro tecnico. Questo è un design contro il *lost
+update* accidentale fra agenti che collaborano, non una barriera contro un agente
+malevolo. Vedi `docs/THREAT_MODEL.md` §3.10.
+
 Il primo slice resta compatibile con `messaggio.v1`: aggiunge soltanto il campo
 opzionale `piano` ai record pertinenti. I messaggi v1 esistenti senza il campo
 continuano a essere validi e non si introduce `messaggio.v2` né una migrazione.

@@ -43,6 +43,8 @@ Quando più agenti lavorano insieme il rischio non è che sbaglino il codice: è
 - **Guardia sulla contesa del working tree.** Anche senza un piano, il Postino non lancia la CLI di un agente headless se sul working tree ci sono **modifiche non committate sui file che quell'agente sta per scrivere** — di chiunque siano (un altro dispatch, l'operatore, una sessione parallela). Il dispatch si ferma con `tree_conteso` e apre una segnalazione: committa o metti da parte quelle modifiche, poi risveglia l'agente a mano.
 - **Log di contesa.** Ogni episodio finisce in `contese.jsonl` (append-only). È il dato che dirà, sui numeri e non sull'intuizione, se e quando serve isolare gli agenti in worktree git separati (oggi rimandato: il parallelo headless reale è raro).
 
+Un limite onesto: questi controlli agiscono **sul dispatch automatico**. Un agente *interattivo* (Claude Code, Gemini in Antigravity) può comunque scrivere qualsiasi file — il `write_set` che dichiara è una promessa, non un vincolo tecnico. Nessuno di questi strati ferma un agente *malevolo*: è coordinamento contro il *lost update* accidentale, non una barriera di sicurezza.
+
 ### Stati di consegna: dal risveglio alla presa in carico
 
 Un risveglio non è una consegna. Per ogni coppia `(agente, messaggio)` il sistema traccia una progressione — `in_attesa` → `attenzione_richiamata` (il watcher ha agito) → `acquisito_da_hook` (l'agente l'ha visto nel contesto) → `preso_in_carico` (ha risposto) — più il terminale `chiuso_senza_consegna` quando si rinuncia. Gli eventi vivono in un log append-only; la dashboard mostra lo stato accanto a ogni destinatario in attesa. Un risveglio OS ha un cooldown per non rubare il primo piano di continuo.

@@ -1,10 +1,15 @@
+import json
 import os
 import sys
 from pathlib import Path
 
 
 def scrivi_hook(radice: Path, hook_path: Path) -> None:
-    # Contenuto del pre-commit in Python
+    # Contenuto del pre-commit in Python. `radice` finisce in un letterale Python
+    # generato: interpolarla dentro un r"..." si rompe se il percorso contiene
+    # una virgoletta o finisce con un backslash (rilievo review v4 N8).
+    # json.dumps produce un letterale stringa sempre valido e già quotato.
+    radice_letterale = json.dumps(str(radice))
     contenuto = f"""#!/usr/bin/env python
 # Hook pre-commit generato dall'Orchestratore Centrale.
 # Verifica i quality gate (ruff, mypy, xenon) prima di consentire il commit,
@@ -20,7 +25,7 @@ from pathlib import Path
 BRANCH_PROTETTI = {{"main", "master"}}
 
 def main():
-    radice = Path(r"{radice}")
+    radice = Path({radice_letterale})
     sentinella = radice / "sentinella.py"
 
     branch = subprocess.run(

@@ -199,6 +199,22 @@ def tempo_creazione_processo(pid: Any) -> float | None:
             return btime + starttime_tick / os.sysconf("SC_CLK_TCK")
         except (OSError, ValueError, StopIteration, IndexError):
             return None
+    if sys.platform == "darwin":
+        # macOS non ha /proc: `ps -o lstart=` da' l'istante di avvio in ora
+        # locale (non un delta -> nessuno skew col clock del chiamante).
+        # Rilievo review v4 N6: senza questo ramo il chiamante restava
+        # 'non_verificabile' per sempre e un test falliva su darwin.
+        try:
+            esito = subprocess.run(
+                ["ps", "-o", "lstart=", "-p", str(pid)],
+                capture_output=True, text=True, timeout=5, check=False,
+            )
+            testo = " ".join((esito.stdout or "").split())
+            if esito.returncode != 0 or not testo:
+                return None
+            return datetime.strptime(testo, "%a %b %d %H:%M:%S %Y").timestamp()
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return None
     return None
 
 

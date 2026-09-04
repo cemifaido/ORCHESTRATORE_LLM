@@ -111,6 +111,17 @@ class SentinellaTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 sentinella.esegui("prova", comando, radice_progetto=Path(radice))
 
+    def test_basename_eseguibile_normalizza_suffisso_e_case(self) -> None:
+        # l'allowlist confronta il basename senza suffisso .exe/.cmd/.bat/... e
+        # case-folded: 'PYTHON.EXE', 'C:\\x\\Git.CMD' -> 'python', 'git'.
+        # (cross-platform: prima questo era testato eseguendo davvero PYTHON.EXE,
+        # che non esiste su POSIX - test-portability bug, rilievo review v4.)
+        self.assertEqual(sentinella._basename_eseguibile("PYTHON.EXE"), "python")
+        self.assertEqual(sentinella._basename_eseguibile(r"C:\tools\Git.CMD"), "git")
+        self.assertEqual(sentinella._basename_eseguibile("/usr/bin/python3"), "python3")
+        self.assertIn("python", sentinella.ESEGUIBILI_AMMESSI)
+
+    @unittest.skipUnless(sys.platform == "win32", "esegue davvero un file *.EXE, Windows-only")
     def test_accetta_eseguibile_con_suffisso_windows(self) -> None:
         with tempfile.TemporaryDirectory() as radice:
             comando = {

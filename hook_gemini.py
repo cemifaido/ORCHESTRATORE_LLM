@@ -16,11 +16,13 @@ sys.path.insert(0, str(RADICE))
 
 import bacheca  # noqa: E402
 import capability_policy  # noqa: E402
+import scrittura_jsonl  # noqa: E402
 
 
 def main() -> int:
     percorso_log = RADICE / "dati_locali" / "orchestrazione" / "log_hook_antigravity.jsonl"
-    payload_stdin = {}
+    payload_stdin: object = {}
+    testo_stdin = ""
     try:
         if not sys.stdin.isatty():
             testo_stdin = sys.stdin.read()
@@ -30,15 +32,17 @@ def main() -> int:
         pass
 
     decisione = capability_policy.autorizza_automazione("gemini", "hook_pull")
+    # Non logghiamo il payload grezzo di Antigravity (potrebbe contenere segreti
+    # o PII - rilievo review v4 N15): per il collaudo bastano forma e dimensione.
     evento_log = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "stdin": payload_stdin,
+        "stdin_chiavi": sorted(payload_stdin) if isinstance(payload_stdin, dict)
+        else type(payload_stdin).__name__,
+        "stdin_byte": len(testo_stdin.encode("utf-8")),
         "capability_policy": decisione,
     }
     try:
-        percorso_log.parent.mkdir(parents=True, exist_ok=True)
-        with percorso_log.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(evento_log, ensure_ascii=False) + "\n")
+        scrittura_jsonl.aggiungi_riga_jsonl(percorso_log, evento_log)
     except Exception:
         pass
 

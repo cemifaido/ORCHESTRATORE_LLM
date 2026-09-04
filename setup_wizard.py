@@ -176,9 +176,10 @@ def genera_file_env(config: dict[str, Any], percorso_env: Path | None = None) ->
         f"SCRIPT_AVVIO_LLAMA={config.get('script_avvio_llama', '')}",
         f"MODELLO_LEGGERO_GGUF={config.get('modello_gguf', '')}",
         "",
-        "# Impostazioni Postino Automatico",
-        f"POSTINO_ATTIVO_DEFAULT={'true' if config.get('postino_attivo', True) else 'false'}",
-        f"POSTINO_HEADLESS_DEFAULT={'true' if config.get('postino_headless', False) else 'false'}",
+        "# Il Postino automatico si configura per-progetto dal menu 'profilo operativo'",
+        "# in dashboard (standard/brainstorming/super/smodata), non da variabili .env.",
+        "# POSTINO_ATTIVO_DEFAULT / POSTINO_HEADLESS_DEFAULT erano legacy e ignorati",
+        "# dal runtime: non li scriviamo piu' (rilievo review v4).",
         "",
     ]
     dest.write_text("\n".join(righe), encoding="utf-8")
@@ -255,7 +256,15 @@ def inizializza_config_agenti(
 
             file_dest.parent.mkdir(parents=True, exist_ok=True)
             if file_tmpl.exists():
-                contenuto = file_tmpl.read_text(encoding="utf-8")
+                # I template invocano bacheca.py / hook_gemini.py: se lasciati
+                # relativi si risolvono rispetto alla CWD dell'agente (che per
+                # Antigravity e' .agents/, non la root) e l'hook fallisce muto se
+                # l'agente lavora su un altro progetto (rilievo review v4 N7).
+                # Sostituiamo il placeholder col percorso assoluto (POSIX-style:
+                # niente escaping JSON, funziona anche su Windows).
+                contenuto = file_tmpl.read_text(encoding="utf-8").replace(
+                    "__RADICE_ORCHESTRATORE__", RADICE.as_posix()
+                )
                 file_dest.write_text(contenuto, encoding="utf-8")
             risultati[ag_norm].append(file_dest)
 

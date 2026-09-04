@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -343,19 +344,26 @@ def _cli(argv: list[str] | None = None) -> int:
         return 0 if record else 1
 
     if args.comando == "rigenera-cache":
-        nuovo = rigenera_notificati(args.radice, messaggi)
         percorso = args.radice / "dati_locali" / "orchestrazione" / "risvegli_notificati.json"
-        stato = {"versione_schema": 1, "notificati": nuovo}
-        if percorso.exists():
-            try:
-                esistente = json.loads(percorso.read_text(encoding="utf-8"))
-                if isinstance(esistente, dict):
-                    esistente["notificati"] = nuovo
-                    stato = esistente
-            except (OSError, json.JSONDecodeError):
-                pass
         percorso.parent.mkdir(parents=True, exist_ok=True)
-        percorso.write_text(json.dumps(stato, indent=2, ensure_ascii=False), encoding="utf-8")
+        # read-modify-write sotto lock (rilievo review v4 N17): senza, questo CLI
+        # e dashboard_risvegli.persisti_stato() possono clobberarsi a vicenda.
+        try:
+            with scrittura_jsonl.blocco_file(percorso, timeout_secondi=5.0):
+                nuovo = rigenera_notificati(args.radice, messaggi)
+                stato: dict[str, Any] = {"versione_schema": 1, "notificati": nuovo}
+                if percorso.exists():
+                    try:
+                        esistente = json.loads(percorso.read_text(encoding="utf-8"))
+                        if isinstance(esistente, dict):
+                            esistente["notificati"] = nuovo
+                            stato = esistente
+                    except (OSError, json.JSONDecodeError):
+                        pass
+                percorso.write_text(json.dumps(stato, indent=2, ensure_ascii=False), encoding="utf-8")
+        except TimeoutError:
+            print("rigenera-cache: lock conteso, riprova", file=sys.stderr)
+            return 1
         print(json.dumps(nuovo, ensure_ascii=False))
         return 0
 
