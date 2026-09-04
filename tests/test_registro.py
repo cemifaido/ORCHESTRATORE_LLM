@@ -134,6 +134,23 @@ class RegistroTest(unittest.TestCase):
         dati = registro.metriche([evento_gate, evento_umano])
         self.assertEqual(dati["codex"]["rework"], 2)
 
+    def test_metriche_per_tipo_aggrega_gate_e_rework(self) -> None:
+        def _ev(id_evento: str, **kw: str) -> dict:
+            e = self.evento_valido()
+            e["id_evento"] = id_evento
+            e.update(kw)
+            return e
+
+        e1 = _ev("e1", tipo_compito="servizi", esito_gate="superato")
+        e2 = _ev("e2", tipo_compito="servizi", esito_gate="fallito")
+        e3 = _ev("e3", tipo_compito="revisione", esito_gate="non_eseguito", stato="da_rivedere")
+        dati = registro.metriche_per_tipo([e1, e2, e3])
+        self.assertEqual(dati[("servizi", "codex")],
+                         {"esecuzioni": 2, "gate_superato": 1, "gate_fallito": 1,
+                          "gate_non_eseguito": 0, "rework": 1})
+        self.assertEqual(dati[("revisione", "codex")]["rework"], 1)
+        self.assertEqual(dati[("revisione", "codex")]["gate_non_eseguito"], 1)
+
     def test_metriche_per_livello_smista_per_tipo_compito(self) -> None:
         evento_frontend = self.evento_valido()
         evento_frontend["id_evento"] = "evt-frontend"

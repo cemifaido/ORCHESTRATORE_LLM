@@ -317,10 +317,10 @@ def metriche_per_tipo(eventi: list[dict[str, Any]]) -> dict[tuple[str, str], dic
 def comando_riepilogo(args: argparse.Namespace) -> int:
     eventi = leggi_eventi(Path(args.registro))
     if getattr(args, "per_tipo", False):
-        dati = metriche_per_tipo(eventi)
+        per_tipo = metriche_per_tipo(eventi)
         print("| Tipo compito | Agente | Esecuzioni | Gate ok | Gate ko | Gate n/e | Rework |")
         print("|---|---|---:|---:|---:|---:|---:|")
-        for (tipo, agente), r in sorted(dati.items()):
+        for (tipo, agente), r in sorted(per_tipo.items()):
             print(
                 f"| {tipo} | {agente} | {r['esecuzioni']} | {r['gate_superato']} | "
                 f"{r['gate_fallito']} | {r['gate_non_eseguito']} | {r['rework']} |"
