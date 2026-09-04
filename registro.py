@@ -290,8 +290,43 @@ def comando_valida(args: argparse.Namespace) -> int:
     return 0
 
 
+def metriche_per_tipo(eventi: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, int]]:
+    """Aggregato per (tipo_compito, agente): esecuzioni, gate superati / falliti /
+    non_eseguito, rework. Colpo d'occhio per l'umano, NON un router - le metriche
+    'di qualita'' hanno campione minuscolo e assegnazione mai randomizzata
+    (decisione 2026-09-04, thread confronto-deepseek-harness)."""
+    agg: defaultdict[tuple[str, str], dict[str, int]] = defaultdict(lambda: {
+        "esecuzioni": 0, "gate_superato": 0, "gate_fallito": 0, "gate_non_eseguito": 0, "rework": 0,
+    })
+    for evento in eventi:
+        chiave = (str(evento.get("tipo_compito") or "?"), str(evento["agente"]))
+        riga = agg[chiave]
+        riga["esecuzioni"] += 1
+        gate = evento.get("esito_gate")
+        if gate == "superato":
+            riga["gate_superato"] += 1
+        elif gate == "fallito":
+            riga["gate_fallito"] += 1
+        elif gate in (None, "non_eseguito"):
+            riga["gate_non_eseguito"] += 1
+        if evento_indica_rework(evento) or evento.get("stato") == "da_rivedere":
+            riga["rework"] += 1
+    return dict(agg)
+
+
 def comando_riepilogo(args: argparse.Namespace) -> int:
     eventi = leggi_eventi(Path(args.registro))
+    if getattr(args, "per_tipo", False):
+        dati = metriche_per_tipo(eventi)
+        print("| Tipo compito | Agente | Esecuzioni | Gate ok | Gate ko | Gate n/e | Rework |")
+        print("|---|---|---:|---:|---:|---:|---:|")
+        for (tipo, agente), r in sorted(dati.items()):
+            print(
+                f"| {tipo} | {agente} | {r['esecuzioni']} | {r['gate_superato']} | "
+                f"{r['gate_fallito']} | {r['gate_non_eseguito']} | {r['rework']} |"
+            )
+        print("\n_Colpo d'occhio, non un router: campione piccolo e assegnazione per ruolo._")
+        return 0
     dati = metriche(eventi)
     print("| Agente | Esecuzioni | Costo USD | Latenza ms | Rework | Qualità | Velocità |")
     print("|---|---:|---:|---:|---:|---:|---:|")
@@ -336,7 +371,11 @@ def main(argv: list[str] | None = None) -> int:
     valida.set_defaults(funzione=comando_valida)
 
     riepilogo = sotto.add_parser("riepilogo", help="Mostra metriche sintetiche")
-    riepilogo.set_defaults(funzione=comando_riepilogo)
+    riepilogo.add_argument(
+        "--per-tipo", action="store_true", dest="per_tipo",
+        help="Spezza per (tipo_compito, agente) con distribuzione dei gate e rework.",
+    )
+    riepilogo.set_defaults(funzione=comando_riepilogo, per_tipo=False)
 
     args = parser.parse_args(argv)
     try:
