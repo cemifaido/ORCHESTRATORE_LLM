@@ -195,7 +195,10 @@ Due funzioni in più nel pannello:
 `.agents/hooks.json` per Antigravity), tutti e tre gli agenti ricevono i messaggi
 in sospeso nel contesto all'avvio di una sessione o all'invio di un prompt —
 verificato dal vivo. Quando l'hook include un messaggio nel contesto, lo stato di
-consegna di quella coppia passa a `acquisito_da_hook` (vedi §9).
+consegna di quella coppia passa a `acquisito_da_hook` (vedi §9). Non tutti gli
+strumenti offrono gli stessi hook: la tabella "Cosa è attivo per ogni strumento"
+nel README riepiloga cosa funziona con Claude Code / Codex / Antigravity / Cursor
+/ una CLI generica.
 
 **Note di codice mirate**: su Claude Code un hook `PreToolUse`
 (`note_codice.py hook --pre-tool-use`, matcher `Edit|Write|MultiEdit|NotebookEdit`)

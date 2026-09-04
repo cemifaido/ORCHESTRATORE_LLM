@@ -83,6 +83,25 @@ A local FastAPI interface centralizes the multi-agent board, suspended workflows
 
 A scheduled checker inspects new releases of Claude, Codex, and Gemini, retrieves release notes, and synthesizes them with the local model. It never updates anything automatically: it opens an informational ticket on the board and waits for human decision.
 
+### What's Active Per Tool
+
+The lowest common denominator is **manual pull + MCP**: any tool that speaks MCP and from which you can run `python` can be integrated. Hooks and headless dispatch are a bonus for the tools that offer them.
+
+| | Manual board pull | Auto context (session hook) | Targeted notes (`PreToolUse`) | MCP server | Headless dispatch | Perimeter |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Claude Code** (CLI) | ✅ | ✅ | ✅ | ✅ | ✅ `claude -p` | **`enforced`** (`--allowedTools`) |
+| **Codex CLI** | ✅ | ✅ | ❌ | ✅ | ✅ `codex exec` | `prompt_only` |
+| **Antigravity** (Gemini) | ✅ | ✅ (`PreInvocation`) | ❌ | ✅ | ⚠️ degraded on Windows | `prompt_only` |
+| **Cursor** | ✅ | ❌ (static Rules only) | ❌ | ✅ (`.cursor/mcp.json`) | ⚠️ not integrated | `prompt_only` |
+| **Any CLI + local model** | ✅ | ❌ | ❌ | possible | — | — (triage/summary only) |
+
+- ✅ works · ⚠️ partial or not yet built · ❌ not offered by that tool
+- **Manual pull**: `python bacheca.py prossimo --agente <name>` — always available, it's just Python.
+- **Auto context**: a session hook that injects pending messages and the code-notes overview.
+- **Targeted notes**: a `PreToolUse` hook that injects only the notes for the file you're about to edit — today only Claude Code exposes that event.
+- **Headless dispatch**: the Postman wakes the agent on its own (`claude -p` / `codex exec` / `agy -p`). On Windows `agy` headless is degraded (a tool defect); manual pull still works.
+- **Perimeter**: `enforced` = a constraint imposed by the tool (only Claude, via `--allowedTools`); `prompt_only` = a convention stated in the prompt, not technically enforced.
+
 ## Architecture at a Glance
 
 ```text

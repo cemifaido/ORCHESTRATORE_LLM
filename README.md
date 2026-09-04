@@ -83,6 +83,25 @@ L'interfaccia FastAPI locale riunisce bacheca, pratiche sospese, conflitti, regi
 
 Un controllo schedulabile verifica nuove versioni di Claude, Codex e Gemini, recupera le note disponibili e le sintetizza col modello locale. Non aggiorna mai nulla da solo: apre una notifica in bacheca e aspetta una scelta umana.
 
+### Cosa è attivo per ogni strumento
+
+Il minimo comune denominatore è **pull manuale + MCP**: qualunque strumento che sa parlare MCP e da cui puoi lanciare `python` è integrabile. Hook e dispatch headless sono un di più per gli strumenti che li offrono.
+
+| | Pull manuale bacheca | Contesto auto (hook di sessione) | Note mirate (`PreToolUse`) | Server MCP | Dispatch headless | Perimetro |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Claude Code** (CLI) | ✅ | ✅ | ✅ | ✅ | ✅ `claude -p` | **`enforced`** (`--allowedTools`) |
+| **Codex CLI** | ✅ | ✅ | ❌ | ✅ | ✅ `codex exec` | `prompt_only` |
+| **Antigravity** (Gemini) | ✅ | ✅ (`PreInvocation`) | ❌ | ✅ | ⚠️ degradato su Windows | `prompt_only` |
+| **Cursor** | ✅ | ❌ (solo Rules statiche) | ❌ | ✅ (`.cursor/mcp.json`) | ⚠️ non integrato | `prompt_only` |
+| **Altra CLI + modello locale** | ✅ | ❌ | ❌ | possibile | — | — (fa solo triage/sintesi) |
+
+- ✅ funziona · ⚠️ parziale o non ancora fatto · ❌ non offerto da quello strumento
+- **Pull manuale**: `python bacheca.py prossimo --agente <nome>` — sempre disponibile, è solo Python.
+- **Contesto auto**: hook di sessione che inietta i messaggi pendenti e la panoramica delle note di codice.
+- **Note mirate**: hook `PreToolUse` che inietta le sole note del file che stai per modificare — oggi solo Claude Code espone questo evento.
+- **Dispatch headless**: il Postino sveglia l'agente da solo (`claude -p` / `codex exec` / `agy -p`). Su Windows `agy` headless è degradato (difetto del tool); resta il pull manuale.
+- **Perimetro**: `enforced` = vincolo imposto dallo strumento (solo Claude, via `--allowedTools`); `prompt_only` = convenzione dichiarata nel prompt, non applicata tecnicamente.
+
 ## Architettura in un colpo d'occhio
 
 ```text
