@@ -85,14 +85,15 @@ A scheduled checker inspects new releases of Claude, Codex, and Gemini, retrieve
 
 ### What's Active Per Tool
 
-The lowest common denominator is **manual pull + MCP**: any tool that speaks MCP and from which you can run `python` can be integrated. Hooks and headless dispatch are a bonus for the tools that offer them.
+The lowest common denominator is **manual pull + MCP**: any tool that speaks MCP and from which you can run `python` can be integrated. Hooks and headless dispatch are a bonus for the tools that offer them. Rows are the **assistant**, not the editor: Claude Code, for instance, runs both from a terminal and as a VS Code / JetBrains extension, and its row applies in both cases.
 
-| | Manual board pull | Auto context (session hook) | Targeted notes (`PreToolUse`) | MCP server | Headless dispatch | Perimeter |
+| Assistant | Manual board pull | Auto context (session hook) | Targeted notes (`PreToolUse`) | MCP server | Headless dispatch | Perimeter |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Claude Code** (CLI) | ✅ | ✅ | ✅ | ✅ | ✅ `claude -p` | **`enforced`** (`--allowedTools`) |
+| **Claude Code** (CLI or VS Code/JetBrains extension) | ✅ | ✅ | ✅ | ✅ | ✅ `claude -p` | **`enforced`** (`--allowedTools`) |
 | **Codex CLI** | ✅ | ✅ | ❌ | ✅ | ✅ `codex exec` | `prompt_only` |
 | **Antigravity** (Gemini) | ✅ | ✅ (`PreInvocation`) | ❌ | ✅ | ⚠️ degraded on Windows | `prompt_only` |
 | **Cursor** | ✅ | ❌ (static Rules only) | ❌ | ✅ (`.cursor/mcp.json`) | ⚠️ not integrated | `prompt_only` |
+| **VS Code + Copilot** (agent mode) | ✅ | ❌ | ❌ | ✅ (`.vscode/mcp.json`) | ⚠️ not integrated | `prompt_only` |
 | **Any CLI + local model** | ✅ | ❌ | ❌ | possible | — | — (triage/summary only) |
 
 - ✅ works · ⚠️ partial or not yet built · ❌ not offered by that tool

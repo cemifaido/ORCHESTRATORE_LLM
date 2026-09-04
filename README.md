@@ -85,14 +85,15 @@ Un controllo schedulabile verifica nuove versioni di Claude, Codex e Gemini, rec
 
 ### Cosa è attivo per ogni strumento
 
-Il minimo comune denominatore è **pull manuale + MCP**: qualunque strumento che sa parlare MCP e da cui puoi lanciare `python` è integrabile. Hook e dispatch headless sono un di più per gli strumenti che li offrono.
+Il minimo comune denominatore è **pull manuale + MCP**: qualunque strumento che sa parlare MCP e da cui puoi lanciare `python` è integrabile. Hook e dispatch headless sono un di più per gli strumenti che li offrono. Le righe sono l'**assistente**, non l'editor: Claude Code, per esempio, gira sia da terminale sia come estensione VS Code / JetBrains, e la sua riga vale in entrambi i casi.
 
-| | Pull manuale bacheca | Contesto auto (hook di sessione) | Note mirate (`PreToolUse`) | Server MCP | Dispatch headless | Perimetro |
+| Assistente | Pull manuale bacheca | Contesto auto (hook di sessione) | Note mirate (`PreToolUse`) | Server MCP | Dispatch headless | Perimetro |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Claude Code** (CLI) | ✅ | ✅ | ✅ | ✅ | ✅ `claude -p` | **`enforced`** (`--allowedTools`) |
+| **Claude Code** (CLI o estensione VS Code/JetBrains) | ✅ | ✅ | ✅ | ✅ | ✅ `claude -p` | **`enforced`** (`--allowedTools`) |
 | **Codex CLI** | ✅ | ✅ | ❌ | ✅ | ✅ `codex exec` | `prompt_only` |
 | **Antigravity** (Gemini) | ✅ | ✅ (`PreInvocation`) | ❌ | ✅ | ⚠️ degradato su Windows | `prompt_only` |
 | **Cursor** | ✅ | ❌ (solo Rules statiche) | ❌ | ✅ (`.cursor/mcp.json`) | ⚠️ non integrato | `prompt_only` |
+| **VS Code + Copilot** (agent mode) | ✅ | ❌ | ❌ | ✅ (`.vscode/mcp.json`) | ⚠️ non integrato | `prompt_only` |
 | **Altra CLI + modello locale** | ✅ | ❌ | ❌ | possibile | — | — (fa solo triage/sintesi) |
 
 - ✅ funziona · ⚠️ parziale o non ancora fatto · ❌ non offerto da quello strumento
