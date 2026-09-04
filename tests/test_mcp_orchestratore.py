@@ -203,6 +203,42 @@ class McpOrchestratoreTest(unittest.TestCase):
             self.assertEqual(evento["costo_stimato_usd"], 0.0)
             self.assertEqual(evento["esito_gate"], "superato")
 
+    def test_registro_aggiungi_non_puo_forgiare_il_verdetto_umano(self) -> None:
+        """Review v4 N2: un tool call non scrive verdetto_umano / commit, mai."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice, _ = self._radice_con_thread(tmp)
+            _dialogo(radice, "codex", [
+                {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                    "name": "registro_aggiungi",
+                    "arguments": {
+                        "id_compito": "x", "tipo_compito": "servizi", "stato": "accettato",
+                        "verdetto_umano": "approvato", "artefatti_flusso": ["commit", "diff"],
+                    },
+                }},
+            ])
+            evento = registro.leggi_eventi(radice / "dati_locali" / "orchestrazione" / "eventi.jsonl")[0]
+            self.assertEqual(evento["verdetto_umano"], "non_revisionato")
+            self.assertNotIn("commit", evento["artefatti_flusso"])
+            self.assertEqual(evento["metadati"], {"origine": "mcp"})
+
+    def test_agente_umano_rifiutato_all_avvio(self) -> None:
+        """Review v4 N2/N3: 'umano' e' l'unica identita' che conferisce autorita'."""
+        with self.assertRaises(SystemExit):
+            mcp.main(["--radice", ".", "--agente", "umano"])
+
+    def test_riga_gigante_non_ferma_il_loop(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice, _ = self._radice_con_thread(tmp)
+            gigante = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping",
+                                  "params": {"x": "A" * (mcp._LIMITE_RIGA_BYTE + 10)}})
+            buono = json.dumps({"jsonrpc": "2.0", "id": 2, "method": "ping", "params": {}})
+            entrata = io.StringIO(gigante + "\n" + buono + "\n")
+            uscita = io.StringIO()
+            mcp.servi(entrata, uscita, radice, "claude")
+            risposte = [json.loads(r) for r in uscita.getvalue().splitlines()]
+            self.assertEqual(risposte[0]["error"]["code"], -32600)
+            self.assertEqual(risposte[1]["id"], 2)  # il loop e' proseguito
+
     def test_piano_approva_handoff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             radice, msg = self._radice_con_thread(tmp)

@@ -106,8 +106,15 @@ L'`agente` è sempre quello di avvio del server (`--agente`), mai da un tool cal
 
 | Tool | Funzione di dominio |
 |---|---|
-| `registro_aggiungi` | `registro.aggiungi_evento` — con i vincoli di `CLAUDE.md` (costo stimato, `esito_gate` solo se verificato) espressi nella descrizione del tool |
+| `registro_aggiungi` | `registro.aggiungi_evento` — `costo_stimato_usd` fisso a `0.0`; **`verdetto_umano` hard-coded a `non_revisionato`** e `artefatti_flusso="commit"` scartato (rilievo review esterna v4 N2: un tool call non scrive le prove che il motore flusso tratta come autorità); `metadati={"origine": "mcp"}` |
 | `piano_approva_handoff` | `piano_comandi.approva_handoff` |
+
+**Hardening review v4 (2026-09-03).** `--agente` non accetta più `umano` (N2/N3): è
+l'unica identità che conferisce autorità (verdetto, approvazione handoff, freno
+hop) e un processo che si dichiarasse `umano` potrebbe forgiarla. Tetti anti-DoS:
+riga JSON-RPC ≤ 512 KiB, `note_codice_elenco` troncato a 500 (N5). Aperti a
+backlog: `autorizza_automazione` non consultato dai tool di scrittura;
+riletture O(n) del JSONL sotto lock nei CAS.
 
 ## Esclusioni tassative
 
