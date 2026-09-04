@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 import bacheca
@@ -65,7 +65,10 @@ def index():
     import interfaccia
     if not interfaccia.PERCORSO_HTML.exists():
         raise HTTPException(status_code=404, detail="File interfaccia.html non trovato")
-    return FileResponse(interfaccia.PERCORSO_HTML)
+    testo = interfaccia.PERCORSO_HTML.read_text(encoding="utf-8")
+    chiave = getattr(interfaccia, "CHIAVE_API_DASHBOARD", "")
+    testo = testo.replace("__CHIAVE_INSTALLAZIONE__", chiave)
+    return HTMLResponse(content=testo)
 
 
 @router.get("/api/stato")
@@ -97,10 +100,26 @@ def aggiungi_progetto(proj: ProgettoInput):
     if any(p["id"] == p_id or Path(p["percorso"]).resolve() == p_path for p in progetti):
         raise HTTPException(status_code=400, detail="Progetto con questo nome o percorso già registrato")
 
+    # Niente progetti annidati (review v4 N12): /repo e /repo/sub avrebbero ognuno
+    # il proprio dati_locali/orchestrazione e comandi.json, con monitoraggio e
+    # gate che si calpestano.
+    for p in progetti:
+        altro = Path(p["percorso"]).resolve()
+        if altro == p_path:
+            continue
+        if p_path.is_relative_to(altro) or altro.is_relative_to(p_path):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Il percorso è annidato con un progetto già registrato ('{p['nome']}'): "
+                "registra la cartella comune, non due cartelle una dentro l'altra.",
+            )
+
     try:
         interfaccia.integra_progetto(p_path)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Integrazione automatica fallita: {e}")
+        import sys
+        print(f"[ERRORE INTEGRAZIONE] {proj.nome}: {e}", file=sys.stderr)
+        raise HTTPException(status_code=500, detail="Integrazione automatica fallita")
 
     nuovo = {
         "id": p_id,
@@ -146,7 +165,9 @@ def esegui_sentinella(input_data: SentinellaInput):
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Esecuzione del comando andata in timeout")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Errore durante l'esecuzione del comando: {e}")
+        import sys
+        print(f"[ERRORE SENTINELLA] comando={input_data.comando}: {e}", file=sys.stderr)
+        raise HTTPException(status_code=500, detail="Errore durante l'esecuzione del comando")
 
 
 @router.get("/api/commit/lista")
@@ -183,7 +204,7 @@ def esegui_risvegli_bacheca(progetto_id: str = "orchestratore"):
     percorso_progetto = Path(progetto["percorso"])
     messaggi, errore = bacheca.leggi_messaggi_progetto(percorso_progetto)
     if errore:
-        return {"progetto_id": progetto_id, "errore": errore, "risvegli": []}
+        return {"progetto_id": progetto_id, "errore": "impossibile leggere i messaggi della bacheca", "risvegli": []}
 
     inizializzato, risvegli = dashboard_risvegli.calcola_ed_esegui_risvegli(percorso_progetto, messaggi)
     return {"progetto_id": progetto_id, "inizializzato": inizializzato, "risvegli": risvegli}

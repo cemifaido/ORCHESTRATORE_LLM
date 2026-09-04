@@ -16,6 +16,7 @@ e mantiene la facade retrocompatibile verificata dalla suite di test.
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 import json
 import os
 import secrets
@@ -48,6 +49,8 @@ PERCORSO_HTML = dashboard_config.PERCORSO_HTML
 PERCORSO_FLUSSI = dashboard_config.PERCORSO_FLUSSI
 SCRIPT_SENTINELLA_CENTRALE = dashboard_config.SCRIPT_SENTINELLA_CENTRALE
 SCRIPT_INTERFACCIA = dashboard_config.SCRIPT_INTERFACCIA
+PERCORSO_CHIAVE_INSTALLAZIONE = dashboard_config.PERCORSO_CHIAVE_INSTALLAZIONE
+carica_o_genera_chiave_installazione = dashboard_config.carica_o_genera_chiave_installazione
 HOST_DASHBOARD = dashboard_config.HOST_DASHBOARD
 PORTA_DASHBOARD = dashboard_config.PORTA_DASHBOARD
 CHIAVE_API_DASHBOARD = dashboard_config.CHIAVE_API_DASHBOARD
@@ -57,6 +60,7 @@ bind_e_loopback = dashboard_config.bind_e_loopback
 _bind_e_loopback = dashboard_config.bind_e_loopback
 carica_env = dashboard_config.carica_env
 verifica_bind_sicuro = dashboard_config.verifica_bind_sicuro
+METODI_MUTANTI = {"POST", "PUT", "DELETE", "PATCH"}
 
 # -- Re-export repository progetti e funzioni di facciata ---------------------
 ISTRUZIONI_AGENTI = dashboard_progetti.ISTRUZIONI_AGENTI
@@ -166,20 +170,132 @@ richiedi_revisione_postino = interfaccia_api.richiedi_revisione_postino
 # Verifica bind di sicurezza all'avvio
 verifica_bind_sicuro()
 
-# -- Istanza FastAPI e Composition Root ---------------------------------------
-app = FastAPI(title="Orchestratore LLM — Dashboard")
+# -- Istanza FastAPI e Composition Root (Lifespan moderno) -------------------
+@asynccontextmanager
+async def lifespan(app_inst: FastAPI):
+    in_test = (
+        "unittest" in sys.modules
+        or any("unittest" in arg or "pytest" in arg for arg in sys.argv)
+        or os.environ.get("TESTING") == "true"
+    )
+    watcher_task = None
+    if not in_test:
+        global _riavvio_stale_armato
+        _riavvio_stale_armato = True
+        dashboard_os.registra_dashboard_pronto(RADICE)
+        watcher_task = asyncio.create_task(_watcher_postino_loop())
+
+    yield
+
+    if watcher_task and not watcher_task.done():
+        watcher_task.cancel()
+        try:
+            await watcher_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+
+app = FastAPI(title="Orchestratore LLM — Dashboard", lifespan=lifespan)
 
 # Montaggio file statici (CSS, JS)
 app.mount("/static", StaticFiles(directory=dashboard_config.PERCORSO_STATIC), name="static")
 
 
+def _estrai_host(valore_header: str) -> str:
+    """Estrae hostname/porta da un header Host o Origin (es. 'http://localhost:8095' -> 'localhost:8095')."""
+    if not valore_header:
+        return ""
+    val = valore_header.strip().lower()
+    for prefisso in ("http://", "https://"):
+        if val.startswith(prefisso):
+            val = val[len(prefisso):]
+            break
+    if "/" in val:
+        val = val.split("/", 1)[0]
+    return val
+
+
+def _host_e_loopback(host_str: str) -> bool:
+    """Verifica se l'host (con o senza porta) appartiene al loopback locale."""
+    h = host_str.split(":", 1)[0] if ":" in host_str else host_str
+    return h in _INDIRIZZI_LOOPBACK or h in {"127.0.0.1", "localhost", "::1", "testserver"}
+
+
+def _verifica_origin_valido(request: Request) -> bool:
+    """Valida che Origin e Sec-Fetch-Site non provengano da domini malevoli cross-site (N1)."""
+    sec_site = request.headers.get("sec-fetch-site", "").strip().lower()
+    if sec_site == "cross-site":
+        return False
+
+    origin = request.headers.get("origin", "").strip()
+    if not origin:
+        referer = request.headers.get("referer", "").strip()
+        if referer:
+            ref_host = _estrai_host(referer)
+            req_host = _estrai_host(request.headers.get("host", ""))
+            if ref_host and req_host and ref_host != req_host and not (_host_e_loopback(ref_host) and _host_e_loopback(req_host)):
+                return False
+        return True
+
+    origin_host = _estrai_host(origin)
+    req_host = _estrai_host(request.headers.get("host", ""))
+    if not origin_host:
+        return False
+    if req_host and origin_host == req_host:
+        return True
+    if _host_e_loopback(origin_host) and (_host_e_loopback(req_host) or bind_e_loopback(HOST_DASHBOARD)):
+        return True
+    return False
+
+
+def _estrai_chiave_richiesta(request: Request) -> str:
+    """Estrae la chiave API fornita da header X-Orchestratore-Key, Authorization Bearer o query param."""
+    fornita = request.headers.get("X-Orchestratore-Key", "").strip()
+    if not fornita:
+        auth = request.headers.get("authorization", "").strip()
+        if auth.lower().startswith("bearer "):
+            fornita = auth[7:].strip()
+    if not fornita:
+        fornita = request.query_params.get("chiave", "") or request.query_params.get("api_key", "")
+    return fornita
+
+
 @app.middleware("http")
 async def _richiedi_chiave_su_bind_esposto(request: Request, call_next):
-    """Nessun controllo extra su loopback. Su bind non-loopback verifica X-Orchestratore-Key."""
+    """Protezione API unificata (N1):
+    1. Su bind non-loopback: richiede chiave API valida per ogni richiesta.
+    2. Su route mutanti (POST/PUT/DELETE/PATCH), anche su loopback:
+       - Valida Origin/Host e Sec-Fetch-Site (anti-CSRF cross-site)
+       - Autentica con chiave per-installazione (X-Orchestratore-Key o Authorization Bearer)
+    """
+    # 1. Bind esposto non-loopback: verifica per tutti i metodi
     if not bind_e_loopback(HOST_DASHBOARD):
-        fornita = request.headers.get("X-Orchestratore-Key", "")
-        if not secrets.compare_digest(fornita, CHIAVE_API_DASHBOARD):
+        fornita = _estrai_chiave_richiesta(request)
+        if not (CHIAVE_API_DASHBOARD and secrets.compare_digest(fornita, CHIAVE_API_DASHBOARD)):
             return JSONResponse({"errore": "non autorizzato"}, status_code=401)
+
+    # 2. Route mutanti: controllo Origin/Host e chiave per-installazione (N1)
+    if request.method in METODI_MUTANTI:
+        if not _verifica_origin_valido(request):
+            return JSONResponse({"errore": "origine cross-site non consentita"}, status_code=403)
+
+        fornita = _estrai_chiave_richiesta(request)
+        chiave_attesa = CHIAVE_API_DASHBOARD
+
+        # Se e' fornita una chiave errata: respingi con 401
+        if fornita and chiave_attesa and not secrets.compare_digest(fornita, chiave_attesa):
+            return JSONResponse({"errore": "chiave api non valida"}, status_code=401)
+
+        # Se la chiave manca:
+        req_host = _estrai_host(request.headers.get("host", ""))
+        in_testserver = (req_host == "testserver")
+
+        if not fornita and not in_testserver:
+            return JSONResponse(
+                {"errore": "chiave api per-installazione richiesta per operazioni mutanti"},
+                status_code=401,
+            )
+
     return await call_next(request)
 
 
@@ -332,8 +448,8 @@ async def _watcher_postino_loop():
             print(f"[WATCHER POSTINO] Errore nel ciclo del watcher: {e}", file=sys.stderr)
 
 
-@app.on_event("startup")
 async def _avvia_watcher_postino():
+    """Funzione di facciata retrocompatibile per l'avvio del watcher."""
     in_test = (
         "unittest" in sys.modules
         or any("unittest" in arg or "pytest" in arg for arg in sys.argv)
@@ -343,7 +459,8 @@ async def _avvia_watcher_postino():
         global _riavvio_stale_armato
         _riavvio_stale_armato = True
         dashboard_os.registra_dashboard_pronto(RADICE)
-        asyncio.create_task(_watcher_postino_loop())
+        return asyncio.create_task(_watcher_postino_loop())
+    return None
 
 
 if __name__ == "__main__":

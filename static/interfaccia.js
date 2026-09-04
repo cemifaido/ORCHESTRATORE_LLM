@@ -466,7 +466,7 @@
       // Aggiorna tutti gli elementi con data-i18n
       document.querySelectorAll("[data-i18n]").forEach(el => {
         const key = el.getAttribute("data-i18n");
-        if (key) el.innerHTML = t(key);
+        if (key) el.textContent = t(key);
       });
       document.querySelectorAll("[data-i18n-placeholder]").forEach(el => {
         const key = el.getAttribute("data-i18n-placeholder");
@@ -508,6 +508,16 @@
       { id: "codex", label: "Codex", modoKey: "mode_hook_active" },
       { id: "gemini", label: "Gemini", modoKey: "mode_manual_pull" }
     ];
+
+    const CHIAVE_API_INSTALLAZIONE = document.querySelector('meta[name="orchestratore-key"]')?.content || "";
+
+    function authHeaders(extra = {}) {
+      const headers = { ...extra };
+      if (CHIAVE_API_INSTALLAZIONE && !CHIAVE_API_INSTALLAZIONE.startsWith("__")) {
+        headers["X-Orchestratore-Key"] = CHIAVE_API_INSTALLAZIONE;
+      }
+      return headers;
+    }
 
     function escapeHtml(str) {
       if (str == null) return '';
@@ -722,7 +732,11 @@
       const controller = new AbortController();
       const timeoutRichiesta = setTimeout(() => controller.abort(), 5000);
       try {
-        const risposta = await fetch("/api/sistema/riavvia", { method: "POST", signal: controller.signal });
+        const risposta = await fetch("/api/sistema/riavvia", {
+          method: "POST",
+          headers: authHeaders(),
+          signal: controller.signal
+        });
         if (!risposta.ok) throw new Error("riavvio non accettato");
         idRiavvio = (await risposta.json()).id_riavvio;
         if (!idRiavvio) throw new Error("id riavvio assente");
@@ -1199,7 +1213,7 @@
       try {
         const res = await fetch("/api/progetti", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ nome, percorso })
         });
         const data = await res.json();
@@ -1226,7 +1240,7 @@
       try {
         const res = await fetch("/api/sentinella", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ progetto_id, comando })
         });
         const data = await res.json();
@@ -1495,7 +1509,7 @@
       try {
         const res = await fetch("/api/bacheca/postino/profilo", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ progetto_id: progetto_id, profilo: nuovoProfilo })
         });
         if (!res.ok) {
@@ -1514,7 +1528,8 @@
     async function eseguiRisvegliBacheca(progettoId) {
       try {
         const res = await fetch(`/api/bacheca/risvegli?progetto_id=${encodeURIComponent(progettoId)}`, {
-          method: "POST"
+          method: "POST",
+          headers: authHeaders()
         });
         if (!res.ok) throw new Error("risposta non valida");
         const data = await res.json();
@@ -1973,7 +1988,7 @@
       try {
         const res = await fetch("/api/bacheca/postino/revisione", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ progetto_id, agente, thread_id }),
         });
         const data = await res.json();

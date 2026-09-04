@@ -61,9 +61,37 @@ def carica_env(percorso_env: Path | None = None) -> list[str]:
 # Carica .env all'importazione
 carica_env()
 
+PERCORSO_CHIAVE_INSTALLAZIONE = RADICE / "dati_locali" / "orchestrazione" / "chiave_installazione.txt"
+
+
+def carica_o_genera_chiave_installazione(percorso: Path | None = None) -> str:
+    """Restituisce ORCHESTRATORE_API_KEY se impostata, altrimenti recupera o genera una chiave per-installazione."""
+    import secrets
+
+    env_key = os.environ.get("ORCHESTRATORE_API_KEY", "").strip()
+    if env_key:
+        return env_key
+    if percorso is None:
+        percorso = PERCORSO_CHIAVE_INSTALLAZIONE
+    if percorso.exists():
+        try:
+            k = percorso.read_text(encoding="utf-8").strip()
+            if k:
+                return k
+        except Exception:
+            pass
+    nuova_chiave = secrets.token_hex(32)
+    try:
+        percorso.parent.mkdir(parents=True, exist_ok=True)
+        percorso.write_text(nuova_chiave, encoding="utf-8")
+    except Exception:
+        pass
+    return nuova_chiave
+
+
 HOST_DASHBOARD = os.environ.get("ORCHESTRATORE_HOST", "127.0.0.1")
 PORTA_DASHBOARD = int(os.environ.get("ORCHESTRATORE_PORTA", "8095"))
-CHIAVE_API_DASHBOARD = os.environ.get("ORCHESTRATORE_API_KEY", "")
+CHIAVE_API_DASHBOARD = carica_o_genera_chiave_installazione()
 
 
 def bind_e_loopback(host: str) -> bool:
