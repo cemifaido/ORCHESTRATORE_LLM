@@ -25,6 +25,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from dashboard_os import _pid_attivo
+
 TIMEOUT_LOCK_SECONDI_PREDEFINITO = 10.0
 
 # Fissa e indipendente dal timeout del chiamante (vedi sotto il perche'):
@@ -37,6 +39,22 @@ def _percorso_lock(percorso: Path) -> Path:
     return percorso.with_suffix(percorso.suffix + ".lock")
 
 
+def _lock_abbandonato(percorso_lock: Path) -> bool:
+    """True solo per un lock vecchio il cui detentore e' certamente morto.
+
+    Un mtime vecchio, da solo, non dimostra che un processo abbia abbandonato
+    il lock: un'operazione lenta puo' tenerlo oltre la soglia. File di lock
+    malformati o PID non verificabili restano quindi bloccanti (fail-closed).
+    """
+    try:
+        if time.time() - percorso_lock.stat().st_mtime <= SOGLIA_LOCK_ABBANDONATO_SECONDI:
+            return False
+        pid = int(percorso_lock.read_text(encoding="ascii").strip())
+    except (OSError, UnicodeDecodeError, ValueError):
+        return False
+    return pid > 0 and _pid_attivo(pid) is False
+
+
 @contextlib.contextmanager
 def blocco_file(percorso: Path, *, timeout_secondi: float = TIMEOUT_LOCK_SECONDI_PREDEFINITO):
     """Lock a file (stesso pattern di postino._blocco_stato): creazione
@@ -44,7 +62,7 @@ def blocco_file(percorso: Path, *, timeout_secondi: float = TIMEOUT_LOCK_SECONDI
     (os.O_CREAT | os.O_EXCL), senza bisogno di fcntl/msvcrt specifici per
     piattaforma. Un lock piu' vecchio di SOGLIA_LOCK_ABBANDONATO_SECONDI si
     considera abbandonato (processo terminato senza pulire) e viene rimosso
-    invece di bloccare per sempre.
+    solo se il PID scritto nel lock non e' piu' vivo.
 
     La soglia di abbandono e' un valore FISSO, non `timeout_secondi`: sono
     due concetti distinti che nel pattern originale di postino coincidevano
@@ -60,7 +78,14 @@ def blocco_file(percorso: Path, *, timeout_secondi: float = TIMEOUT_LOCK_SECONDI
     while True:
         try:
             fd = os.open(percorso_lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.close(fd)
+            try:
+                os.write(fd, str(os.getpid()).encode("ascii"))
+            except BaseException:
+                with contextlib.suppress(OSError):
+                    percorso_lock.unlink()
+                raise
+            finally:
+                os.close(fd)
             break
         except (FileExistsError, PermissionError):
             # PermissionError: su Windows la creazione O_CREAT|O_EXCL puo'
@@ -69,11 +94,7 @@ def blocco_file(percorso: Path, *, timeout_secondi: float = TIMEOUT_LOCK_SECONDI
             # lock, va trattato allo stesso modo, non come un errore reale
             # di permessi (quello, se genuino, fa comunque scadere il
             # timeout sotto invece di restare bloccato per sempre).
-            try:
-                eta_lock = time.time() - percorso_lock.stat().st_mtime
-            except OSError:
-                eta_lock = 0.0
-            if eta_lock > SOGLIA_LOCK_ABBANDONATO_SECONDI:
+            if _lock_abbandonato(percorso_lock):
                 with contextlib.suppress(OSError):
                     percorso_lock.unlink()
                 continue

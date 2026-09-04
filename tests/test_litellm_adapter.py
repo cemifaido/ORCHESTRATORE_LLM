@@ -147,6 +147,20 @@ class LiteLLMAdapterTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             litellm.estrai_primo_oggetto_json("prefisso {non e' json valido")
 
+    def test_completamento_rifiuta_api_base_remoto_prima_di_importare_litellm(self) -> None:
+        with self.assertRaisesRegex(ValueError, "host locale"):
+            litellm.completamento(
+                modello="openai/gpt-4o-mini",
+                messaggi=[{"role": "user", "content": "ciao"}],
+                api_base="http://169.254.169.254/latest",
+            )
+
+    def test_valida_api_base_accetta_loopback_e_rifiuta_url_malformato(self) -> None:
+        litellm._valida_api_base_locale("http://127.0.0.1:8090/v1")
+        litellm._valida_api_base_locale("http://[::1]:8090/v1")
+        with self.assertRaises(ValueError):
+            litellm._valida_api_base_locale("http://127.0.0.1:porta/v1")
+
     @unittest.skipUnless(_LITELLM_DISPONIBILE, _MOTIVO_SKIP)
     def test_completamento_locale_forza_costo_zero_misurato_e_provider_locale(self) -> None:
         """L'inferenza locale non ha un costo API da stimare: e' un fatto noto (zero),

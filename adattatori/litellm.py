@@ -5,6 +5,7 @@ import importlib
 import json
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 
 class LiteLLMNonConfigurato(RuntimeError):
@@ -163,6 +164,31 @@ def arricchisci_evento(evento: dict[str, Any], misurazione: MisurazioneLiteLLM) 
 TIMEOUT_SECONDI_PREDEFINITO = 60.0
 
 
+def _valida_api_base_locale(api_base: object) -> None:
+    """Accetta solo endpoint HTTP(S) in loopback per evitare SSRF da config.
+
+    LiteLLM riceve ``api_base`` come URL assoluto: senza questo vincolo una
+    configurazione non fidata potrebbe far raggiungere servizi della rete
+    interna. Riusa il criterio centralizzato della sentinella per gli host
+    locali, cosi' IPv4/IPv6 e i casi speciali restano coerenti.
+    """
+    if not isinstance(api_base, str):
+        raise ValueError("api_base deve essere un URL HTTP(S) locale")
+    try:
+        url = urlparse(api_base)
+        host = url.hostname
+        # Accedere a .port forza anche la validazione di porte malformate.
+        _porta = url.port
+    except ValueError as errore:
+        raise ValueError("api_base deve essere un URL HTTP(S) locale valido") from errore
+    if url.scheme not in {"http", "https"} or not host:
+        raise ValueError("api_base deve essere un URL HTTP(S) locale valido")
+    from sentinella import _is_host_locale
+
+    if not _is_host_locale(host):
+        raise ValueError("api_base deve puntare a un host locale")
+
+
 def completamento(
     *,
     modello: str,
@@ -183,6 +209,8 @@ def completamento(
     analogia con 'request_timeout' di altre SDK). setdefault: se il chiamante
     lo passa gia' esplicitamente in **parametri, quel valore vince sempre.
     """
+    if "api_base" in parametri:
+        _valida_api_base_locale(parametri["api_base"])
     try:
         litellm = importlib.import_module("litellm")
     except ImportError as errore:

@@ -23,6 +23,7 @@ import piano_overlap
 import profili_operativi
 import registro
 import sentinella
+from dashboard_os import _pid_attivo
 
 
 LIMITI_PREDEFINITI = {"max_turni_thread": 3, "max_invii_giorno": 300, "debounce_secondi": 300}
@@ -364,6 +365,22 @@ def _percorso_lock_stato(radice: Path) -> Path:
 SOGLIA_LOCK_ABBANDONATO_SECONDI = 310.0
 
 
+def _lock_stato_abbandonato(percorso_lock: Path) -> bool:
+    """True solo se il lock e' vecchio e il suo PID non e' piu' vivo.
+
+    Un lock senza PID (anche da una versione precedente) non e' verificabile:
+    mantenerlo fino al timeout e' preferibile a violare una sezione critica
+    ancora posseduta.
+    """
+    try:
+        if time.time() - percorso_lock.stat().st_mtime <= SOGLIA_LOCK_ABBANDONATO_SECONDI:
+            return False
+        pid = int(percorso_lock.read_text(encoding="ascii").strip())
+    except (OSError, UnicodeDecodeError, ValueError):
+        return False
+    return pid > 0 and _pid_attivo(pid) is False
+
+
 @contextlib.contextmanager
 def _blocco_stato(radice: Path, *, timeout_secondi: float = 310.0):
     """Serializza il read-modify-write di postino_stato.json fra chiamate
@@ -376,23 +393,26 @@ def _blocco_stato(radice: Path, *, timeout_secondi: float = 310.0):
     os.O_CREAT | os.O_EXCL e' una creazione atomica garantita dal sistema
     operativo sia su Windows sia su POSIX (non serve fcntl/msvcrt specifici
     per piattaforma). Un lock piu' vecchio di SOGLIA_LOCK_ABBANDONATO_SECONDI
-    si considera abbandonato (processo terminato senza pulire, es. kill -9) e
-    viene rimosso invece di bloccare per sempre - stesso principio fail-safe
-    del resto del modulo."""
+    si considera abbandonato (processo terminato senza pulire, es. kill -9)
+    solo se il PID scritto nel lock non e' piu' vivo. Un PID non verificabile
+    resta bloccante (fail-closed)."""
     percorso_lock = _percorso_lock_stato(radice)
     percorso_lock.parent.mkdir(parents=True, exist_ok=True)
     scadenza = time.monotonic() + timeout_secondi
     while True:
         try:
             fd = os.open(percorso_lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.close(fd)
+            try:
+                os.write(fd, str(os.getpid()).encode("ascii"))
+            except BaseException:
+                with contextlib.suppress(OSError):
+                    percorso_lock.unlink()
+                raise
+            finally:
+                os.close(fd)
             break
         except FileExistsError:
-            try:
-                eta_lock = time.time() - percorso_lock.stat().st_mtime
-            except OSError:
-                eta_lock = 0.0
-            if eta_lock > SOGLIA_LOCK_ABBANDONATO_SECONDI:
+            if _lock_stato_abbandonato(percorso_lock):
                 with contextlib.suppress(OSError):
                     percorso_lock.unlink()
                 continue

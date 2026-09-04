@@ -56,7 +56,9 @@ def _scrivi_idempotente(
     esito: dict[str, Any] = {}
 
     def calcola() -> dict[str, Any] | None:
-        messaggi = bacheca.leggi_messaggi(percorso)
+        # valida=False: dentro il lock CAS, i record storici sono gia' validi
+        # (review v4 N5). Il nuovo record e' validato da transazione_jsonl.
+        messaggi = bacheca.leggi_messaggi(percorso, valida=False)
         for m in messaggi:
             if m.get("thread_id") != thread_id or m.get("mittente") != mittente:
                 continue

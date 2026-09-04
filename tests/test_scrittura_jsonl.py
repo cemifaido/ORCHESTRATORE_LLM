@@ -77,7 +77,7 @@ class AggiungiRigaJsonlTest(unittest.TestCase):
             percorso = Path(tmp) / "dati.jsonl"
             percorso_lock = scrittura_jsonl._percorso_lock(percorso)
             percorso_lock.parent.mkdir(parents=True, exist_ok=True)
-            percorso_lock.touch()
+            percorso_lock.write_text("99999999", encoding="ascii")
             # Invecchia artificialmente il lock oltre il timeout, simulando un
             # processo morto senza pulire (kill -9 durante la scrittura).
             vecchio = time.time() - 100
@@ -87,6 +87,17 @@ class AggiungiRigaJsonlTest(unittest.TestCase):
 
             self.assertTrue(percorso.exists())
             self.assertFalse(percorso_lock.exists())
+
+    def test_lock_vecchio_di_un_pid_vivo_non_viene_rimosso(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            percorso = Path(tmp) / "dati.jsonl"
+            percorso_lock = scrittura_jsonl._percorso_lock(percorso)
+            percorso_lock.write_text(str(os.getpid()), encoding="ascii")
+            vecchio = time.time() - 100
+            os.utime(percorso_lock, (vecchio, vecchio))
+
+            with self.assertRaises(TimeoutError):
+                scrittura_jsonl.aggiungi_riga_jsonl(percorso, {"a": 1}, timeout_lock_secondi=0.05)
 
     def test_lock_attivo_fa_scadere_il_timeout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

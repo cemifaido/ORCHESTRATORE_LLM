@@ -154,8 +154,12 @@ CLI / Antigravity). Confini e rischi (vedi `docs/RFC_SERVER_MCP_LOCALE.md`):
   — che un tool call non forgi l'*autorità* (verdetto, handoff, freno hop) — è
   chiuso da N2/N3 sopra.
 - **Tetti anti-DoS** (dal 2026-09-03, v4 N5): riga JSON-RPC ≤ 512 KiB, elenco note
-  troncato a 500. Le riletture O(n) del JSONL sotto lock nei percorsi CAS restano un
-  rilievo aperto (backlog).
+  troncato a 500. La rilettura del JSONL dentro il lock CAS
+  (`_cas_transizione`, `bacheca_scritture._scrivi_idempotente`) usa
+  `bacheca.leggi_messaggi(valida=False)`: solo parsing JSON, niente ri-validazione
+  jsonschema riga per riga dei record gia' persistiti — era il costo O(n) che
+  cresceva col file. Sliver rimasto (backlog, serve una slice dedicata): una
+  cache per mtime/size della lettura, per non ri-parsare affatto sotto il lock.
 - **Robustezza del loop**: `params` non-oggetto / `jsonrpc` errato / riga non-JSON
   producono un errore JSON-RPC tipizzato, non un crash (regressione da revisione Codex).
 

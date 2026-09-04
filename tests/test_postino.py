@@ -739,7 +739,7 @@ class ConcorrenzaStatoTest(unittest.TestCase):
             radice = Path(tmp)
             percorso_lock = postino._percorso_lock_stato(radice)
             percorso_lock.parent.mkdir(parents=True, exist_ok=True)
-            percorso_lock.write_text("", encoding="utf-8")
+            percorso_lock.write_text("99999999", encoding="ascii")
             vecchio = time.time() - 400
             os.utime(percorso_lock, (vecchio, vecchio))
 
@@ -747,6 +747,19 @@ class ConcorrenzaStatoTest(unittest.TestCase):
                 pass  # se il lock abbandonato non viene ripulito, questo si blocca/solleva
 
             self.assertFalse(percorso_lock.exists())
+
+    def test_blocco_stato_non_rimuove_lock_vecchio_di_pid_vivo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp)
+            percorso_lock = postino._percorso_lock_stato(radice)
+            percorso_lock.parent.mkdir(parents=True, exist_ok=True)
+            percorso_lock.write_text(str(os.getpid()), encoding="ascii")
+            vecchio = time.time() - 400
+            os.utime(percorso_lock, (vecchio, vecchio))
+
+            with self.assertRaises(TimeoutError):
+                with postino._blocco_stato(radice, timeout_secondi=0.05):
+                    pass
 
     def test_blocco_stato_con_timeout_breve_su_lock_attivo_solleva_timeout(self) -> None:
         """Guardrail (bug trovato scrivendo scrittura_jsonl.py, 2026-08-26,

@@ -117,6 +117,24 @@ class BachecaTest(unittest.TestCase):
         errori = bacheca.valida_messaggio(messaggio)
         self.assertTrue(any("campi non previsti" in errore for errore in errori))
 
+    def test_leggi_messaggi_valida_false_salta_lo_schema_ma_non_il_json(self) -> None:
+        """N5: i percorsi CAS leggono con valida=False - JSON rotto solleva
+        comunque, uno schema violato no (i record storici sono gia' validi)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "m.jsonl"
+            p.write_text(
+                json.dumps({"id_messaggio": "x", "campo_ignoto": 1}) + "\n"
+                + json.dumps({"id_messaggio": "y"}) + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                bacheca.leggi_messaggi(p)  # default valida=True
+            letti = bacheca.leggi_messaggi(p, valida=False)
+            self.assertEqual([m["id_messaggio"] for m in letti], ["x", "y"])
+            p.write_text('{"non chiuso', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                bacheca.leggi_messaggi(p, valida=False)  # JSON rotto solleva sempre
+
     def test_valida_rifiuta_ttl_minuti_fuori_da_presa_in_carico(self) -> None:
         messaggio = self.messaggio_valido(tipo="richiesta", ttl_minuti=30)
         errori = bacheca.valida_messaggio(messaggio)

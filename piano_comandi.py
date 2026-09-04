@@ -99,7 +99,9 @@ def _cas_transizione(
     esito: dict[str, Any] = {}
 
     def calcola() -> dict[str, Any] | None:
-        messaggi = bacheca.leggi_messaggi(percorso_bacheca)
+        # valida=False: siamo DENTRO il lock CAS, i record storici sono gia'
+        # validi (review v4 N5). Il nuovo record e' validato da transazione_jsonl.
+        messaggi = bacheca.leggi_messaggi(percorso_bacheca, valida=False)
         if idempotency_key in _chiavi_idempotenza_thread(messaggi, thread_id):
             esito.update(esito="gia_applicato", idempotency_key=idempotency_key)
             return None

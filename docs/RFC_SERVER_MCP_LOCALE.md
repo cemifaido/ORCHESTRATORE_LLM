@@ -112,9 +112,11 @@ L'`agente` è sempre quello di avvio del server (`--agente`), mai da un tool cal
 **Hardening review v4 (2026-09-03).** `--agente` non accetta più `umano` (N2/N3): è
 l'unica identità che conferisce autorità (verdetto, approvazione handoff, freno
 hop) e un processo che si dichiarasse `umano` potrebbe forgiarla. Tetti anti-DoS:
-riga JSON-RPC ≤ 512 KiB, `note_codice_elenco` troncato a 500 (N5). Aperti a
-backlog: `autorizza_automazione` non consultato dai tool di scrittura;
-riletture O(n) del JSONL sotto lock nei CAS.
+riga JSON-RPC ≤ 512 KiB, `note_codice_elenco` troncato a 500 (N5). Le letture
+dentro il lock CAS usano `bacheca.leggi_messaggi(valida=False)` (niente
+ri-validazione jsonschema dei record gia' persistiti). Backlog: cache per
+mtime/size della lettura CAS; `autorizza_automazione` sui tool di scrittura MCP
+resta **non agganciato per scelta** (vedi THREAT_MODEL §3.9).
 
 ## Esclusioni tassative
 

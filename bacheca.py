@@ -81,7 +81,14 @@ def aggiungi_messaggio(percorso: Path, messaggio: dict[str, Any]) -> None:
     scrittura_jsonl.aggiungi_riga_jsonl(percorso, messaggio, valida=valida_messaggio)
 
 
-def leggi_messaggi(percorso: Path) -> list[dict[str, Any]]:
+def leggi_messaggi(percorso: Path, *, valida: bool = True) -> list[dict[str, Any]]:
+    """Legge i messaggi della bacheca. Con `valida=False` salta la validazione
+    schema per riga (mantiene solo il parsing JSON): i record storici sono gia'
+    stati validati alla scrittura, e ri-validarli con jsonschema `iter_errors`
+    su ogni riga e' il costo O(n) che pesa quando la lettura avviene DENTRO un
+    lock CAS (rilievo review v4 N5). I percorsi CAS (`piano_comandi`,
+    `bacheca_scritture`) usano `valida=False`; il nuovo record e' comunque
+    validato da `transazione_jsonl`."""
     if not percorso.exists():
         return []
     messaggi: list[dict[str, Any]] = []
@@ -94,9 +101,10 @@ def leggi_messaggi(percorso: Path) -> list[dict[str, Any]]:
                 messaggio = json.loads(riga)
             except json.JSONDecodeError as errore:
                 raise ValueError(f"JSON non valido alla riga {numero_riga}: {errore}") from errore
-            errori = valida_messaggio(messaggio)
-            if errori:
-                raise ValueError(f"messaggio non valido alla riga {numero_riga}: {'; '.join(errori)}")
+            if valida:
+                errori = valida_messaggio(messaggio)
+                if errori:
+                    raise ValueError(f"messaggio non valido alla riga {numero_riga}: {'; '.join(errori)}")
             messaggi.append(messaggio)
     return messaggi
 
